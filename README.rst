@@ -10,4 +10,4 @@ The design for the framework is described in `DMTN-219`_.
 .. _DMTN-219: https://dmtn-219.lsst.io/
 
 At present, the package does not conform exactly to the layout or conventions of LSST stack packages.
-In particular, the Python code is currently located in ``src/``, and does not use the ``lsst`` namespace.
+In particular, the Python code does not use the ``lsst`` namespace.
