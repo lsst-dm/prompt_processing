@@ -81,7 +81,11 @@ def main():
     )
     storage_client = storage.Client(PROJECT_ID, credentials=credentials)
     bucket = storage_client.bucket("rubin-prompt-proto-main")
-    publisher = pubsub_v1.PublisherClient(credentials=credentials)
+    batch_settings = pubsub_v1.types.BatchSettings(
+        max_messages=INSTRUMENTS[instrument].n_detectors,
+    )
+    publisher = pubsub_v1.PublisherClient(credentials=credentials,
+                                          batch_settings=batch_settings)
 
     blobs = storage_client.list_blobs(
         "rubin-prompt-proto-main",
