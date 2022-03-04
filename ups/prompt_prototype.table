@@ -7,3 +7,4 @@ setupRequired(sconsUtils)
 setupRequired(daf_butler)    # Used by middleware_interface module.
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
+envPrepend(PATH, ${PRODUCT_DIR}/bin)
