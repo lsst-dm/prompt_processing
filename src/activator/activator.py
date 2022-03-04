@@ -6,7 +6,7 @@ import re
 import time
 from typing import Optional, Tuple
 
-from flask import current_app, Flask, request
+from flask import Flask, request
 from google.cloud import pubsub_v1, storage
 
 from middleware_interface import MiddlewareInterface
@@ -117,7 +117,7 @@ def next_visit_handler() -> Tuple[str, int]:
             )
             end = time.time()
             if len(response.received_messages) == 0:
-                if end - start < TIMEOUT:
+                if end - start < timeout:
                     logger.debug(
                         f"Empty pull after {end - start}"
                         f" for '{expected_visit.group}'"

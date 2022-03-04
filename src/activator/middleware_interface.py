@@ -1,10 +1,9 @@
 import logging
 import os
 import shutil
-import subprocess
 
 from astropy.time import Time
-from lsst.daf.butler import Butler, CollectionType, Timespan
+from lsst.daf.butler import Butler
 
 from visit import Visit
 
@@ -16,6 +15,7 @@ PIPELINE_MAP = dict(
 
 _log = logging.getLogger(__name__)
 _log.setLevel(logging.DEBUG)
+
 
 class MiddlewareInterface:
     def __init__(self, input_repo: str, image_bucket: str, instrument: str):
@@ -36,10 +36,8 @@ class MiddlewareInterface:
         # self.r = self.src.registry
         self.calibration_collection = f"{instrument}/calib"
         refcat_collection = "refcats/DM-28636"
-        skymap = "hsc_rings_v1"
 
         export_collections = set()
-        export_datasets = set()
         export_collections.add(self.calibration_collection)
         # calib_collections = list(
         #     self.r.queryCollections(
@@ -82,23 +80,15 @@ class MiddlewareInterface:
         #     for dataset_type in self.src.registry.queryDatasetTypes(...)
         #     if dataset_type.isCalibration()
         # ]
-        self.calib_types = ["bias", "dark", "defects", "flat", "fringe",]
-
-    def filter_calibs(dataset_ref, visit_info):
-        for dimension in ("instrument", "detector", "physical_filter"):
-            if dimension in dataset_ref.dataId:
-                if dataset_ref.dataId[dimension] != visit_info[dimension]:
-                    return False
-        return True
+        self.calib_types = ["bias", "dark", "defects", "flat", "fringe", ]
 
     def prep_butler(self, visit: Visit) -> None:
         _log.info(f"Preparing Butler for visit '{visit}'")
         visit_info = visit.__dict__
-        export_datasets = set()
         for calib_type in self.calib_types:
             _log.debug(f"Finding {calib_type} datasets dataId={visit_info}"
-                    f" collections={self.calibration_collection}"
-                    f" timespan={Time.now()}")
+                       f" collections={self.calibration_collection}"
+                       f" timespan={Time.now()}")
             # dataset = self.r.findDataset(
             #     calib_type,
             #     dataId=visit_info,
@@ -163,3 +153,11 @@ class MiddlewareInterface:
         ]
         _log.debug(str(cmd))
         # subprocess.run(cmd, check=True)
+
+
+def filter_calibs(dataset_ref, visit_info):
+    for dimension in ("instrument", "detector", "physical_filter"):
+        if dimension in dataset_ref.dataId:
+            if dataset_ref.dataId[dimension] != visit_info[dimension]:
+                return False
+    return True

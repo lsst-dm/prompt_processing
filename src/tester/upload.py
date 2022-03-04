@@ -1,11 +1,9 @@
-import base64
 from dataclasses import dataclass
 from google.cloud import pubsub_v1, storage
 from google.oauth2 import service_account
 import json
 import logging
 import random
-import subprocess
 import sys
 import time
 from visit import Visit
@@ -38,6 +36,7 @@ logging.basicConfig(
     level=logging.DEBUG,
 )
 
+
 def process_group(publisher, bucket, instrument, group, filter, kind):
     n_snaps = INSTRUMENTS[instrument].n_snaps
     send_next_visit(publisher, instrument, group, n_snaps, filter, kind)
@@ -62,7 +61,6 @@ def send_next_visit(publisher, instrument, group, snaps, filter, kind):
     topic_path = publisher.topic_path(PROJECT_ID, "nextVisit")
     ra = random.uniform(0.0, 360.0)
     dec = random.uniform(-90.0, 90.0)
-    process_list = []
     for detector in range(INSTRUMENTS[instrument].n_detectors):
         visit = Visit(instrument, detector, group, snaps, filter, ra, dec, kind)
         data = json.dumps(visit.__dict__).encode("utf-8")
@@ -83,9 +81,6 @@ def main():
     )
     storage_client = storage.Client(PROJECT_ID, credentials=credentials)
     bucket = storage_client.bucket("rubin-prompt-proto-main")
-    batch_settings = pubsub_v1.types.BatchSettings(
-        max_messages=INSTRUMENTS[instrument].n_detectors,
-    )
     publisher = pubsub_v1.PublisherClient(credentials=credentials)
 
     blobs = storage_client.list_blobs(
@@ -107,8 +102,9 @@ def main():
         group = last_group + i + 1
         filter = FILTER_LIST[random.randrange(0, len(FILTER_LIST))]
         process_group(publisher, bucket, instrument, group, filter, kind)
-        logging.info(f"Slewing to next group")
+        logging.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
+
 
 if __name__ == "__main__":
     main()
