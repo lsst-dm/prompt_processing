@@ -20,49 +20,50 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+
+"""Selectively export the contents of an ap_verify dataset.
+
+This script selects the subset of an ap_verify dataset's preloaded repository that
+matches what the central prompt processing repository ought to look like.
+"""
+
+
 import argparse
 import logging
 import os
 import sys
 
-import lsst.log
 import lsst.skymap
 import lsst.daf.butler as daf_butler
-import lsst.ap.verify as ap_verify
 
 
 def _make_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset", required=True,
-                        help="The name of the dataset as recognized by ap_verify.py.")
+    parser.add_argument("--src-repo", required=True,
+                        help="The location of the repository to be exported.")
     return parser
 
 
 def main():
-    # Ensure logs from tasks are visible
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-    lsst.log.configure_pylog_MDC("DEBUG", MDC_class=None)
 
     args = _make_parser().parse_args()
-    dataset = ap_verify.dataset.Dataset(args.dataset)
-    gen3_repo = os.path.join(dataset.datasetRoot, "preloaded")
+    gen3_repo = os.path.abspath(args.src_repo)
 
     logging.info("Exporting Gen 3 registry to configure new repos...")
-    _export_for_copy(dataset, gen3_repo)
+    _export_for_copy(gen3_repo)
 
 
-def _export_for_copy(dataset, repo):
+def _export_for_copy(repo):
     """Export a Gen 3 repository so that a dataset can make copies later.
 
     Parameters
     ----------
-    dataset : `lsst.ap.verify.dataset.Dataset`
-        The dataset needing the ability to copy the repository.
     repo : `str`
         The location of the Gen 3 repository.
     """
     butler = daf_butler.Butler(repo)
-    with butler.export(directory=dataset.configLocation, format="yaml") as contents:
+    with butler.export(format="yaml") as contents:
         # Need all detectors, even those without data, for visit definition
         contents.saveDataIds(butler.registry.queryDataIds({"detector"}).expanded())
         contents.saveDatasets(butler.registry.queryDatasets(datasetType=..., collections=...))
