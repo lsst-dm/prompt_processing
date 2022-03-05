@@ -31,9 +31,9 @@ matches what the central prompt processing repository ought to look like.
 import argparse
 import logging
 import os
+import re
 import sys
 
-import lsst.skymap
 import lsst.daf.butler as daf_butler
 
 
@@ -54,6 +54,18 @@ def main():
     _export_for_copy(gen3_repo)
 
 
+def _get_dataset_types():
+    """Identify the dataset types that should be marked for export.
+
+    Returns
+    -------
+    types : iterable [`str` or `re.Pattern`]
+        The dataset types to include
+    """
+    # Everything except raws and SS ephemerides
+    return [re.compile("^(?!raw|visitSsObjects).*")]
+
+
 def _export_for_copy(repo):
     """Export a Gen 3 repository so that a dataset can make copies later.
 
@@ -66,24 +78,14 @@ def _export_for_copy(repo):
     with butler.export(format="yaml") as contents:
         # Need all detectors, even those without data, for visit definition
         contents.saveDataIds(butler.registry.queryDataIds({"detector"}).expanded())
-        contents.saveDatasets(butler.registry.queryDatasets(datasetType=..., collections=...))
-        # Explicitly save the calibration and chained collections.
-        # Do _not_ include the RUN collections here because that will export
-        # an empty raws collection, which ap_verify assumes does not exist
-        # before ingest.
-        target_types = {daf_butler.CollectionType.CALIBRATION, daf_butler.CollectionType.CHAINED}
-        for collection in butler.registry.queryCollections(..., collectionTypes=target_types):
+        contents.saveDatasets(butler.registry.queryDatasets(
+            datasetType=_get_dataset_types(), collections=...))
+        # Save calibration collection
+        for collection in butler.registry.queryCollections(
+                collectionTypes=daf_butler.CollectionType.CALIBRATION):
             contents.saveCollection(collection)
-        # Export skymap collection even if it is empty
-        contents.saveCollection(lsst.skymap.BaseSkyMap.SKYMAP_RUN_COLLECTION_NAME)
-        # Dataset export exports visits, but need matching visit definitions as
-        # well (DefineVisitsTask won't add them back in).
-        contents.saveDimensionData("exposure",
-                                   butler.registry.queryDimensionRecords("exposure"))
-        contents.saveDimensionData("visit_definition",
-                                   butler.registry.queryDimensionRecords("visit_definition"))
-        contents.saveDimensionData("visit_detector_region",
-                                   butler.registry.queryDimensionRecords("visit_detector_region"))
+        # Do not export chains, as they will need to be reworked to satisfy
+        # prompt processing's assumptions.
 
 
 if __name__ == "__main__":
