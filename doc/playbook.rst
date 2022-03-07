@@ -2,6 +2,8 @@
 Playbook for the Prompt Processing Proposal and Prototype
 #########################################################
 
+.. _DMTN-219: https://dmtn-219.lsst.io/
+
 Table of Contents
 =================
 
@@ -65,11 +67,14 @@ On the other hand, using multiple topics is also simple to do.
 Buckets
 =======
 
-A single bucket named ``rubin-prompt-proto-main`` has been created to hold incoming raw images.
+A single bucket named ``rubin-prompt-proto-main`` has been created to hold the central repository described in `DMTN-219`_, as well as incoming raw images.
 
-An additional bucket will be needed eventually to hold a Butler repo containing calibration datasets and templates.
+The bucket ``rubin-prompt-proto-support-data-template`` contains a pristine copy of the calibration datasets and templates.
+This bucket is not intended for direct use by the prototype, but can be used to restore the central repository to its state at the start of an observing run.
 
-The raw image bucket has had notifications configured for it; these publish to a Google Pub/Sub topic as mentioned in the previous section.
+The bucket ``rubin-prompt-proto-unobserved`` contains raw files that the upload script(s) can draw from to create incoming raws for ``rubin-prompt-proto-main``.
+
+The ``-main`` bucket has had notifications configured for it; these publish to a Google Pub/Sub topic as mentioned in the previous section.
 To configure these notifications, in a shell:
 
 .. code-block:: sh
