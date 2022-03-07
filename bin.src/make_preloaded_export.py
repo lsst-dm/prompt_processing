@@ -33,6 +33,7 @@ import logging
 import os
 import re
 import sys
+import time
 
 import lsst.daf.butler as daf_butler
 
@@ -51,7 +52,10 @@ def main():
     gen3_repo = os.path.abspath(args.src_repo)
 
     logging.info("Exporting Gen 3 registry to configure new repos...")
+    start = time.time_ns()
     _export_for_copy(gen3_repo)
+    end = time.time_ns()
+    logging.info("Export finished in %.3fs.", 1e-9 * (end - start))
 
 
 def _get_dataset_types():
