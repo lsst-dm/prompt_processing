@@ -48,7 +48,7 @@ Pub/Sub Topics
 ==============
 
 One Google Pub/Sub topic is used for ``nextVisit`` events.
-Additional topics are used for images from each instrument, where the instrument is one of ``LSSTCam``, ``LSSTComCam``, ``LATISS``, or ``DECam``.
+Additional topics are used for images from each instrument, where the instrument is one of ``LSSTCam``, ``LSSTComCam``, ``LATISS``, ``DECam``, or ``HSC``.
 
 To create the topic, in the Google Cloud Console for the ``prompt-proto`` project:
 
