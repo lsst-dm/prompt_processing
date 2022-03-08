@@ -1,3 +1,5 @@
+__all__ = ["Visit"]
+
 from dataclasses import dataclass
 
 
