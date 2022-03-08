@@ -44,7 +44,7 @@ def process_group(publisher, bucket, instrument, group, filter, kind):
         logging.info(f"Taking group {group} snap {snap}")
         time.sleep(EXPOSURE_INTERVAL)
         for detector in range(INSTRUMENTS[instrument].n_detectors):
-            logging.info(f"Uploading {group} {snap} {filter} {detector}")
+            logging.info(f"Uploading group: {group} snap: {snap} filter: {filter} detector: {detector}")
             exposure_id = (group // 100000) * 100000
             exposure_id += (group % 100000) * INSTRUMENTS[instrument].n_snaps
             exposure_id += snap
