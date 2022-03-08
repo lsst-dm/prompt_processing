@@ -180,7 +180,7 @@ class MiddlewareInterface:
             Google storage identifier for incoming image, relative to the
             image bucket.
         """
-        _log.info(f"Ingesting image '{oid}'")
+        _log.info(f"Ingesting image id '{oid}'")
         run = f"{self.instrument}/raw/all"
         cmd = [
             "butler",
@@ -192,7 +192,7 @@ class MiddlewareInterface:
             self.repo,
             f"gs://{self.image_bucket}/{oid}",
         ]
-        _log.debug(str(cmd))
+        _log.debug("ingest command line: %s", cmd)
         # subprocess.run(cmd, check=True)
 
     def run_pipeline(self, visit: Visit, snaps: set) -> None:
@@ -221,7 +221,7 @@ class MiddlewareInterface:
             "-i",
             f"{self.instrument}/raw/all",
         ]
-        _log.debug(str(cmd))
+        _log.debug("pipetask command line: %s", cmd)
         # subprocess.run(cmd, check=True)
 
 

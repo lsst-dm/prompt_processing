@@ -80,7 +80,7 @@ def check_for_snap(
         return None
     elif len(blobs) > 1:
         logger.error(
-            f"Multiple files detected for a single group/snap/detector: '{prefix}'"
+            f"Multiple files detected for a single detector/group/snap: '{prefix}'"
         )
     return blobs[0]
 
@@ -142,13 +142,13 @@ def next_visit_handler() -> Tuple[str, int]:
             if len(response.received_messages) == 0:
                 if end - start < timeout:
                     logger.debug(
-                        f"Empty pull after {end - start}"
-                        f" for '{expected_visit.group}'"
+                        f"Empty pull after {end - start}s"
+                        f" for group '{expected_visit.group}'"
                     )
                     continue
                 logger.warning(
                     "Timed out waiting for image in"
-                    f" '{expected_visit.group}' after receiving snaps {snap_set}"
+                    f" group '{expected_visit.group}' after receiving snaps {snap_set}"
                 )
                 break
 
@@ -159,7 +159,7 @@ def next_visit_handler() -> Tuple[str, int]:
                 m = re.match(oid_regexp, oid)
                 if m:
                     instrument, detector, group, snap = m.groups()
-                    logger.debug(m.groups())
+                    logger.debug("instrument, detector, group, snap = %s", m.groups())
                     if (
                         instrument == expected_visit.instrument
                         and int(detector) == int(expected_visit.detector)

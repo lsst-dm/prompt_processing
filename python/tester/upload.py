@@ -41,7 +41,7 @@ def process_group(publisher, bucket, instrument, group, filter, kind):
     n_snaps = INSTRUMENTS[instrument].n_snaps
     send_next_visit(publisher, instrument, group, n_snaps, filter, kind)
     for snap in range(n_snaps):
-        logging.info(f"Taking group {group} snap {snap}")
+        logging.info(f"Taking group: {group} snap: {snap}")
         time.sleep(EXPOSURE_INTERVAL)
         for detector in range(INSTRUMENTS[instrument].n_detectors):
             logging.info(f"Uploading group: {group} snap: {snap} filter: {filter} detector: {detector}")
@@ -54,7 +54,7 @@ def process_group(publisher, bucket, instrument, group, filter, kind):
                 f"-{exposure_id}-{filter}-{detector}.fz"
             )
             bucket.blob(fname).upload_from_string("Test")
-            logging.info(f"Uploaded {group} {snap} {filter} {detector}")
+            logging.info(f"Uploaded group: {group} snap: {snap} filter: {filter} detector: {detector}")
 
 
 def send_next_visit(publisher, instrument, group, snaps, filter, kind):
