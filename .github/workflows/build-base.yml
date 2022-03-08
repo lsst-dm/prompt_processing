@@ -1,8 +1,14 @@
 ---
-name: "Build"
+name: "Build base"
 on:
   push:
+    paths:
+      - '.github/workflows/build-base.yml'
+      - 'python/base/**'
   pull_request:
+    paths:
+      - '.github/workflows/build-base.yml'
+      - 'python/base/**'
     branches:
       - main
   workflow_dispatch:
