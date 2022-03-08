@@ -143,3 +143,32 @@ LSSTCam and LSSTComCam are currently hard-coded at two snaps per group.
 The current data uploaded is just a tiny string.
 
 Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
+
+Databases
+=========
+
+Two PostgreSQL databases have been created on Cloud SQL: ``butler-registry`` and ``apdb``.
+
+To access these for manual operations, start by creating a virtual machine in Google Compute Engine.
+
+* In the Cloud Console, go to "Compute Engine > VM instances".
+* Select "Create Instance" at the top.
+* Enter an instance name (e.g. ``ktl-db-client``).
+* Under "Identity and API access / Access scopes", select "Set access for each API".
+* Select "Enabled" for "Cloud SQL".
+  If desired, change "Storage" to "Read Write" and "Cloud Pub/Sub" to "Enabled".
+* Expand "Networking, Disks, Security, Management, Sole-Tenancy".
+* Under "Networking", add the tag ``ssh``.
+  This enables the firewall rule to allow connections from the Google Identity-Aware Proxy to the ssh port on the machine.
+* You can leave all the rest at their defaults unless you think you need more CPU or memory.
+  If you do (e.g. if you wanted to run Pipelines code on the VM), it's probably better to switch to an N2 series machine.
+* With the project owner role, you should have appropriate permissions to connect to the machine and also to ``sudo`` to ``root`` on it, allowing installation of software.
+* When the green check shows up in the status column, click "SSH" under "Connect" to start an in-browser shell to the machine.
+* Then execute the following to install client software, set up proxy forwarding, and connect to the database:
+
+.. code-block:: sh
+
+   sudo apt-get update
+   sudo apt-get install postgresql-client-11 cloudsql-proxy
+   cloud_sql_proxy -instances=prompt-proto:us-central1:butler-registry=tcp:5432 &
+   psql -h localhost -U postgres
