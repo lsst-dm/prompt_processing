@@ -98,12 +98,12 @@ def next_visit_handler() -> Tuple[str, int]:
         envelope = request.get_json()
         if not envelope:
             msg = "no Pub/Sub message received"
-            logging.warn(f"error: '{msg}'")
+            _log.warn(f"error: '{msg}'")
             return f"Bad Request: {msg}", 400
 
         if not isinstance(envelope, dict) or "message" not in envelope:
             msg = "invalid Pub/Sub message format"
-            logging.warn(f"error: '{msg}'")
+            _log.warn(f"error: '{msg}'")
             return f"Bad Request: {msg}", 400
 
         payload = base64.b64decode(envelope["message"]["data"])
