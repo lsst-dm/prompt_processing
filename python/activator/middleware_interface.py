@@ -68,7 +68,7 @@ class MiddlewareInterface:
         self.image_bucket = image_bucket
         self.instrument = instrument
 
-        self.repo = "/tmp/butler-{os.getpid()}"
+        self.repo = f"/tmp/butler-{os.getpid()}"
         if not os.path.exists(self.repo):
             _log.info(f"Making local Butler {self.repo}")
             Butler.makeRepo(self.repo)
