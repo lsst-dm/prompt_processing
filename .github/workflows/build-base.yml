@@ -5,12 +5,12 @@ on:
     paths:
       - '.github/workflows/build-base.yml'
       - 'python/base/**'
+    branches:
+      - main
   pull_request:
     paths:
       - '.github/workflows/build-base.yml'
       - 'python/base/**'
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
@@ -25,8 +25,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
       - name: Build image
         run: docker build python/base --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}"
       - name: Login to GitHub Container Registry

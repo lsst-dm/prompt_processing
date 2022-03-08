@@ -1,7 +1,9 @@
 ---
-name: "Build service"
+name: "Build and test service"
 on:
   push:
+    branches:
+      - main
     paths:
       - '.github/workflows/build-service.yml'
       - 'python/activator/**'
@@ -9,24 +11,46 @@ on:
     paths:
       - '.github/workflows/build-service.yml'
       - 'python/activator/**'
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
   packages: write
 
 jobs:
+  test-service:
+    name: Test service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Fix permissions
+        run: chmod -R a+rwX $GITHUB_WORKSPACE
+      - name: Login to Google Artifact Registry
+        uses: docker/login-action@v1
+        with:
+          registry: us-central1-docker.pkg.dev
+          username: _json_key_base64
+          password: ${{ secrets.GAR_JSON_B64 }}
+      - name: Run tests
+        run: |
+          docker run \
+              -v $GITHUB_WORKSPACE:/home/lsst/prompt_prototype \
+              us-central1-docker.pkg.dev/prompt-proto/prompt/prompt-proto-base:latest \
+              bash -c '
+                  cd /home/lsst/prompt_prototype
+                  source /opt/lsst/software/stack/loadLSST.bash
+                  setup -r .
+                  scons'
+
   update-service-image:
     name: Update service image
+    needs: test-service
     runs-on: ubuntu-latest
     env:
       IMAGE_NAME: prompt-proto-service
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
       - name: Login to Google Artifact Registry
         uses: docker/login-action@v1
         with:
