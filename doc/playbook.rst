@@ -127,6 +127,15 @@ It accepts messages and gateways them to Cloud Run.
 tester
 ======
 
+Run the tester either on a local machine, or in Cloud Shell.  
+For the latter, install the protype code and the GCP pubsub client:
+
+.. code-block:: sh
+
+    gcloud config set project prompt-proto
+    git clone https://github.com/lsst-dm/prompt_prototype.git
+    pip3 install google-cloud-pubsub
+
 ``tester/upload.py`` is a script that simulates the CCS image writer.
 It takes a JSON token in ``./prompt-proto-upload.json``.
 Command line arguments are the instrument name (LSSTCam, LSSTComCam, LATISS, DECam) and the number of groups of images to send.
