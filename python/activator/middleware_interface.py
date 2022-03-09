@@ -36,7 +36,7 @@ PIPELINE_MAP = dict(
     FLAT="flat.yaml",
 )
 
-_log = logging.getLogger(__name__)
+_log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 

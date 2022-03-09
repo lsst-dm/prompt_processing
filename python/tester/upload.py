@@ -34,7 +34,7 @@ logging.basicConfig(
     format="{levelname} {asctime} {name} - {message}",
     style="{",
 )
-_log = logging.getLogger(__name__)
+_log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 

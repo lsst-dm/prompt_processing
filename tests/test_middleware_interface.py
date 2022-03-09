@@ -41,7 +41,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 ra=10,
                                 dec=20,
                                 kind="BIAS")
-        self.logger_name = "activator.middleware_interface"
+        self.logger_name = "lsst.activator.middleware_interface"
 
     def test_init(self):
         """Basic tests of initializing an interface object.
