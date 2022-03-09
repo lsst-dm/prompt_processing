@@ -127,8 +127,14 @@ It accepts messages and gateways them to Cloud Run.
 tester
 ======
 
+``tester/upload.py`` is a script that simulates the CCS image writer.
+On a local machine, it requires a JSON token in ``./prompt-proto-upload.json``.
+To obtain a token, see the GCP documentation on `service account keys`_; the relevant service account is ``prompt-image-upload@prompt-proto.iam.gserviceaccount.com``.
+
+.. _service account keys: https://cloud.google.com/iam/docs/creating-managing-service-account-keys#getting_a_service_account_key
+
 Run the tester either on a local machine, or in Cloud Shell.  
-For the latter, install the protype code and the GCP pubsub client:
+In Cloud Shell, install the prototype code and the GCP PubSub client:
 
 .. code-block:: sh
 
@@ -136,8 +142,6 @@ For the latter, install the protype code and the GCP pubsub client:
     git clone https://github.com/lsst-dm/prompt_prototype.git
     pip3 install google-cloud-pubsub
 
-``tester/upload.py`` is a script that simulates the CCS image writer.
-It takes a JSON token in ``./prompt-proto-upload.json``.
 Command line arguments are the instrument name (LSSTCam, LSSTComCam, LATISS, DECam) and the number of groups of images to send.
 
 Sample command line:
