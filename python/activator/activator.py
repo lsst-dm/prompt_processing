@@ -174,6 +174,7 @@ def next_visit_handler() -> Tuple[str, int]:
             subscriber.acknowledge(subscription=subscription.name, ack_ids=ack_list)
 
         # Got all the snaps; run the pipeline
+        _log.info(f"Running pipeline on group: {expected_visit.group} detector: {expected_visit.detector}")
         mwi.run_pipeline(expected_visit, snap_set)
         return "Pipeline executed", 200
     finally:

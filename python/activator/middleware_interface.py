@@ -64,7 +64,7 @@ class MiddlewareInterface:
     def __init__(self, input_repo: str, image_bucket: str, instrument: str):
 
         # self.src = Butler(input_repo, writeable=False)
-        _log.info(f"Butler({input_repo}, writeable=False)")
+        _log.debug(f"Butler({input_repo}, writeable=False)")
         self.image_bucket = image_bucket
         self.instrument = instrument
 
@@ -82,6 +82,7 @@ class MiddlewareInterface:
 
         export_collections = set()
         export_collections.add(self.calibration_collection)
+        _log.debug("Finding secondary collections")
         # calib_collections = list(
         #     self.r.queryCollections(
         #         self.calibration_collection,
@@ -94,6 +95,7 @@ class MiddlewareInterface:
         #     export_collections.add(collection)
         export_collections.add(refcat_collection)
 
+        _log.debug("Finding refcats")
         # for dataset in self.r.queryDatasets(
         #     "gaia_dr2_20200414",
         #     where=f"htm7 IN ({htm7})",

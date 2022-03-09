@@ -59,10 +59,12 @@ def process_group(publisher, bucket, instrument, group, filter, kind):
 
 
 def send_next_visit(publisher, instrument, group, snaps, filter, kind):
+    _log.info(f"Sending next_visit for group: {group} snaps: {snaps} filter: {filter} kind: {kind}")
     topic_path = publisher.topic_path(PROJECT_ID, "nextVisit")
     ra = random.uniform(0.0, 360.0)
     dec = random.uniform(-90.0, 90.0)
     for detector in range(INSTRUMENTS[instrument].n_detectors):
+        _log.debug(f"Sending next_visit for group: {group} detector: {detector} ra: {ra} dec: {dec}")
         visit = Visit(instrument, detector, group, snaps, filter, ra, dec, kind)
         data = json.dumps(visit.__dict__).encode("utf-8")
         publisher.publish(topic_path, data=data)
