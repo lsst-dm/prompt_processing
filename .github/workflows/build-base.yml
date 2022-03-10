@@ -33,7 +33,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push image
+      - name: Push image to GitHub Container Registry
         run: |
           IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
           VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
@@ -48,7 +48,7 @@ jobs:
           registry: us-central1-docker.pkg.dev
           username: _json_key_base64
           password: ${{ secrets.GAR_JSON_B64 }}
-      - name: Push image
+      - name: Push image to Google Artifact Registry
         run: |
           IMAGE_ID=us-central1-docker.pkg.dev/prompt-proto/prompt/$IMAGE_NAME
           VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
