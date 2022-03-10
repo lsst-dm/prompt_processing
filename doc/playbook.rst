@@ -185,3 +185,13 @@ To access these for manual operations, start by creating a virtual machine in Go
    sudo apt-get install postgresql-client-11 cloudsql-proxy
    cloud_sql_proxy -instances=prompt-proto:us-central1:butler-registry=tcp:5432 &
    psql -h localhost -U postgres
+
+A separate ``cloud_sql_proxy`` using a different port will be needed to communicate with the ``apdb`` database.
+
+For passwordless login, create a ``~/.pgpass`` file with contents ``localhost:5432:postgres:postgres:PASSWORD`` and execute ``chmod 0600 ~/.pgpass``.
+   
+On a VM with the Science Pipelines installed, a new APDB schema can be created in the usual way: 
+
+.. code-block:: sh
+
+    make_apdb.py -c isolation_level=READ_UNCOMMITTED -c db_url="postgresql://postgres@localhost/postgres"
