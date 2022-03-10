@@ -1,0 +1,61 @@
+---
+name: "Build base"
+on:
+  push:
+    paths:
+      - '.github/workflows/build-base.yml'
+      - 'python/base/**'
+    branches:
+      - main
+  pull_request:
+    paths:
+      - '.github/workflows/build-base.yml'
+      - 'python/base/**'
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+jobs:
+  update-base-image:
+    name: Update base image
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_NAME: prompt-proto-base
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Build image
+        run: docker build python/base --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}"
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push image to GitHub Container Registry
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
+          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+          [ "$VERSION" == "merge" ] && VERSION=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
+          [ "$VERSION" == "main" ] && VERSION=latest
+          echo IMAGE_ID=$IMAGE_ID
+          echo VERSION=$VERSION
+          docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+          docker push $IMAGE_ID:$VERSION
+      - name: Login to Google Artifact Registry
+        uses: docker/login-action@v1
+        with:
+          registry: us-central1-docker.pkg.dev
+          username: _json_key_base64
+          password: ${{ secrets.GAR_JSON_B64 }}
+      - name: Push image to Google Artifact Registry
+        run: |
+          IMAGE_ID=us-central1-docker.pkg.dev/prompt-proto/prompt/$IMAGE_NAME
+          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+          [ "$VERSION" == "merge" ] && VERSION=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
+          [ "$VERSION" == "main" ] && VERSION=latest
+          echo IMAGE_ID=$IMAGE_ID
+          echo VERSION=$VERSION
+          docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+          docker push $IMAGE_ID:$VERSION

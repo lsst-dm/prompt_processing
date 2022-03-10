@@ -1,4 +1,4 @@
-FROM us-central1-docker.pkg.dev/prompt-proto/prompt/prompt-proto-base:latest
+FROM ghcr.io/lsst-dm/prompt-proto-base:latest
 ENV PYTHONUNBUFFERED True
 ENV APP_HOME /app
 ARG RUBIN_INSTRUMENT
