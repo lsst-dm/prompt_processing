@@ -2,6 +2,18 @@
 Playbook for the Prompt Processing Proposal and Prototype
 #########################################################
 
+Table of Contents
+=================
+
+* `Containers`_
+* `Pub/Sub Topics`_
+* `Buckets`_
+* `Prototype Service`_
+* `tester`_
+* `Databases`_
+* `Middleware Worker VM`_
+
+
 Containers
 ==========
 
@@ -195,3 +207,76 @@ On a VM with the Science Pipelines installed, a new APDB schema can be created i
 .. code-block:: sh
 
     make_apdb.py -c isolation_level=READ_UNCOMMITTED -c db_url="postgresql://postgres@localhost/postgres"
+
+
+Middleware Worker VM
+====================
+
+The ``rubin-utility-middleware`` VM on Google Compute Engine is intended as a general-purpose environment for working with Butler repositories.
+It can work with both local repositories and ones based on Google Storage.
+However, it has limited computing power, and is not suited for things like pipeline runs.
+
+Built-in support:
+
+* a complete install of the Science Pipelines in ``/software/lsst_stack/``
+* a running instance of ``cloud_sql_proxy`` mapping the ``butler-registry`` database to port 5432
+* global configuration pointing Butler ``s3://`` URIs to Google Storage buckets
+
+The user is responsible for:
+
+* running ``source /software/lsst_stack/loadLSST.sh`` on login
+* database authentication (see `Databases`_, above)
+* `Google Storage Authentication`_
+
+
+Google Storage Authentication
+-----------------------------
+
+To access `Google Storage-Backed Repositories`_, you must first set up Boto authentication.
+If you don't have one, `create an HMAC key`_ (this is *not* the same as the token for running the `tester`_); the relevant service account is ``service-620570835826@gs-project-accounts.iam.gserviceaccount.com``.
+Then create a ``~/.aws/credentials`` file with the contents::
+
+    [default]
+    aws_access_key_id=<access key>
+    aws_secret_access_key=<secret key>
+
+and execute ``chmod go-rwx ~/.aws/credentials``.
+
+.. _create an HMAC key: https://cloud.google.com/storage/docs/authentication/managing-hmackeys#create
+
+PostgreSQL-Backed Repositories
+------------------------------
+
+By default, ``butler create`` creates a repository whose registry is stored in SQLite.
+To instead store the registry in the ``butler-registry`` database, create a seed config YAML such as:
+
+.. code-block:: yaml
+
+   registry:
+     db: postgresql://postgres@localhost:5432/
+     namespace: <unique namespace>
+
+Then run ``butler create --seed-config seedconfig.yaml <repo location>`` to create the repository.
+
+Each repository needs its own ``namespace`` value, corresponding to a PostgreSQL schema.
+Schemas can be listed from within ``psql`` using the ``\dn`` command, and corrupted or outdated registries can be deleted using the ``DROP SCHEMA`` command.
+
+.. warning::
+
+   Be sure to always provide a unique namespace.
+   Otherwise, the registry will be created in the database's ``public`` schema, making it very difficult to clean up later.
+
+
+Google Storage-Backed Repositories
+----------------------------------
+
+All Google Storage repositories must also be `PostgreSQL-Backed Repositories`_.
+Otherwise, no special configuration is needed to create one.
+
+To create or access a Google Storage repository, give the repository location as a URI, e.g.::
+
+    butler query-collections s3://<bucket name>/<repo location in bucket>
+
+.. important::
+
+   Unlike other uses of the Google Storage API, Butler operations always use the ``s3://`` scheme, not the ``gs://`` scheme.
