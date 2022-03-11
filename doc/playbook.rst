@@ -2,6 +2,17 @@
 Playbook for the Prompt Processing Proposal and Prototype
 #########################################################
 
+Table of Contents
+=================
+
+* `Containers`_
+* `Pub/Sub Topics`_
+* `Buckets`_
+* `Prototype Service`_
+* `tester`_
+* `Databases`_
+
+
 Containers
 ==========
 
