@@ -41,7 +41,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 ra=10,
                                 dec=20,
                                 kind="BIAS")
-        self.logger_name = "activator.middleware_interface"
+        self.logger_name = "lsst.activator.middleware_interface"
 
     def test_init(self):
         """Basic tests of initializing an interface object.
@@ -62,7 +62,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_ingest_image(self):
         with self.assertLogs(self.logger_name, level="INFO") as cm:
             self.interface.ingest_image(self.next_visit)
-        msg = f"INFO:{self.logger_name}:Ingesting image '{self.next_visit}'"
+        msg = f"INFO:{self.logger_name}:Ingesting image id '{self.next_visit}'"
         self.assertEqual(cm.output, [msg])
 
     def test_run_pipeline(self):

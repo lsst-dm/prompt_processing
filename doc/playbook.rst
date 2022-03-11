@@ -131,7 +131,7 @@ tester
 On a local machine, it requires a JSON token in ``./prompt-proto-upload.json``.
 To obtain a token, see the GCP documentation on `service account keys`_; the relevant service account is ``prompt-image-upload@prompt-proto.iam.gserviceaccount.com``.
 
-.. _service account keys: https://cloud.google.com/iam/docs/creating-managing-service-account-keys#getting_a_service_account_key
+.. _service account keys: https://cloud.google.com/iam/docs/creating-managing-service-account-keys
 
 Run the tester either on a local machine, or in Cloud Shell.  
 In Cloud Shell, install the prototype code and the GCP PubSub client:

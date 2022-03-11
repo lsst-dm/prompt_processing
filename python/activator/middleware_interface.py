@@ -36,7 +36,7 @@ PIPELINE_MAP = dict(
     FLAT="flat.yaml",
 )
 
-_log = logging.getLogger(__name__)
+_log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
@@ -64,7 +64,7 @@ class MiddlewareInterface:
     def __init__(self, input_repo: str, image_bucket: str, instrument: str):
 
         # self.src = Butler(input_repo, writeable=False)
-        _log.info(f"Butler({input_repo}, writeable=False)")
+        _log.debug(f"Butler({input_repo}, writeable=False)")
         self.image_bucket = image_bucket
         self.instrument = instrument
 
@@ -82,6 +82,7 @@ class MiddlewareInterface:
 
         export_collections = set()
         export_collections.add(self.calibration_collection)
+        _log.debug("Finding secondary collections")
         # calib_collections = list(
         #     self.r.queryCollections(
         #         self.calibration_collection,
@@ -94,6 +95,7 @@ class MiddlewareInterface:
         #     export_collections.add(collection)
         export_collections.add(refcat_collection)
 
+        _log.debug("Finding refcats")
         # for dataset in self.r.queryDatasets(
         #     "gaia_dr2_20200414",
         #     where=f"htm7 IN ({htm7})",
@@ -180,7 +182,7 @@ class MiddlewareInterface:
             Google storage identifier for incoming image, relative to the
             image bucket.
         """
-        _log.info(f"Ingesting image '{oid}'")
+        _log.info(f"Ingesting image id '{oid}'")
         run = f"{self.instrument}/raw/all"
         cmd = [
             "butler",
@@ -192,7 +194,7 @@ class MiddlewareInterface:
             self.repo,
             f"gs://{self.image_bucket}/{oid}",
         ]
-        _log.debug(str(cmd))
+        _log.debug("ingest command line: %s", cmd)
         # subprocess.run(cmd, check=True)
 
     def run_pipeline(self, visit: Visit, snaps: set) -> None:
@@ -221,7 +223,7 @@ class MiddlewareInterface:
             "-i",
             f"{self.instrument}/raw/all",
         ]
-        _log.debug(str(cmd))
+        _log.debug("pipetask command line: %s", cmd)
         # subprocess.run(cmd, check=True)
 
 
