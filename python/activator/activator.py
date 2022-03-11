@@ -53,8 +53,8 @@ logging.basicConfig(
     ),
     style="{",
 )
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+_log = logging.getLogger(__name__)
+_log.setLevel(logging.DEBUG)
 app = Flask(__name__)
 
 subscriber = pubsub_v1.SubscriberClient()
@@ -74,12 +74,12 @@ def check_for_snap(
     instrument: str, group: int, snap: int, detector: int
 ) -> Optional[str]:
     prefix = f"{instrument}/{detector}/{group}/{snap}/{instrument}-{group}-{snap}-"
-    logger.debug(f"Checking for '{prefix}'")
+    _log.debug(f"Checking for '{prefix}'")
     blobs = list(storage_client.list_blobs(image_bucket, prefix=prefix))
     if not blobs:
         return None
     elif len(blobs) > 1:
-        logger.error(
+        _log.error(
             f"Multiple files detected for a single detector/group/snap: '{prefix}'"
         )
     return blobs[0]
@@ -93,7 +93,7 @@ def next_visit_handler() -> Tuple[str, int]:
         topic=topic_path,
         ack_deadline_seconds=60,
     )
-    logger.debug(f"Created subscription '{subscription.name}'")
+    _log.debug(f"Created subscription '{subscription.name}'")
     try:
         envelope = request.get_json()
         if not envelope:
@@ -127,7 +127,7 @@ def next_visit_handler() -> Tuple[str, int]:
                 mwi.ingest_image(oid)
                 snap_set.add(snap)
 
-        logger.debug(
+        _log.debug(
             "Waiting for snaps from group"
             f" '{expected_visit.group}' detector {expected_visit.detector}"
         )
@@ -141,12 +141,12 @@ def next_visit_handler() -> Tuple[str, int]:
             end = time.time()
             if len(response.received_messages) == 0:
                 if end - start < timeout:
-                    logger.debug(
+                    _log.debug(
                         f"Empty pull after {end - start}s"
                         f" for group '{expected_visit.group}'"
                     )
                     continue
-                logger.warning(
+                _log.warning(
                     "Timed out waiting for image in"
                     f" group '{expected_visit.group}' after receiving snaps {snap_set}"
                 )
@@ -159,7 +159,7 @@ def next_visit_handler() -> Tuple[str, int]:
                 m = re.match(oid_regexp, oid)
                 if m:
                     instrument, detector, group, snap = m.groups()
-                    logger.debug("instrument, detector, group, snap = %s", m.groups())
+                    _log.debug("instrument, detector, group, snap = %s", m.groups())
                     if (
                         instrument == expected_visit.instrument
                         and int(detector) == int(expected_visit.detector)
@@ -170,7 +170,7 @@ def next_visit_handler() -> Tuple[str, int]:
                         mwi.ingest_image(oid)
                         snap_set.add(snap)
                 else:
-                    logger.error(f"Failed to match object id '{oid}'")
+                    _log.error(f"Failed to match object id '{oid}'")
             subscriber.acknowledge(subscription=subscription.name, ack_ids=ack_list)
 
         # Got all the snaps; run the pipeline
@@ -182,7 +182,7 @@ def next_visit_handler() -> Tuple[str, int]:
 
 @app.errorhandler(500)
 def server_error(e) -> Tuple[str, int]:
-    logger.exception("An error occurred during a request.")
+    _log.exception("An error occurred during a request.")
     return (
         f"""
     An internal error occurred: <pre>{e}</pre>
