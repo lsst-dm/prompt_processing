@@ -32,12 +32,14 @@ from typing import Optional, Tuple
 from flask import Flask, request
 from google.cloud import pubsub_v1, storage
 
+from lsst.daf.butler import Butler
 from .middleware_interface import MiddlewareInterface
 from .visit import Visit
 
 PROJECT_ID = "prompt-proto"
 
 verification_token = os.environ["PUBSUB_VERIFICATION_TOKEN"]
+# The full instrument class name, including module path.
 config_instrument = os.environ["RUBIN_INSTRUMENT"]
 calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
@@ -66,8 +68,10 @@ subscription = None
 
 storage_client = storage.Client()
 
-# Initialize middleware interface, including copying standard calibrations
-mwi = MiddlewareInterface(calib_repo, image_bucket, config_instrument)
+# Initialize middleware interface; TODO: we'll need one of these per detector.
+repo = f"/tmp/butler-{os.getpid()}"
+butler = Butler(Butler.makeRepo(repo.name), writeable=True)
+mwi = MiddlewareInterface(calib_repo, image_bucket, config_instrument, butler)
 
 
 def check_for_snap(
