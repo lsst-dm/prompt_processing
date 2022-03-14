@@ -36,9 +36,9 @@ import argparse
 import logging
 import os
 import sys
-import time
 
 from lsst.utils import getPackageDir
+from lsst.utils.timer import time_this
 from lsst.daf.butler import Butler, CollectionType, Config
 from lsst.obs.base import Instrument
 
@@ -100,18 +100,12 @@ def main():
     args = _make_parser().parse_args()
     seed_config = Config(args.seed_config)
     logging.info("Creating repository at %s...", args.target_repo)
-    start_make = time.time_ns()
-    config = Butler.makeRepo(args.target_repo, config=seed_config, overwrite=False)
-    end_make = time.time_ns()
-    logging.info("Repository creation finished in %.3fs", 1e-9 * (end_make - start_make))
-    start_butler = time.time_ns()
-    butler = Butler(config, writeable=True)
-    end_butler = time.time_ns()
-    logging.info("Butler creation finished in %.3fs", 1e-9 * (end_butler - start_butler))
-    start_import = time.time_ns()
-    butler.import_(directory=args.src_repo, filename=args.export_file, transfer="auto")
-    end_import = time.time_ns()
-    logging.info("Import finished in %.3fs", 1e-9 * (end_import - start_import))
+    with time_this(msg="Repository creation", level=logging.INFO):
+        config = Butler.makeRepo(args.target_repo, config=seed_config, overwrite=False)
+    with time_this(msg="Butler creation", level=logging.INFO):
+        butler = Butler(config, writeable=True)
+    with time_this(msg="Import", level=logging.INFO):
+        butler.import_(directory=args.src_repo, filename=args.export_file, transfer="auto")
     _add_chains(butler)
 
 
