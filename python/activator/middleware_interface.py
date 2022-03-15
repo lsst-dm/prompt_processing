@@ -26,7 +26,9 @@ import os
 import shutil
 
 from astropy.time import Time
+
 from lsst.daf.butler import Butler
+import lsst.obs.base
 
 from .visit import Visit
 
@@ -42,13 +44,13 @@ _log.setLevel(logging.DEBUG)
 
 class MiddlewareInterface:
     """Interface layer between the Butler middleware and the prompt processing
-    data handling system.
+    data handling system, to handle processing individual images.
 
-    An instance of this class will accept an incoming group of snaps to
-    process, using an instance-local butler repo. The instance can pre-load
-    the necessary calibrations to process an incoming visit, ingest the data
-    when it is available, and run the difference imaging pipeline, all in that
-    local butler.
+    An instance of this class will accept an incoming group of single-detector
+    snaps to process, using an instance-local butler repo. The instance can
+    pre-load the necessary calibrations to process an incoming detector-visit,
+    ingest the data when it is available, and run the difference imaging
+    pipeline, all in that local butler.
 
     Parameters
     ----------
@@ -56,25 +58,33 @@ class MiddlewareInterface:
         Path to a butler repo containing the calibration and other data needed
         for processing images as they are received.
     image_bucket : `str`
-        Google storage bucket where images will be written to as they arrive.
+        Storage bucket where images will be written to as they arrive.
+        See also ``prefix``.
     instrument : `str`
-        Name of the instrument taking the data, for populating butler
-        collections and dataIds.
+        Full class name of the instrument taking the data, for populating
+        butler collections and dataIds. Example: "lsst.obs.lsst.LsstCam"
+        TODO: this arg can probably be removed and replaced with internal
+        use of the butler.
+    butler : `lsst.daf.butler.Butler`
+        Local butler to process data in and hold calibrations, etc.; must be
+        writeable.
+    prefix : `str`, optional
+        URI identification prefix; prepended to ``image_bucket`` when
+        constructing URIs to retrieve incoming files. The default is
+        appropriate for use in the Google Cloud environment; typically only
+        change this when running local tests.
     """
-    def __init__(self, input_repo: str, image_bucket: str, instrument: str):
-
+    def __init__(self, input_repo: str, image_bucket: str, instrument: str,
+                 butler: Butler,
+                 prefix: str = "gs://"):
+        self.prefix = prefix
         # self.src = Butler(input_repo, writeable=False)
         _log.debug(f"Butler({input_repo}, writeable=False)")
         self.image_bucket = image_bucket
-        self.instrument = instrument
+        self.instrument = lsst.obs.base.utils.getInstrument(instrument)
 
-        self.repo = f"/tmp/butler-{os.getpid()}"
-        if not os.path.exists(self.repo):
-            _log.info(f"Making local Butler {self.repo}")
-            Butler.makeRepo(self.repo)
-        else:
-            _log.info(f"Local Butler {self.repo} exists")
-        self.dest = Butler(self.repo, writeable=True)
+        self._init_local_butler(butler)
+        self._init_ingester()
 
         # self.r = self.src.registry
         self.calibration_collection = f"{instrument}/calib"
@@ -94,6 +104,8 @@ class MiddlewareInterface:
         # for collection in calib_collections:
         #     export_collections.add(collection)
         export_collections.add(refcat_collection)
+        # NOTE: I don't think we need this at all: we can just use ingest_files
+        # for the refcats. See jointcalTestBase.importRepository().
 
         _log.debug("Finding refcats")
         # for dataset in self.r.queryDatasets(
@@ -117,7 +129,7 @@ class MiddlewareInterface:
         #         e.saveCollection(collection)
         #     e.saveDatasets(export_datasets)
         _log.debug(f"Importing from {prep_dir}")
-        # self.dest.import_(directory=prep_dir, format="yaml", transfer="hardlink")
+        # self.butler.import_(directory=prep_dir, format="yaml", transfer="hardlink")
         shutil.rmtree(prep_dir, ignore_errors=True)
 
         # self.calib_types = [
@@ -126,6 +138,34 @@ class MiddlewareInterface:
         #     if dataset_type.isCalibration()
         # ]
         self.calib_types = ["bias", "dark", "defects", "flat", "fringe", ]
+
+    def _init_local_butler(self, butler: Butler):
+        """Prepare the local butler to ingest into and process from.
+
+        Parameters
+        ----------
+        butler : `lsst.daf.butler.Butler`
+            Local butler to process data in and hold calibrations, etc.; must
+            be writeable.
+        """
+        # TODO: Replace registring the instrument with importing a "base" repo
+        # structure from an export.yaml file.
+        self.instrument.register(butler.registry)
+        # Refresh butler after configuring it, to ensure all required
+        # dimensions are available.
+        butler.registry.refresh()
+        self.butler = butler
+
+    def _init_ingester(self):
+        """Prepare the raw file ingester to receive images into this butler.
+        """
+        config = lsst.obs.base.RawIngestConfig()
+        config.transfer = "copy"  # Copy files into the local butler.
+        # TODO: Could we use the `on_ingest_failure` and `on_success` callbacks
+        # to send information back to this interface?
+        config.failFast = True  # We want failed ingests to fail immediately.
+        self.rawIngestTask = lsst.obs.base.RawIngestTask(config=config,
+                                                         butler=self.butler)
 
     def prep_butler(self, visit: Visit) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
@@ -170,7 +210,7 @@ class MiddlewareInterface:
         #         e.saveCollection(collection)
         #     e.saveDatasets(export_datasets)
         _log.debug(f"Importing from {visit_dir}")
-        # self.dest.import_(directory=visit_dir, format="yaml", transfer="hardlink")
+        # self.butler.import_(directory=visit_dir, format="yaml", transfer="hardlink")
         shutil.rmtree(visit_dir, ignore_errors=True)
 
     def ingest_image(self, oid: str) -> None:
@@ -183,19 +223,13 @@ class MiddlewareInterface:
             image bucket.
         """
         _log.info(f"Ingesting image id '{oid}'")
-        run = f"{self.instrument}/raw/all"
-        cmd = [
-            "butler",
-            "ingest-raws",
-            "-t",
-            "copy",
-            "--output_run",
-            run,
-            self.repo,
-            f"gs://{self.image_bucket}/{oid}",
-        ]
-        _log.debug("ingest command line: %s", cmd)
-        # subprocess.run(cmd, check=True)
+        file = f"{self.prefix}{self.image_bucket}/{oid}"
+        result = self.rawIngestTask.run([file])
+        # We only ingest one image at a time.
+        # TODO: replace this assert with a custom exception, once we've decided
+        # how we plan to handle exceptions in this code.
+        assert len(result) == 1, "Should have ingested exactly one image."
+        _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
 
     def run_pipeline(self, visit: Visit, snaps: set) -> None:
         """Process the received image.
@@ -217,7 +251,7 @@ class MiddlewareInterface:
             "pipetask",
             "run",
             "-b",
-            self.repo,
+            self.butler,
             "-p",
             pipeline,
             "-i",
