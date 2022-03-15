@@ -31,6 +31,18 @@ KINDS = ("BIAS", "DARK", "FLAT")
 PROJECT_ID = "prompt-proto"
 
 
+def raw_path(instrument, detector, group, snap, exposure_id, filter):
+    """The path on which to store raws in the raw bucket.
+
+    This format is also assumed by ``activator/activator.py.``
+    """
+    return (
+        f"{instrument}/{detector}/{group}/{snap}"
+        f"/{instrument}-{group}-{snap}"
+        f"-{exposure_id}-{filter}-{detector}.fz"
+    )
+
+
 logging.basicConfig(
     format="{levelname} {asctime} {name} - {message}",
     style="{",
@@ -48,11 +60,7 @@ def process_group(publisher, bucket, instrument, group, filter, kind):
         for detector in range(INSTRUMENTS[instrument].n_detectors):
             _log.info(f"Uploading group: {group} snap: {snap} filter: {filter} detector: {detector}")
             exposure_id = make_exposure_id(instrument, group, snap)
-            fname = (
-                f"{instrument}/{detector}/{group}/{snap}"
-                f"/{instrument}-{group}-{snap}"
-                f"-{exposure_id}-{filter}-{detector}.fz"
-            )
+            fname = raw_path(instrument, detector, group, snap, exposure_id, filter)
             bucket.blob(fname).upload_from_string("Test")
             _log.info(f"Uploaded group: {group} snap: {snap} filter: {filter} detector: {detector}")
 
