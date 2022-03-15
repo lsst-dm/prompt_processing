@@ -51,9 +51,9 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
-def process_group(publisher, bucket, instrument, group, filter, kind):
+def process_group(publisher, bucket, instrument, group, filter, ra, dec, kind):
     n_snaps = INSTRUMENTS[instrument].n_snaps
-    send_next_visit(publisher, instrument, group, n_snaps, filter, kind)
+    send_next_visit(publisher, instrument, group, n_snaps, filter, ra, dec, kind)
     for snap in range(n_snaps):
         _log.info(f"Taking group: {group} snap: {snap}")
         time.sleep(EXPOSURE_INTERVAL)
@@ -65,11 +65,9 @@ def process_group(publisher, bucket, instrument, group, filter, kind):
             _log.info(f"Uploaded group: {group} snap: {snap} filter: {filter} detector: {detector}")
 
 
-def send_next_visit(publisher, instrument, group, snaps, filter, kind):
+def send_next_visit(publisher, instrument, group, snaps, filter, ra, dec, kind):
     _log.info(f"Sending next_visit for group: {group} snaps: {snaps} filter: {filter} kind: {kind}")
     topic_path = publisher.topic_path(PROJECT_ID, "nextVisit")
-    ra = random.uniform(0.0, 360.0)
-    dec = random.uniform(-90.0, 90.0)
     for detector in range(INSTRUMENTS[instrument].n_detectors):
         _log.debug(f"Sending next_visit for group: {group} detector: {detector} ra: {ra} dec: {dec}")
         visit = Visit(instrument, detector, group, snaps, filter, ra, dec, kind)
@@ -131,7 +129,9 @@ def main():
         kind = KINDS[i % len(KINDS)]
         group = last_group + i + 1
         filter = FILTER_LIST[random.randrange(0, len(FILTER_LIST))]
-        process_group(publisher, bucket, instrument, group, filter, kind)
+        ra = random.uniform(0.0, 360.0)
+        dec = random.uniform(-90.0, 90.0)
+        process_group(publisher, bucket, instrument, group, filter, ra, dec, kind)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
 
