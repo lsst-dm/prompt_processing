@@ -65,21 +65,16 @@ def process_group(publisher, bucket, visit_infos):
         represent multiple snaps. Assumed to represent a single group, and to
         share instrument, snaps, filter, and kind.
     """
-    # Assume most metadata is shared among all visit_infos
+    # Assume group/snaps is shared among all visit_infos
     for info in visit_infos:
-        instrument = info.instrument
         group = info.group
         n_snaps = info.snaps
-        filter = info.filter
-        ra = info.ra
-        dec = info.dec
-        kind = info.kind
         break
     else:
         _log.info("No observations to make; aborting.")
         return
 
-    send_next_visit(publisher, instrument, group, n_snaps, filter, ra, dec, kind)
+    send_next_visit(publisher, group, visit_infos)
     for snap in range(n_snaps):
         _log.info(f"Taking group: {group} snap: {snap}")
         time.sleep(EXPOSURE_INTERVAL)
@@ -93,13 +88,23 @@ def process_group(publisher, bucket, visit_infos):
                       f"detector: {info.detector}")
 
 
-def send_next_visit(publisher, instrument, group, snaps, filter, ra, dec, kind):
-    _log.info(f"Sending next_visit for group: {group} snaps: {snaps} filter: {filter} kind: {kind}")
+def send_next_visit(publisher, group, visit_infos):
+    """Simulate the transmission of a ``next_visit`` message.
+
+    Parameters
+    ----------
+    group : `str`
+        The group ID for the message to send.
+    visit_infos : `set` [`activator.Visit`]
+        The visit-detector combinations to be sent; each object may
+        represent multiple snaps.
+    """
+    _log.info(f"Sending next_visit for group: {group}")
     topic_path = publisher.topic_path(PROJECT_ID, "nextVisit")
-    for detector in range(INSTRUMENTS[instrument].n_detectors):
-        _log.debug(f"Sending next_visit for group: {group} detector: {detector} ra: {ra} dec: {dec}")
-        visit = Visit(instrument, detector, group, snaps, filter, ra, dec, kind)
-        data = json.dumps(visit.__dict__).encode("utf-8")
+    for info in visit_infos:
+        _log.debug(f"Sending next_visit for group: {info.group} detector: {info.detector} "
+                   f"filter: {info.filter} ra: {info.ra} dec: {info.dec} kind: {info.kind}")
+        data = json.dumps(info.__dict__).encode("utf-8")
         publisher.publish(topic_path, data=data)
 
 
