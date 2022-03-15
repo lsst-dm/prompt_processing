@@ -124,18 +124,7 @@ def main():
     publisher = pubsub_v1.PublisherClient(credentials=credentials,
                                           batch_settings=batch_settings)
 
-    blobs = storage_client.list_blobs(
-        "rubin-prompt-proto-main",
-        prefix=f"{instrument}/0/{date}",
-        delimiter="/",
-    )
-    for blob in blobs:
-        pass
-    prefixes = [int(prefix.split("/")[2]) for prefix in blobs.prefixes]
-    if len(prefixes) == 0:
-        last_group = int(date) * 100_000
-    else:
-        last_group = max(prefixes) + random.randrange(10, 19)
+    last_group = get_last_group(storage_client, instrument, date)
     _log.info(f"Last group {last_group}")
 
     for i in range(n_groups):
@@ -145,6 +134,41 @@ def main():
         process_group(publisher, bucket, instrument, group, filter, kind)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
+
+
+def get_last_group(storage_client, instrument, date):
+    """Identify a group number that will not collide with any previous groups.
+
+    Parameters
+    ----------
+    storage_client : `google.cloud.storage.Client`
+        A Google Cloud Storage object pointing to the active project.
+    instrument : `str`
+        The short name of the active instrument.
+    date : `str`
+        The current date in YYYYMMDD format.
+
+    Returns
+    -------
+    group : `int`
+        The largest existing group for ``instrument``, or a newly generated
+        group if none exist.
+    """
+    blobs = storage_client.list_blobs(
+        "rubin-prompt-proto-main",
+        prefix=f"{instrument}/0/{date}",
+        delimiter="/",
+    )
+    # Contrary to the docs, blobs is not an iterator, but an iterable with a .prefixes member.
+    for blob in blobs:
+        # Iterate over blobs to get past `list_blobs`'s pagination and
+        # fill .prefixes.
+        pass
+    prefixes = [int(prefix.split("/")[2]) for prefix in blobs.prefixes]
+    if len(prefixes) == 0:
+        return int(date) * 100_000
+    else:
+        return max(prefixes) + random.randrange(10, 19)
 
 
 if __name__ == "__main__":
