@@ -51,18 +51,46 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
-def process_group(publisher, bucket, instrument, group, filter, ra, dec, kind):
-    n_snaps = INSTRUMENTS[instrument].n_snaps
+def process_group(publisher, bucket, visit_infos):
+    """Simulate the observation of a single on-sky pointing.
+
+    Parameters
+    ----------
+    publisher : `google.cloud.pubsub_v1.PublisherClient`
+        The client that posts ``next_visit`` messages.
+    bucket : `google.cloud.storage.Bucket`
+        The bucket to which to transfer the raws, once observed.
+    visit_infos : `set` [`activator.Visit`]
+        The visit-detector combinations to be observed; each object may
+        represent multiple snaps. Assumed to represent a single group, and to
+        share instrument, snaps, filter, and kind.
+    """
+    # Assume most metadata is shared among all visit_infos
+    for info in visit_infos:
+        instrument = info.instrument
+        group = info.group
+        n_snaps = info.snaps
+        filter = info.filter
+        ra = info.ra
+        dec = info.dec
+        kind = info.kind
+        break
+    else:
+        _log.info("No observations to make; aborting.")
+        return
+
     send_next_visit(publisher, instrument, group, n_snaps, filter, ra, dec, kind)
     for snap in range(n_snaps):
         _log.info(f"Taking group: {group} snap: {snap}")
         time.sleep(EXPOSURE_INTERVAL)
-        for detector in range(INSTRUMENTS[instrument].n_detectors):
-            _log.info(f"Uploading group: {group} snap: {snap} filter: {filter} detector: {detector}")
-            exposure_id = make_exposure_id(instrument, group, snap)
-            fname = raw_path(instrument, detector, group, snap, exposure_id, filter)
+        for info in visit_infos:
+            _log.info(f"Uploading group: {info.group} snap: {snap} filter: {info.filter} "
+                      f"detector: {info.detector}")
+            exposure_id = make_exposure_id(info.instrument, info.group, snap)
+            fname = raw_path(info.instrument, info.detector, info.group, snap, exposure_id, info.filter)
             bucket.blob(fname).upload_from_string("Test")
-            _log.info(f"Uploaded group: {group} snap: {snap} filter: {filter} detector: {detector}")
+            _log.info(f"Uploaded group: {info.group} snap: {snap} filter: {info.filter} "
+                      f"detector: {info.detector}")
 
 
 def send_next_visit(publisher, instrument, group, snaps, filter, ra, dec, kind):
@@ -131,7 +159,11 @@ def main():
         filter = FILTER_LIST[random.randrange(0, len(FILTER_LIST))]
         ra = random.uniform(0.0, 360.0)
         dec = random.uniform(-90.0, 90.0)
-        process_group(publisher, bucket, instrument, group, filter, ra, dec, kind)
+        visit_infos = {
+            Visit(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter, ra, dec, kind)
+            for detector in range(INSTRUMENTS[instrument].n_detectors)
+        }
+        process_group(publisher, bucket, visit_infos)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
 
