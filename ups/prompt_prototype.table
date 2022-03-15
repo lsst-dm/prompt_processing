@@ -7,10 +7,13 @@ setupRequired(sconsUtils)
 setupRequired(utils)         # Used by scripts in bin.src
 
 # Used by middleware_interface module.
+setupRequired(ap_pipe)
 setupRequired(daf_butler)
+setupRequired(ctrl_mpexec)
 setupRequired(geom)
 setupRequired(meas_algorithms)
 setupRequired(obs_base)
+setupRequired(pipe_base)
 
 # used by tests
 setupRequired(obs_decam)

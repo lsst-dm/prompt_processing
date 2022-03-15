@@ -22,21 +22,18 @@
 __all__ = ["MiddlewareInterface"]
 
 import logging
+import os.path
 import tempfile
 
 import lsst.afw.cameraGeom
+from lsst.ctrl.mpexec import SimplePipelineExecutor
 from lsst.daf.butler import Butler, CollectionType
+import lsst.geom
 from lsst.meas.algorithms.htmIndexer import HtmIndexer
 import lsst.obs.base
-import lsst.geom
+import lsst.pipe.base
 
 from .visit import Visit
-
-PIPELINE_MAP = dict(
-    BIAS="bias.yaml",
-    DARK="dark.yaml",
-    FLAT="flat.yaml",
-)
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -308,7 +305,7 @@ class MiddlewareInterface:
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
 
     def run_pipeline(self, visit: Visit, snaps: set) -> None:
-        """Process the received image.
+        """Process the received image(s).
 
         Parameters
         ----------
@@ -320,21 +317,12 @@ class MiddlewareInterface:
             in the `visit` object, but we'll have to test how that works once
             we implemented this with actual data.
         """
-        pipeline = PIPELINE_MAP[visit.kind]
-        _log.info(f"Running pipeline {pipeline} on visit '{visit}', snaps {snaps}")
-        cmd = [
-            "echo",
-            "pipetask",
-            "run",
-            "-b",
-            self.butler,
-            "-p",
-            pipeline,
-            "-i",
-            f"{self.instrument}/raw/all",
-        ]
-        _log.debug("pipetask command line: %s", cmd)
-        # subprocess.run(cmd, check=True)
+        where = f"detector={visit.detector} and exposure in ({','.join(x for x in snaps)})"
+        pipeline = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where)
+        _log.info(f"Running pipeline {self.pipeline} on visit '{visit}', snaps {snaps}")
+        # All dataset types should have been pre-registered.
+        result = pipeline.run(register_dataset_types=False)
+        _log.info(f"Pipeline produced {len(result)} output datasets.")
 
 
 def filter_calibs(dataset_ref, visit_info):

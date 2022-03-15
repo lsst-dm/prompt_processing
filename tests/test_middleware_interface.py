@@ -191,6 +191,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             datasets = list(self.butler.registry.queryDatasets('raw',
                                                                collections=[f'{instname}/raw/all']))
             self.assertEqual(datasets[0].dataId, data_id)
+            # TODO: I think we also need to check that the visits are defined?
+            # Or should that happen in prep_butler?
 
     def test_ingest_image_fails_missing_file(self):
         """Trying to ingest a non-existent file should raise.
@@ -222,7 +224,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(datasets, [])
 
     def test_run_pipeline(self):
-        with self.assertLogs(self.logger_name, level="INFO") as cm:
-            self.interface.run_pipeline(self.next_visit, 1)
-        msg = f"INFO:{self.logger_name}:Running pipeline bias.yaml on visit '{self.next_visit}', snaps 1"
-        self.assertEqual(cm.output, [msg])
+        self.interface.run_pipeline(self.next_visit, 1)
+        data_id = {"visit": self.next_visit.group, "detector": self.next_visit.detector}
+        self.assertTrue(self.butler.datasetExists("calexp", dataId=data_id))
