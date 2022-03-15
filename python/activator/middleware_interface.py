@@ -83,6 +83,9 @@ class MiddlewareInterface:
         self.image_bucket = image_bucket
         self.instrument = lsst.obs.base.utils.getInstrument(instrument)
 
+        self.calibration_collection = f"{self.instrument.getName()}/calib"
+        self.output_collection = f"{self.instrument.getName()}/prompt"
+
         self._init_local_butler(butler)
         self._init_ingester()
         # TODO DM-34098: note that we currently need to supply instrument here.
@@ -95,8 +98,9 @@ class MiddlewareInterface:
         )
         self.skymap = self.central_butler.get("skyMap")
 
-        # self.r = self.src.registry
-        self.calibration_collection = f"{instrument}/calib"
+        # TODO: we probably want to be able to configure this per-instrument?
+        ap_pipeline_file = os.path.join(lsst.utils.getPackageDir('ap_pipe'), "pipelines/ApPipe.yaml")
+        self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
@@ -116,6 +120,7 @@ class MiddlewareInterface:
         # don't already have, otherwise we get a unique constraint error when
         # importing the export in prep_butler().
         # self.instrument.register(butler.registry)
+
         # Refresh butler after configuring it, to ensure all required
         # dimensions are available.
         butler.registry.refresh()
@@ -168,6 +173,8 @@ class MiddlewareInterface:
             self.butler.import_(filename=export_file.name,
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
+
+        self._prep_collections()
 
     def _export_refcats(self, export, center, radius):
         """Export the refcats for this visit from the central butler.
@@ -256,6 +263,31 @@ class MiddlewareInterface:
         for collection in self.central_butler.registry.queryCollections(...,
                                                                         collectionTypes=target_types):
             export.saveCollection(collection)
+
+    def _prep_collections(self):
+        """Pre-register output collections in advance of running the pipeline.
+        """
+        # NOTE: Because we receive a butler on init, we can't use this
+        # prep_butler() because it takes a repo path.
+        # butler = SimplePipelineExecutor.prep_butler(
+        #     self.repo,
+        #     inputs=[self.calibration_collection,
+        #             self.instrument.makeDefaultRawIngestRunName(),
+        #             'refcats'],
+        #     output=self.output_collection)
+        # The below is taken from SimplePipelineExecutor.prep_butler.
+        output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
+        self.butler.registry.registerCollection(output_run, CollectionType.RUN)
+        self.butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
+        collections = [self.calibration_collection,
+                       self.instrument.makeDefaultRawIngestRunName(),
+                       'refcats',
+                       output_run]
+        self.butler.registry.setCollectionChain(self.output_collection, collections)
+
+        # Refresh butler after configuring it, to ensure all required
+        # dimensions are available.
+        self.butler.registry.refresh()
 
     def ingest_image(self, oid: str) -> None:
         """Ingest an image into the temporary butler.
