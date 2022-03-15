@@ -47,9 +47,7 @@ def process_group(publisher, bucket, instrument, group, filter, kind):
         time.sleep(EXPOSURE_INTERVAL)
         for detector in range(INSTRUMENTS[instrument].n_detectors):
             _log.info(f"Uploading group: {group} snap: {snap} filter: {filter} detector: {detector}")
-            exposure_id = (group // 100000) * 100000
-            exposure_id += (group % 100000) * INSTRUMENTS[instrument].n_snaps
-            exposure_id += snap
+            exposure_id = make_exposure_id(instrument, group, snap)
             fname = (
                 f"{instrument}/{detector}/{group}/{snap}"
                 f"/{instrument}-{group}-{snap}"
@@ -69,6 +67,33 @@ def send_next_visit(publisher, instrument, group, snaps, filter, kind):
         visit = Visit(instrument, detector, group, snaps, filter, ra, dec, kind)
         data = json.dumps(visit.__dict__).encode("utf-8")
         publisher.publish(topic_path, data=data)
+
+
+def make_exposure_id(instrument, group, snap):
+    """Generate an exposure ID from an exposure's other metadata.
+
+    The exposure ID is purely a placeholder, and does not conform to any
+    instrument's rules for how exposure IDs should be generated.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The short name of the instrument.
+    group : `int`
+        A group ID.
+    snap : `int`
+        A snap ID.
+
+    Returns
+    -------
+    exposure : `int`
+        An exposure ID that is likely to be unique for each combination of
+        ``group`` and ``snap``, for a given ``instrument``.
+    """
+    exposure_id = (group // 100_000) * 100_000
+    exposure_id += (group % 100_000) * INSTRUMENTS[instrument].n_snaps
+    exposure_id += snap
+    return exposure_id
 
 
 def main():
@@ -100,7 +125,7 @@ def main():
         pass
     prefixes = [int(prefix.split("/")[2]) for prefix in blobs.prefixes]
     if len(prefixes) == 0:
-        last_group = int(date) * 100000
+        last_group = int(date) * 100_000
     else:
         last_group = max(prefixes) + random.randrange(10, 19)
     _log.info(f"Last group {last_group}")
