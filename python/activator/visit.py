@@ -3,7 +3,7 @@ __all__ = ["Visit"]
 from dataclasses import dataclass
 
 
-@dataclass
+@dataclass(frozen=True)
 class Visit:
     instrument: str
     detector: int
