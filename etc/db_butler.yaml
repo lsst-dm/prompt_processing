@@ -1,0 +1,3 @@
+registry:
+  db: postgresql://postgres@localhost:5432/
+  namespace: support_data_template

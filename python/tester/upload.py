@@ -20,6 +20,7 @@ INSTRUMENTS = {
     "LSSTComCam": Instrument(2, 9),
     "LATISS": Instrument(1, 1),
     "DECam": Instrument(1, 62),
+    "HSC": Instrument(1, 112),
 }
 EXPOSURE_INTERVAL = 18
 SLEW_INTERVAL = 2
