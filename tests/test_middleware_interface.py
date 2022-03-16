@@ -73,12 +73,17 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     """
     def setUp(self):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        input_repo = os.path.join(data_dir, "input_repo")
+        central_repo = os.path.join(data_dir, "central_repo")
+        central_butler = Butler(central_repo,
+                                instrument="LSSTCam",
+                                skymap="deepCoadd_skyMap",
+                                writeable=False)
         instrument = "lsst.obs.lsst.LsstCam"
         self.input_data = os.path.join(data_dir, "input_data")
         self.repo = tempfile.TemporaryDirectory()
         butler = Butler(Butler.makeRepo(self.repo.name), writeable=True)
         self.interface = MiddlewareInterface(input_repo, self.input_data, instrument, butler,
+        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, butler,
                                              prefix="file://")
         self.next_visit = Visit(instrument,
                                 detector=1,

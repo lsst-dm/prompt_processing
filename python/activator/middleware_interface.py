@@ -54,9 +54,10 @@ class MiddlewareInterface:
 
     Parameters
     ----------
-    input_repo : `str`
-        Path to a butler repo containing the calibration and other data needed
-        for processing images as they are received.
+    central_butler : `lsst.daf.butler.Butler`
+        Butler repo containing the calibration and other data needed for
+        processing images as they are received. This butler must be created
+        with the default instrument, skymap, and collections assigned.
     image_bucket : `str`
         Storage bucket where images will be written to as they arrive.
         See also ``prefix``.
@@ -74,12 +75,11 @@ class MiddlewareInterface:
         appropriate for use in the Google Cloud environment; typically only
         change this when running local tests.
     """
-    def __init__(self, input_repo: str, image_bucket: str, instrument: str,
+    def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
                  prefix: str = "gs://"):
         self.prefix = prefix
-        # self.src = Butler(input_repo, writeable=False)
-        _log.debug(f"Butler({input_repo}, writeable=False)")
+        self.central_butler = central_butler
         self.image_bucket = image_bucket
         self.instrument = lsst.obs.base.utils.getInstrument(instrument)
 
