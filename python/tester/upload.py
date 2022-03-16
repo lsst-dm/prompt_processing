@@ -158,15 +158,8 @@ def main():
     _log.info(f"Last group {last_group}")
 
     for i in range(n_groups):
-        kind = KINDS[i % len(KINDS)]
         group = last_group + i + 1
-        filter = FILTER_LIST[random.randrange(0, len(FILTER_LIST))]
-        ra = random.uniform(0.0, 360.0)
-        dec = random.uniform(-90.0, 90.0)
-        visit_infos = {
-            Visit(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter, ra, dec, kind)
-            for detector in range(INSTRUMENTS[instrument].n_detectors)
-        }
+        visit_infos = make_random_visits(instrument, group)
 
         # TODO: may be cleaner to use a functor object than to depend on
         # closures for the bucket and data.
@@ -213,6 +206,31 @@ def get_last_group(storage_client, instrument, date):
         return int(date) * 100_000
     else:
         return max(prefixes) + random.randrange(10, 19)
+
+
+def make_random_visits(instrument, group):
+    """Create placeholder visits without reference to any data.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The short name of the instrument carrying out the observation.
+    group : `int`
+        The group number being observed.
+
+    Returns
+    -------
+    visits : `set` [`activator.Visit`]
+        Visits generated for ``group`` for all ``instrument``'s detectors.
+    """
+    kind = KINDS[group % len(KINDS)]
+    filter = FILTER_LIST[random.randrange(0, len(FILTER_LIST))]
+    ra = random.uniform(0.0, 360.0)
+    dec = random.uniform(-90.0, 90.0)
+    return {
+        Visit(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter, ra, dec, kind)
+        for detector in range(INSTRUMENTS[instrument].n_detectors)
+    }
 
 
 if __name__ == "__main__":
