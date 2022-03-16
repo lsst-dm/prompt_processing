@@ -81,8 +81,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         instrument = "lsst.obs.lsst.LsstCam"
         self.input_data = os.path.join(data_dir, "input_data")
         self.repo = tempfile.TemporaryDirectory()
-        butler = Butler(Butler.makeRepo(self.repo.name), writeable=True)
-        self.interface = MiddlewareInterface(input_repo, self.input_data, instrument, butler,
+        instrument = lsst.obs.base.utils.getInstrument(instrument)
+        butler = Butler(Butler.makeRepo(self.repo.name), instrument="LSSTCam", writeable=True)
         self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, butler,
                                              prefix="file://")
         self.next_visit = Visit(instrument,
@@ -114,8 +114,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """
-        with self.assertLogs(self.logger_name, level="INFO") as cm:
-            self.interface.prep_butler(self.next_visit)
+        self.interface.prep_butler(self.next_visit)
+
         msg = f"INFO:{self.logger_name}:Preparing Butler for visit '{self.next_visit}'"
         self.assertEqual(cm.output, [msg])
         # TODO: Test that we have appropriate refcats?
