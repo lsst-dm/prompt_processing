@@ -6,6 +6,7 @@ setupRequired(base)
 setupRequired(sconsUtils)
 setupRequired(utils)         # Used by scripts in bin.src
 setupRequired(daf_butler)    # Used by middleware_interface module.
+setupRequired(geom)
 setupRequired(obs_base)
 setupRequired(obs_lsst)
 

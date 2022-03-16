@@ -85,8 +85,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 group=1,
                                 snaps=1,
                                 filter="r",
-                                ra=10,
-                                dec=20,
+                                boresight_center=lsst.geom.SpherePoint(10, 20, lsst.geom.degrees),
+                                orientation=lsst.geom.Angle(7.5, lsst.geom.degrees),
                                 kind="BIAS")
         self.logger_name = "lsst.activator.middleware_interface"
 
