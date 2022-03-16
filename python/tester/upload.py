@@ -51,19 +51,20 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
-def process_group(publisher, bucket, visit_infos):
+def process_group(publisher, visit_infos, uploader):
     """Simulate the observation of a single on-sky pointing.
 
     Parameters
     ----------
     publisher : `google.cloud.pubsub_v1.PublisherClient`
         The client that posts ``next_visit`` messages.
-    bucket : `google.cloud.storage.Bucket`
-        The bucket to which to transfer the raws, once observed.
     visit_infos : `set` [`activator.Visit`]
         The visit-detector combinations to be observed; each object may
         represent multiple snaps. Assumed to represent a single group, and to
         share instrument, snaps, filter, and kind.
+    uploader : callable [`activator.Visit`, int]
+        A callable that takes an exposure spec and a snap ID, and uploads the
+        visit's data.
     """
     # Assume group/snaps is shared among all visit_infos
     for info in visit_infos:
@@ -81,9 +82,7 @@ def process_group(publisher, bucket, visit_infos):
         for info in visit_infos:
             _log.info(f"Uploading group: {info.group} snap: {snap} filter: {info.filter} "
                       f"detector: {info.detector}")
-            exposure_id = make_exposure_id(info.instrument, info.group, snap)
-            fname = raw_path(info.instrument, info.detector, info.group, snap, exposure_id, info.filter)
-            bucket.blob(fname).upload_from_string("Test")
+            uploader(info, snap)
             _log.info(f"Uploaded group: {info.group} snap: {snap} filter: {info.filter} "
                       f"detector: {info.detector}")
 
@@ -168,7 +167,15 @@ def main():
             Visit(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter, ra, dec, kind)
             for detector in range(INSTRUMENTS[instrument].n_detectors)
         }
-        process_group(publisher, bucket, visit_infos)
+
+        # TODO: may be cleaner to use a functor object than to depend on
+        # closures for the bucket and data.
+        def upload_dummy(visit, snap_id):
+            exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
+            filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
+                                exposure_id, visit.filter)
+            bucket.blob(filename).upload_from_string("Test")
+        process_group(publisher, visit_infos, upload_dummy)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
 
