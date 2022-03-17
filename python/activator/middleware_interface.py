@@ -22,8 +22,6 @@
 __all__ = ["MiddlewareInterface"]
 
 import logging
-import os
-import shutil
 import tempfile
 
 import lsst.afw.cameraGeom
@@ -93,59 +91,9 @@ class MiddlewareInterface:
 
         # self.r = self.src.registry
         self.calibration_collection = f"{instrument}/calib"
-        refcat_collection = "refcats/DM-28636"
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
-
-        export_collections = set()
-        export_collections.add(self.calibration_collection)
-        _log.debug("Finding secondary collections")
-        # calib_collections = list(
-        #     self.r.queryCollections(
-        #         self.calibration_collection,
-        #         flattenChains=True,
-        #         includeChains=True,
-        #         collectionTypes={CollectionType.CALIBRATION, CollectionType.CHAINED},
-        #     )
-        # )
-        # for collection in calib_collections:
-        #     export_collections.add(collection)
-        export_collections.add(refcat_collection)
-        # NOTE: I don't think we need this at all: we can just use ingest_files
-        # for the refcats. See jointcalTestBase.importRepository().
-
-        _log.debug("Finding refcats")
-        # for dataset in self.r.queryDatasets(
-        #     "gaia_dr2_20200414",
-        #     where=f"htm7 IN ({htm7})",
-        #     collections=refcat_collection,
-        # ):
-        #     export_datasets.add(dataset)
-        # for dataset in self.r.queryDatasets(
-        #     "ps1_pv3_3pi_20170110",
-        #     where=f"htm7 IN ({htm7})",
-        #     collections=refcat_collection,
-        # ):
-        #     export_datasets.add(dataset)
-
-        prep_dir = "/tmp/butler-export"
-        os.makedirs(prep_dir)
-        _log.debug(f"Exporting to {prep_dir}")
-        # with self.src.export(directory=prep_dir, format="yaml", transfer="copy") as e:
-        #     for collection in export_collections:
-        #         e.saveCollection(collection)
-        #     e.saveDatasets(export_datasets)
-        _log.debug(f"Importing from {prep_dir}")
-        # self.butler.import_(directory=prep_dir, format="yaml", transfer="hardlink")
-        shutil.rmtree(prep_dir, ignore_errors=True)
-
-        # self.calib_types = [
-        #     dataset_type
-        #     for dataset_type in self.src.registry.queryDatasetTypes(...)
-        #     if dataset_type.isCalibration()
-        # ]
-        self.calib_types = ["bias", "dark", "defects", "flat", "fringe", ]
 
     def _init_local_butler(self, butler: Butler):
         """Prepare the local butler to ingest into and process from.
