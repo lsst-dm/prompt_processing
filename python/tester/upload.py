@@ -85,6 +85,7 @@ def process_group(publisher, visit_infos, uploader):
         return
 
     send_next_visit(publisher, group, visit_infos)
+    # TODO: need asynchronous code to handle next_visit delay correctly
     for snap in range(n_snaps):
         _log.info(f"Taking group: {group} snap: {snap}")
         time.sleep(EXPOSURE_INTERVAL)
