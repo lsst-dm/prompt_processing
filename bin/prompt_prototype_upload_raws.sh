@@ -33,6 +33,6 @@ UPLOAD_BUCKET=rubin-prompt-proto-unobserved
 # Filename format is defined in tester/upload.py and activator/activator.py:
 # instrument/detector/group/snap/instrument-group-snap-exposureId-filter-detector
 gsutil cp "${RAW_DIR}/HSC-0059150-050.fits.gz" \
-    gs://${UPLOAD_BUCKET}/HSC/50/2016030700001/0/HSC-2016030700001-0-0059150-HSC-G-050.fits.gz
+    gs://${UPLOAD_BUCKET}/HSC/50/2016030700001/0/HSC-2016030700001-0-0059150-HSC-G-50.fits.gz
 gsutil cp "${RAW_DIR}/HSC-0059160-051.fits.gz" \
-    gs://${UPLOAD_BUCKET}/HSC/51/2016030700002/0/HSC-2016030700002-0-0059160-HSC-G-051.fits.gz
+    gs://${UPLOAD_BUCKET}/HSC/51/2016030700002/0/HSC-2016030700002-0-0059160-HSC-G-51.fits.gz
