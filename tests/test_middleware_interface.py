@@ -125,10 +125,34 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """Test that the butler has all necessary data for the next visit.
         """
         self.interface.prep_butler(self.next_visit)
+        self.assertEqual(self.butler.get('camera',
+                                         instrument=instname,
+                                         collections=[f"{instname}/calib/unbounded"]).getName(), instname)
 
-        msg = f"INFO:{self.logger_name}:Preparing Butler for visit '{self.next_visit}'"
-        self.assertEqual(cm.output, [msg])
-        # TODO: Test that we have appropriate refcats?
+        # check that we got appropriate refcat shards
+        loaded_shards = list(self.butler.registry.queryDataIds("htm7",
+                                                               datasets="gaia",
+                                                               collections="refcats"))
+        # These shards were identified by plotting the objects in each shard
+        # on-sky and overplotting the detector corners.
+        # TODO DM-34112: check these shards again with some plots, once I've
+        # determined whether ci_hits2015 actually has enough shards.
+        expected_shards = [157401, 157405, 157407]
+        self.assertEqual(expected_shards, [x['htm7'] for x in loaded_shards])
+        # check that we got appropriate calibs.
+        try:
+            self.butler.datasetExists('cpBias', detector=56, instrument='DECam',
+                                      collections="DECam/calib/20150218T000000Z")
+        except LookupError:
+            self.fail("Bias file missing from local butler.")
+        try:
+            self.butler.datasetExists('cpFlat', detector=56, instrument='DECam',
+                                      physical_filter="g DECam SDSS c0001 4720.0 1520.0",
+                                      collections="DECam/calib/20150218T000000Z")
+        except LookupError:
+            self.fail("Flat file missing from local butler.")
+        # TODO: check that we got a skymap
+        # TODO: check that we got a template
 
     def test_ingest_image(self):
         filename = "fakeRawImage.fits"
