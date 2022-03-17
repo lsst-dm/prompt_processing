@@ -171,19 +171,26 @@ def main():
 
     if raw_pool:
         _log.info(f"Observing real raw files from {instrument}.")
-        # TODO: allow generated groups for raws; otherwise new uploads just
-        # overwrite the old files.
-        for group in itertools.islice(itertools.cycle(raw_pool), n_groups):
-            _log.debug(f"Processing group {group}...")
+        for i, true_group in enumerate(itertools.islice(itertools.cycle(raw_pool), n_groups)):
+            group = last_group + i + 1
+            _log.debug(f"Processing group {group} from unobserved {true_group}...")
             # snap_dict maps snap_id to {visit: blob}
-            snap_dict = raw_pool[group]
+            snap_dict = {}
+            # Copy all the visit-blob dictionaries under each snap_id,
+            # replacing the (immutable) Visit objects to point to group
+            # instead of true_group.
+            for snap_id, old_visits in raw_pool[true_group].items():
+                snap_dict[snap_id] = {splice_group(true_visit, group): blob
+                                      for true_visit, blob in old_visits.items()}
+            # Gather all the Visit objects found in snap_dict, merging
+            # duplicates for different snaps of the same detector.
             visit_infos = {info for det_dict in snap_dict.values() for info in det_dict}
 
             # TODO: may be cleaner to use a functor object than to depend on
             # closures for the bucket and data.
             def upload_from_pool(visit, snap_id):
                 src_blob = snap_dict[snap_id][visit]
-                exposure_id = f"{visit.group}_{snap_id}"
+                exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
                 filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
                                     exposure_id, visit.filter)
                 src_bucket.copy_blob(src_blob, dest_bucket, new_name=filename)
@@ -333,6 +340,32 @@ def get_samples(bucket, instrument):
             result[group] = {snap_id: {visit: blob}}
 
     return result
+
+
+def splice_group(visit, group):
+    """Replace the group ID in a Visit object.
+
+    Parameters
+    ----------
+    visit : `activator.Visit`
+        The object to update.
+    group : `str`
+        The new group ID to use.
+
+    Returns
+    -------
+    new_visit : `activator.Visit`
+        A visit with group ``group``, but otherwise identical to ``visit``.
+    """
+    return Visit(instrument=visit.instrument,
+                 detector=visit.detector,
+                 group=group,
+                 snaps=visit.snaps,
+                 filter=visit.filter,
+                 ra=visit.ra,
+                 dec=visit.dec,
+                 kind=visit.kind,
+                 )
 
 
 if __name__ == "__main__":
