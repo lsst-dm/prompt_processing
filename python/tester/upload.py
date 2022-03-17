@@ -171,48 +171,10 @@ def main():
 
     if raw_pool:
         _log.info(f"Observing real raw files from {instrument}.")
-        for i, true_group in enumerate(itertools.islice(itertools.cycle(raw_pool), n_groups)):
-            group = last_group + i + 1
-            _log.debug(f"Processing group {group} from unobserved {true_group}...")
-            # snap_dict maps snap_id to {visit: blob}
-            snap_dict = {}
-            # Copy all the visit-blob dictionaries under each snap_id,
-            # replacing the (immutable) Visit objects to point to group
-            # instead of true_group.
-            for snap_id, old_visits in raw_pool[true_group].items():
-                snap_dict[snap_id] = {splice_group(true_visit, group): blob
-                                      for true_visit, blob in old_visits.items()}
-            # Gather all the Visit objects found in snap_dict, merging
-            # duplicates for different snaps of the same detector.
-            visit_infos = {info for det_dict in snap_dict.values() for info in det_dict}
-
-            # TODO: may be cleaner to use a functor object than to depend on
-            # closures for the bucket and data.
-            def upload_from_pool(visit, snap_id):
-                src_blob = snap_dict[snap_id][visit]
-                exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
-                filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                    exposure_id, visit.filter)
-                src_bucket.copy_blob(src_blob, dest_bucket, new_name=filename)
-            process_group(publisher, visit_infos, upload_from_pool)
-            _log.info("Slewing to next group")
-            time.sleep(SLEW_INTERVAL)
+        upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n_groups, last_group + 1)
     else:
         _log.info(f"No raw files found for {instrument}, generating dummy files instead.")
-        for i in range(n_groups):
-            group = last_group + i + 1
-            visit_infos = make_random_visits(instrument, group)
-
-            # TODO: may be cleaner to use a functor object than to depend on
-            # closures for the bucket and data.
-            def upload_dummy(visit, snap_id):
-                exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
-                filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                    exposure_id, visit.filter)
-                dest_bucket.blob(filename).upload_from_string("Test")
-            process_group(publisher, visit_infos, upload_dummy)
-            _log.info("Slewing to next group")
-            time.sleep(SLEW_INTERVAL)
+        upload_from_random(publisher, instrument, dest_bucket, n_groups, last_group + 1)
 
 
 def get_last_group(storage_client, instrument, date):
@@ -351,6 +313,91 @@ def get_samples(bucket, instrument):
             result[group] = {snap_id: {visit: blob}}
 
     return result
+
+
+def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n_groups, group_base):
+    """Upload visits and files using real raws.
+
+    Parameters
+    ----------
+    publisher : `google.cloud.pubsub_v1.PublisherClient`
+        The client that posts ``next_visit`` messages.
+    instrument : `str`
+        The short name of the instrument carrying out the observation.
+    raw_pool : mapping [`str`, mapping [`int`, mapping [`activator.Visit`, `google.cloud.storage.Blob`]]]
+        Available raws as a mapping from group IDs to a mapping of snap ID.
+        The value of the innermost mapping is the observation metadata for
+        each detector, and a Blob representing the image taken in that
+        detector-snap.
+    src_bucket : `google.cloud.storage.Bucket`
+        The bucket containing the blobs in ``raw_pool``.
+    dest_bucket : `google.cloud.storage.Bucket`
+        The bucket to which to upload the new images.
+    n_groups : `int`
+        The number of observation groups to simulate. If more than the number
+        of groups in ``raw_pool``, files will be re-uploaded under new
+        group IDs.
+    group_base : `int`
+        The base number from which to offset new group numbers.
+    """
+    for i, true_group in enumerate(itertools.islice(itertools.cycle(raw_pool), n_groups)):
+        group = group_base + i
+        _log.debug(f"Processing group {group} from unobserved {true_group}...")
+        # snap_dict maps snap_id to {visit: blob}
+        snap_dict = {}
+        # Copy all the visit-blob dictionaries under each snap_id,
+        # replacing the (immutable) Visit objects to point to group
+        # instead of true_group.
+        for snap_id, old_visits in raw_pool[true_group].items():
+            snap_dict[snap_id] = {splice_group(true_visit, group): blob
+                                  for true_visit, blob in old_visits.items()}
+        # Gather all the Visit objects found in snap_dict, merging
+        # duplicates for different snaps of the same detector.
+        visit_infos = {info for det_dict in snap_dict.values() for info in det_dict}
+
+        # TODO: may be cleaner to use a functor object than to depend on
+        # closures for the bucket and data.
+        def upload_from_pool(visit, snap_id):
+            src_blob = snap_dict[snap_id][visit]
+            exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
+            filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
+                                exposure_id, visit.filter)
+            src_bucket.copy_blob(src_blob, dest_bucket, new_name=filename)
+        process_group(publisher, visit_infos, upload_from_pool)
+        _log.info("Slewing to next group")
+        time.sleep(SLEW_INTERVAL)
+
+
+def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base):
+    """Upload visits and files using randomly generated visits.
+
+    Parameters
+    ----------
+    publisher : `google.cloud.pubsub_v1.PublisherClient`
+        The client that posts ``next_visit`` messages.
+    instrument : `str`
+        The short name of the instrument carrying out the observation.
+    dest_bucket : `google.cloud.storage.Bucket`
+        The bucket to which to upload the new images.
+    n_groups : `int`
+        The number of observation groups to simulate.
+    group_base : `int`
+        The base number from which to offset new group numbers.
+    """
+    for i in range(n_groups):
+        group = group_base + i
+        visit_infos = make_random_visits(instrument, group)
+
+        # TODO: may be cleaner to use a functor object than to depend on
+        # closures for the bucket and data.
+        def upload_dummy(visit, snap_id):
+            exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
+            filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
+                                exposure_id, visit.filter)
+            dest_bucket.blob(filename).upload_from_string("Test")
+        process_group(publisher, visit_infos, upload_dummy)
+        _log.info("Slewing to next group")
+        time.sleep(SLEW_INTERVAL)
 
 
 def splice_group(visit, group):
