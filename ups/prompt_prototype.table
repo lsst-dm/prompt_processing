@@ -5,11 +5,15 @@
 setupRequired(base)
 setupRequired(sconsUtils)
 setupRequired(utils)         # Used by scripts in bin.src
-setupRequired(daf_butler)    # Used by middleware_interface module.
+
+# Used by middleware_interface module.
+setupRequired(daf_butler)
 setupRequired(geom)
 setupRequired(meas_algorithms)
 setupRequired(obs_base)
-setupRequired(obs_lsst)
+
+# used by tests
+setupRequired(obs_decam)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)
 envPrepend(PATH, ${PRODUCT_DIR}/bin)

@@ -35,6 +35,11 @@ import lsst.resources
 from activator.middleware_interface import MiddlewareInterface
 from activator.visit import Visit
 
+# The short name of the instrument used in the test repo.
+instname = "DECam"
+# Full name of the physical filter for the test file.
+filter = "g DECam SDSS c0001 4720.0 1520.0"
+
 
 def fake_file_data(filename, dimensions, instrument):
     """Return file data for a mock file to be ingested.
@@ -58,7 +63,7 @@ def fake_file_data(filename, dimensions, instrument):
     obs_info = astro_metadata_translator.makeObservationInfo(instrument=instrument.getName(),
                                                              exposure_id=1,
                                                              observation_id="1",
-                                                             physical_filter="r",
+                                                             physical_filter=filter,
                                                              exposure_time=30.0*u.second)
     dataset_info = RawFileDatasetInfo(data_id, obs_info)
     file_data = RawFileData([dataset_info],
@@ -75,23 +80,28 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         central_repo = os.path.join(data_dir, "central_repo")
         central_butler = Butler(central_repo,
-                                instrument="LSSTCam",
+                                instrument=instname,
                                 skymap="deepCoadd_skyMap",
+                                collections=[f"{instname}/defaults"],
                                 writeable=False)
-        instrument = "lsst.obs.lsst.LsstCam"
+        instrument = "lsst.obs.decam.DarkEnergyCamera"
         self.input_data = os.path.join(data_dir, "input_data")
         self.repo = tempfile.TemporaryDirectory()
         instrument = lsst.obs.base.utils.getInstrument(instrument)
         butler = Butler(Butler.makeRepo(self.repo.name), instrument="LSSTCam", writeable=True)
         self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, butler,
                                              prefix="file://")
+
+        # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
+        center = lsst.geom.SpherePoint(155.4702849608958, -4.950050405424033, lsst.geom.degrees)
         self.next_visit = Visit(instrument,
-                                detector=1,
+                                detector=56,
                                 group=1,
                                 snaps=1,
-                                filter="r",
-                                boresight_center=lsst.geom.SpherePoint(10, 20, lsst.geom.degrees),
-                                orientation=lsst.geom.Angle(7.5, lsst.geom.degrees),
+                                filter=filter,
+                                boresight_center=center,
+                                # DECam has no rotator
+                                orientation=lsst.geom.Angle(0, lsst.geom.degrees),
                                 kind="BIAS")
         self.logger_name = "lsst.activator.middleware_interface"
 
@@ -104,8 +114,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # * On init, is the local butler repo purely in memory?
 
         # Check that the butler instance is properly configured.
-        instruments = list(self.interface.butler.registry.queryDimensionRecords("instrument"))
-        self.assertEqual("LSSTCam", instruments[0].name)
+        instruments = list(self.butler.registry.queryDimensionRecords("instrument"))
+        self.assertEqual(instname, instruments[0].name)
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
@@ -131,7 +141,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.ingest_image(filename)
 
             datasets = list(self.interface.butler.registry.queryDatasets('raw',
-                                                                         collections=['LSSTCam/raw/all']))
+                                                                         collections=[f'{instname}/raw/all']))
             self.assertEqual(datasets[0].dataId, data_id)
 
     def test_ingest_image_fails_missing_file(self):
@@ -156,7 +166,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.ingest_image(filename)
         # There should not be any raw files in the registry.
         datasets = list(self.interface.butler.registry.queryDatasets('raw',
-                                                                     collections=['LSSTCam/raw/all']))
+                                                                     collections=[f'{instname}/raw/all']))
         self.assertEqual(datasets, [])
 
     def test_run_pipeline(self):
