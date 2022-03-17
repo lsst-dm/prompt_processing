@@ -233,12 +233,23 @@ def get_last_group(storage_client, instrument, date):
         The largest existing group for ``instrument``, or a newly generated
         group if none exist.
     """
-    blobs = storage_client.list_blobs(
+    preblobs = storage_client.list_blobs(
         "rubin-prompt-proto-main",
-        prefix=f"{instrument}/0/{date}",
+        prefix=f"{instrument}/",
         delimiter="/",
     )
-    # Contrary to the docs, blobs is not an iterator, but an iterable with a .prefixes member.
+    # See https://cloud.google.com/storage/docs/samples/storage-list-files-with-prefix
+    for blob in preblobs:
+        # Iterate over blobs to get past `list_blobs`'s pagination and
+        # fill .prefixes.
+        pass
+    detector = min(int(prefix.split("/")[1]) for prefix in preblobs.prefixes)
+
+    blobs = storage_client.list_blobs(
+        "rubin-prompt-proto-main",
+        prefix=f"{instrument}/{detector}/{date}",
+        delimiter="/",
+    )
     for blob in blobs:
         # Iterate over blobs to get past `list_blobs`'s pagination and
         # fill .prefixes.
