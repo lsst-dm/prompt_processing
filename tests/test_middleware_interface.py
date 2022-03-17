@@ -86,10 +86,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 writeable=False)
         instrument = "lsst.obs.decam.DarkEnergyCamera"
         self.input_data = os.path.join(data_dir, "input_data")
+        # Have to preserve the tempdir, so that it doesn't get cleaned up.
         self.repo = tempfile.TemporaryDirectory()
-        instrument = lsst.obs.base.utils.getInstrument(instrument)
-        butler = Butler(Butler.makeRepo(self.repo.name), instrument="LSSTCam", writeable=True)
-        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, butler,
+        self.butler = Butler(Butler.makeRepo(self.repo.name), writeable=True)
+        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, self.butler,
                                              prefix="file://")
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
@@ -134,14 +134,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
-                                            self.interface.butler.dimensions,
+                                            self.butler.dimensions,
                                             self.interface.instrument)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
 
-            datasets = list(self.interface.butler.registry.queryDatasets('raw',
-                                                                         collections=[f'{instname}/raw/all']))
+            datasets = list(self.butler.registry.queryDatasets('raw',
+                                                               collections=[f'{instname}/raw/all']))
             self.assertEqual(datasets[0].dataId, data_id)
 
     def test_ingest_image_fails_missing_file(self):
@@ -158,15 +158,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "nonexistentImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
-                                            self.interface.butler.dimensions,
+                                            self.butler.dimensions,
                                             self.interface.instrument)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
                 self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"):
             mock.return_value = file_data
             self.interface.ingest_image(filename)
         # There should not be any raw files in the registry.
-        datasets = list(self.interface.butler.registry.queryDatasets('raw',
-                                                                     collections=[f'{instname}/raw/all']))
+        datasets = list(self.butler.registry.queryDatasets('raw',
+                                                           collections=[f'{instname}/raw/all']))
         self.assertEqual(datasets, [])
 
     def test_run_pipeline(self):
