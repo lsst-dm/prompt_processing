@@ -1,9 +1,11 @@
 from dataclasses import dataclass
 from google.cloud import pubsub_v1, storage
 from google.oauth2 import service_account
+import itertools
 import json
 import logging
 import random
+import re
 import sys
 import time
 from visit import Visit
@@ -41,6 +43,13 @@ def raw_path(instrument, detector, group, snap, exposure_id, filter):
         f"/{instrument}-{group}-{snap}"
         f"-{exposure_id}-{filter}-{detector}.fz"
     )
+
+
+# TODO: unify the format code across prompt_prototype
+RAW_REGEXP = re.compile(
+    r"(?P<instrument>.*?)/(?P<detector>\d+)/(?P<group>.*?)/(?P<snap>\d+)/"
+    r"(?P=instrument)-(?P=group)-(?P=snap)-(?P<expid>.*?)-(?P<filter>.*?)-(?P=detector)\.f"
+)
 
 
 logging.basicConfig(
@@ -147,7 +156,7 @@ def main():
         "./prompt-proto-upload.json"
     )
     storage_client = storage.Client(PROJECT_ID, credentials=credentials)
-    bucket = storage_client.bucket("rubin-prompt-proto-main")
+    dest_bucket = storage_client.bucket("rubin-prompt-proto-main")
     batch_settings = pubsub_v1.types.BatchSettings(
         max_messages=INSTRUMENTS[instrument].n_detectors,
     )
@@ -157,20 +166,46 @@ def main():
     last_group = get_last_group(storage_client, instrument, date)
     _log.info(f"Last group {last_group}")
 
-    for i in range(n_groups):
-        group = last_group + i + 1
-        visit_infos = make_random_visits(instrument, group)
+    src_bucket = storage_client.bucket("rubin-prompt-proto-unobserved")
+    raw_pool = get_samples(src_bucket, instrument)
 
-        # TODO: may be cleaner to use a functor object than to depend on
-        # closures for the bucket and data.
-        def upload_dummy(visit, snap_id):
-            exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
-            filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                exposure_id, visit.filter)
-            bucket.blob(filename).upload_from_string("Test")
-        process_group(publisher, visit_infos, upload_dummy)
-        _log.info("Slewing to next group")
-        time.sleep(SLEW_INTERVAL)
+    if raw_pool:
+        _log.info(f"Observing real raw files from {instrument}.")
+        # TODO: allow generated groups for raws; otherwise new uploads just
+        # overwrite the old files.
+        for group in itertools.islice(itertools.cycle(raw_pool), n_groups):
+            _log.debug(f"Processing group {group}...")
+            # snap_dict maps snap_id to {visit: blob}
+            snap_dict = raw_pool[group]
+            visit_infos = {info for det_dict in snap_dict.values() for info in det_dict}
+
+            # TODO: may be cleaner to use a functor object than to depend on
+            # closures for the bucket and data.
+            def upload_from_pool(visit, snap_id):
+                src_blob = snap_dict[snap_id][visit]
+                exposure_id = f"{visit.group}_{snap_id}"
+                filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
+                                    exposure_id, visit.filter)
+                src_bucket.copy_blob(src_blob, dest_bucket, new_name=filename)
+            process_group(publisher, visit_infos, upload_from_pool)
+            _log.info("Slewing to next group")
+            time.sleep(SLEW_INTERVAL)
+    else:
+        _log.info(f"No raw files found for {instrument}, generating dummy files instead.")
+        for i in range(n_groups):
+            group = last_group + i + 1
+            visit_infos = make_random_visits(instrument, group)
+
+            # TODO: may be cleaner to use a functor object than to depend on
+            # closures for the bucket and data.
+            def upload_dummy(visit, snap_id):
+                exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
+                filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
+                                    exposure_id, visit.filter)
+                dest_bucket.blob(filename).upload_from_string("Test")
+            process_group(publisher, visit_infos, upload_dummy)
+            _log.info("Slewing to next group")
+            time.sleep(SLEW_INTERVAL)
 
 
 def get_last_group(storage_client, instrument, date):
@@ -231,6 +266,73 @@ def make_random_visits(instrument, group):
         Visit(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter, ra, dec, kind)
         for detector in range(INSTRUMENTS[instrument].n_detectors)
     }
+
+
+def get_samples(bucket, instrument):
+    """Return any predefined raw exposures for a given instrument.
+
+    Parameters
+    ----------
+    bucket : `google.cloud.storage.Bucket`
+        The bucket in which to search for predefined raws.
+    instrument : `str`
+        The short name of the instrument to sample.
+
+    Returns
+    -------
+    raws : mapping [`str`, mapping [`int`, mapping [`activator.Visit`, `google.cloud.storage.Blob`]]]
+        A mapping from group IDs to a mapping of snap ID. The value of the
+        innermost mapping is the observation metadata for each detector,
+        and a Blob representing the image taken in that detector-snap.
+    """
+    # TODO: set up a lookup-friendly class to represent the return value
+
+    # TODO: replace this dict with something more scalable.
+    #     One option is to attach metadata to the Google Storage objects at
+    #     upload time, another is to download the blob and actually read
+    #     its header.
+    hsc_metadata = {
+        59150: {"ra": 149.96643749999996, "dec": 2.2202916666666668, "rot": 270.0},
+        59160: {"ra": 150.18157499999998, "dec": 2.2800083333333334, "rot": 270.0},
+    }
+
+    blobs = bucket.client.list_blobs(bucket.name, prefix=instrument)
+    result = {}
+    for blob in blobs:
+        # Assume that the unobserved bucket uses the same filename scheme as
+        # the observed bucket.
+        parsed = re.match(RAW_REGEXP, blob.name)
+        if not parsed:
+            _log.warning(f"Could not parse {blob.name}; ignoring file.")
+            continue
+
+        group = parsed.group('group')
+        snap_id = int(parsed.group('snap'))
+        exposure_id = int(parsed.group('expid'))
+        visit = Visit(instrument=instrument,
+                      detector=int(parsed.group('detector')),
+                      group=group,
+                      snaps=INSTRUMENTS[instrument].n_snaps,
+                      filter=parsed.group('filter'),
+                      ra=hsc_metadata[exposure_id]["ra"],
+                      dec=hsc_metadata[exposure_id]["dec"],
+                      kind="SURVEY",
+                      )
+        _log.debug(f"File {blob.name} parsed as snap {snap_id} of visit {visit}.")
+        if group in result:
+            snap_dict = result[group]
+            if snap_id in snap_dict:
+                _log.debug(f"New detector {visit.detector} added to snap {snap_id} of group {group}.")
+                detector_dict = snap_dict[snap_id]
+                detector_dict[visit] = blob
+            else:
+                _log.debug(f"New snap {snap_id} added to group {group}.")
+                snap_dict[snap_id] = {visit: blob}
+        else:
+            _log.debug(f"New group {group} registered.")
+            result[group] = {snap_id: {visit: blob}}
+
+    return result
 
 
 if __name__ == "__main__":
