@@ -1,10 +1,10 @@
-__all__ = ["Visit"]
+__all__ = ["VisitMessage"]
 
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class Visit:
+class VisitMessage:
     instrument: str
     detector: int
     group: str

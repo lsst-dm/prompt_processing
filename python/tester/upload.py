@@ -8,7 +8,7 @@ import random
 import re
 import sys
 import time
-from visit import Visit
+from visitMessage import VisitMessage
 
 
 @dataclass
@@ -67,11 +67,11 @@ def process_group(publisher, visit_infos, uploader):
     ----------
     publisher : `google.cloud.pubsub_v1.PublisherClient`
         The client that posts ``next_visit`` messages.
-    visit_infos : `set` [`tester.Visit`]
+    visit_infos : `set` [`tester.VisitMessage`]
         The visit-detector combinations to be observed; each object may
         represent multiple snaps. Assumed to represent a single group, and to
         share instrument, snaps, filter, and kind.
-    uploader : callable [`tester.Visit`, int]
+    uploader : callable [`tester.VisitMessage`, int]
         A callable that takes an exposure spec and a snap ID, and uploads the
         visit's data.
     """
@@ -104,7 +104,7 @@ def send_next_visit(publisher, group, visit_infos):
     ----------
     group : `str`
         The group ID for the message to send.
-    visit_infos : `set` [`tester.Visit`]
+    visit_infos : `set` [`tester.VisitMessage`]
         The visit-detector combinations to be sent; each object may
         represent multiple snaps.
     """
@@ -236,7 +236,7 @@ def make_random_visits(instrument, group):
 
     Returns
     -------
-    visits : `set` [`tester.Visit`]
+    visits : `set` [`tester.VisitMessage`]
         Visits generated for ``group`` for all ``instrument``'s detectors.
     """
     kind = KINDS[group % len(KINDS)]
@@ -245,8 +245,8 @@ def make_random_visits(instrument, group):
     dec = random.uniform(-90.0, 90.0)
     rot = random.uniform(0.0, 360.0)
     return {
-        Visit(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter,
-              ra, dec, rot, kind)
+        VisitMessage(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter,
+                     ra, dec, rot, kind)
         for detector in range(INSTRUMENTS[instrument].n_detectors)
     }
 
@@ -263,7 +263,7 @@ def get_samples(bucket, instrument):
 
     Returns
     -------
-    raws : mapping [`str`, mapping [`int`, mapping [`tester.Visit`, `google.cloud.storage.Blob`]]]
+    raws : mapping [`str`, mapping [`int`, mapping [`tester.VisitMessage`, `google.cloud.storage.Blob`]]]
         A mapping from group IDs to a mapping of snap ID. The value of the
         innermost mapping is the observation metadata for each detector,
         and a Blob representing the image taken in that detector-snap.
@@ -292,16 +292,16 @@ def get_samples(bucket, instrument):
         group = parsed.group('group')
         snap_id = int(parsed.group('snap'))
         exposure_id = int(parsed.group('expid'))
-        visit = Visit(instrument=instrument,
-                      detector=int(parsed.group('detector')),
-                      group=group,
-                      snaps=INSTRUMENTS[instrument].n_snaps,
-                      filter=parsed.group('filter'),
-                      ra=hsc_metadata[exposure_id]["ra"],
-                      dec=hsc_metadata[exposure_id]["dec"],
-                      rot=hsc_metadata[exposure_id]["rot"],
-                      kind="SURVEY",
-                      )
+        visit = VisitMessage(instrument=instrument,
+                             detector=int(parsed.group('detector')),
+                             group=group,
+                             snaps=INSTRUMENTS[instrument].n_snaps,
+                             filter=parsed.group('filter'),
+                             ra=hsc_metadata[exposure_id]["ra"],
+                             dec=hsc_metadata[exposure_id]["dec"],
+                             rot=hsc_metadata[exposure_id]["rot"],
+                             kind="SURVEY",
+                             )
         _log.debug(f"File {blob.name} parsed as snap {snap_id} of visit {visit}.")
         if group in result:
             snap_dict = result[group]
@@ -328,7 +328,7 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
         The client that posts ``next_visit`` messages.
     instrument : `str`
         The short name of the instrument carrying out the observation.
-    raw_pool : mapping [`str`, mapping [`int`, mapping [`tester.Visit`, `google.cloud.storage.Blob`]]]
+    raw_pool : mapping [`str`, mapping [`int`, mapping [`tester.VisitMessage`, `google.cloud.storage.Blob`]]]
         Available raws as a mapping from group IDs to a mapping of snap ID.
         The value of the innermost mapping is the observation metadata for
         each detector, and a Blob representing the image taken in that
@@ -350,12 +350,12 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
         # snap_dict maps snap_id to {visit: blob}
         snap_dict = {}
         # Copy all the visit-blob dictionaries under each snap_id,
-        # replacing the (immutable) Visit objects to point to group
+        # replacing the (immutable) VisitMessage objects to point to group
         # instead of true_group.
         for snap_id, old_visits in raw_pool[true_group].items():
             snap_dict[snap_id] = {splice_group(true_visit, group): blob
                                   for true_visit, blob in old_visits.items()}
-        # Gather all the Visit objects found in snap_dict, merging
+        # Gather all the VisitMessage objects found in snap_dict, merging
         # duplicates for different snaps of the same detector.
         visit_infos = {info for det_dict in snap_dict.values() for info in det_dict}
 
@@ -405,30 +405,30 @@ def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base)
 
 
 def splice_group(visit, group):
-    """Replace the group ID in a Visit object.
+    """Replace the group ID in a VisitMessage object.
 
     Parameters
     ----------
-    visit : `tester.Visit`
+    visit : `tester.VisitMessage`
         The object to update.
     group : `str`
         The new group ID to use.
 
     Returns
     -------
-    new_visit : `tester.Visit`
+    new_visit : `tester.VisitMessage`
         A visit with group ``group``, but otherwise identical to ``visit``.
     """
-    return Visit(instrument=visit.instrument,
-                 detector=visit.detector,
-                 group=group,
-                 snaps=visit.snaps,
-                 filter=visit.filter,
-                 ra=visit.ra,
-                 dec=visit.dec,
-                 rot=visit.rot,
-                 kind=visit.kind,
-                 )
+    return VisitMessage(instrument=visit.instrument,
+                        detector=visit.detector,
+                        group=group,
+                        snaps=visit.snaps,
+                        filter=visit.filter,
+                        ra=visit.ra,
+                        dec=visit.dec,
+                        rot=visit.rot,
+                        kind=visit.kind,
+                        )
 
 
 if __name__ == "__main__":
