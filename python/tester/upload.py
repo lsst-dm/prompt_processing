@@ -10,8 +10,6 @@ import sys
 import time
 from visit import Visit
 
-from lsst.geom import SpherePoint, degrees
-
 
 @dataclass
 class Instrument:
@@ -69,11 +67,11 @@ def process_group(publisher, visit_infos, uploader):
     ----------
     publisher : `google.cloud.pubsub_v1.PublisherClient`
         The client that posts ``next_visit`` messages.
-    visit_infos : `set` [`activator.Visit`]
+    visit_infos : `set` [`tester.Visit`]
         The visit-detector combinations to be observed; each object may
         represent multiple snaps. Assumed to represent a single group, and to
         share instrument, snaps, filter, and kind.
-    uploader : callable [`activator.Visit`, int]
+    uploader : callable [`tester.Visit`, int]
         A callable that takes an exposure spec and a snap ID, and uploads the
         visit's data.
     """
@@ -106,7 +104,7 @@ def send_next_visit(publisher, group, visit_infos):
     ----------
     group : `str`
         The group ID for the message to send.
-    visit_infos : `set` [`activator.Visit`]
+    visit_infos : `set` [`tester.Visit`]
         The visit-detector combinations to be sent; each object may
         represent multiple snaps.
     """
@@ -238,17 +236,17 @@ def make_random_visits(instrument, group):
 
     Returns
     -------
-    visits : `set` [`activator.Visit`]
+    visits : `set` [`tester.Visit`]
         Visits generated for ``group`` for all ``instrument``'s detectors.
     """
     kind = KINDS[group % len(KINDS)]
     filter = FILTER_LIST[random.randrange(0, len(FILTER_LIST))]
-    ra = random.uniform(0.0, 360.0) * degrees
-    dec = random.uniform(-90.0, 90.0) * degrees
-    rot = random.uniform(0.0, 360.0) * degrees
+    ra = random.uniform(0.0, 360.0)
+    dec = random.uniform(-90.0, 90.0)
+    rot = random.uniform(0.0, 360.0)
     return {
         Visit(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter,
-              SpherePoint(ra, dec), rot, kind)
+              ra, dec, rot, kind)
         for detector in range(INSTRUMENTS[instrument].n_detectors)
     }
 
@@ -265,7 +263,7 @@ def get_samples(bucket, instrument):
 
     Returns
     -------
-    raws : mapping [`str`, mapping [`int`, mapping [`activator.Visit`, `google.cloud.storage.Blob`]]]
+    raws : mapping [`str`, mapping [`int`, mapping [`tester.Visit`, `google.cloud.storage.Blob`]]]
         A mapping from group IDs to a mapping of snap ID. The value of the
         innermost mapping is the observation metadata for each detector,
         and a Blob representing the image taken in that detector-snap.
@@ -299,10 +297,9 @@ def get_samples(bucket, instrument):
                       group=group,
                       snaps=INSTRUMENTS[instrument].n_snaps,
                       filter=parsed.group('filter'),
-                      boresight_center=SpherePoint(hsc_metadata[exposure_id]["ra"],
-                                                   hsc_metadata[exposure_id]["dec"],
-                                                   degrees),
-                      orientation=hsc_metadata[exposure_id]["rot"] * degrees,
+                      ra=hsc_metadata[exposure_id]["ra"],
+                      dec=hsc_metadata[exposure_id]["dec"],
+                      rot=hsc_metadata[exposure_id]["rot"],
                       kind="SURVEY",
                       )
         _log.debug(f"File {blob.name} parsed as snap {snap_id} of visit {visit}.")
@@ -331,7 +328,7 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
         The client that posts ``next_visit`` messages.
     instrument : `str`
         The short name of the instrument carrying out the observation.
-    raw_pool : mapping [`str`, mapping [`int`, mapping [`activator.Visit`, `google.cloud.storage.Blob`]]]
+    raw_pool : mapping [`str`, mapping [`int`, mapping [`tester.Visit`, `google.cloud.storage.Blob`]]]
         Available raws as a mapping from group IDs to a mapping of snap ID.
         The value of the innermost mapping is the observation metadata for
         each detector, and a Blob representing the image taken in that
@@ -412,14 +409,14 @@ def splice_group(visit, group):
 
     Parameters
     ----------
-    visit : `activator.Visit`
+    visit : `tester.Visit`
         The object to update.
     group : `str`
         The new group ID to use.
 
     Returns
     -------
-    new_visit : `activator.Visit`
+    new_visit : `tester.Visit`
         A visit with group ``group``, but otherwise identical to ``visit``.
     """
     return Visit(instrument=visit.instrument,
@@ -427,8 +424,9 @@ def splice_group(visit, group):
                  group=group,
                  snaps=visit.snaps,
                  filter=visit.filter,
-                 boresight_center=visit.boresight_center,
-                 orientation=visit.orientation,
+                 ra=visit.ra,
+                 dec=visit.dec,
+                 rot=visit.rot,
                  kind=visit.kind,
                  )
 
