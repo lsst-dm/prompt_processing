@@ -35,6 +35,11 @@ import lsst.resources
 from activator.middleware_interface import MiddlewareInterface
 from activator.visit import Visit
 
+# The short name of the instrument used in the test repo.
+instname = "DECam"
+# Full name of the physical filter for the test file.
+filter = "g DECam SDSS c0001 4720.0 1520.0"
+
 
 def fake_file_data(filename, dimensions, instrument):
     """Return file data for a mock file to be ingested.
@@ -58,7 +63,7 @@ def fake_file_data(filename, dimensions, instrument):
     obs_info = astro_metadata_translator.makeObservationInfo(instrument=instrument.getName(),
                                                              exposure_id=1,
                                                              observation_id="1",
-                                                             physical_filter="r",
+                                                             physical_filter=filter,
                                                              exposure_time=30.0*u.second)
     dataset_info = RawFileDatasetInfo(data_id, obs_info)
     file_data = RawFileData([dataset_info],
@@ -73,20 +78,30 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     """
     def setUp(self):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        input_repo = os.path.join(data_dir, "input_repo")
-        instrument = "lsst.obs.lsst.LsstCam"
+        central_repo = os.path.join(data_dir, "central_repo")
+        central_butler = Butler(central_repo,
+                                instrument=instname,
+                                skymap="deepCoadd_skyMap",
+                                collections=[f"{instname}/defaults"],
+                                writeable=False)
+        instrument = "lsst.obs.decam.DarkEnergyCamera"
         self.input_data = os.path.join(data_dir, "input_data")
+        # Have to preserve the tempdir, so that it doesn't get cleaned up.
         self.repo = tempfile.TemporaryDirectory()
-        butler = Butler(Butler.makeRepo(self.repo.name), writeable=True)
-        self.interface = MiddlewareInterface(input_repo, self.input_data, instrument, butler,
+        self.butler = Butler(Butler.makeRepo(self.repo.name), writeable=True)
+        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, self.butler,
                                              prefix="file://")
+
+        # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
+        center = lsst.geom.SpherePoint(155.4702849608958, -4.950050405424033, lsst.geom.degrees)
         self.next_visit = Visit(instrument,
-                                detector=1,
+                                detector=56,
                                 group=1,
                                 snaps=1,
-                                filter="r",
-                                ra=10,
-                                dec=20,
+                                filter=filter,
+                                boresight_center=center,
+                                # DECam has no rotator
+                                orientation=lsst.geom.Angle(0, lsst.geom.degrees),
                                 kind="BIAS")
         self.logger_name = "lsst.activator.middleware_interface"
 
@@ -98,9 +113,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         #   collections, etc?
         # * On init, is the local butler repo purely in memory?
 
+        # TODO: this no longer works because we cannot register an instrument
+        # and also import an export that contains that instrument.
         # Check that the butler instance is properly configured.
-        instruments = list(self.interface.butler.registry.queryDimensionRecords("instrument"))
-        self.assertEqual("LSSTCam", instruments[0].name)
+        # instruments = list(self.butler.registry.queryDimensionRecords("instrument"))  # noqa: W505
+        # self.assertEqual(instname, instruments[0].name)
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
@@ -109,24 +126,64 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """
-        with self.assertLogs(self.logger_name, level="INFO") as cm:
-            self.interface.prep_butler(self.next_visit)
-        msg = f"INFO:{self.logger_name}:Preparing Butler for visit '{self.next_visit}'"
-        self.assertEqual(cm.output, [msg])
-        # TODO: Test that we have appropriate refcats?
+        self.interface.prep_butler(self.next_visit)
+        self.assertEqual(self.butler.get('camera',
+                                         instrument=instname,
+                                         collections=[f"{instname}/calib/unbounded"]).getName(), instname)
+
+        # check that we got appropriate refcat shards
+        loaded_shards = list(self.butler.registry.queryDataIds("htm7",
+                                                               datasets="gaia",
+                                                               collections="refcats"))
+        # These shards were identified by plotting the objects in each shard
+        # on-sky and overplotting the detector corners.
+        # TODO DM-34112: check these shards again with some plots, once I've
+        # determined whether ci_hits2015 actually has enough shards.
+        expected_shards = [157401, 157405, 157407]
+        self.assertEqual(expected_shards, [x['htm7'] for x in loaded_shards])
+        # check that we got appropriate calibs.
+        try:
+            self.butler.datasetExists('cpBias', detector=56, instrument='DECam',
+                                      collections="DECam/calib/20150218T000000Z")
+        except LookupError:
+            self.fail("Bias file missing from local butler.")
+        try:
+            self.butler.datasetExists('cpFlat', detector=56, instrument='DECam',
+                                      physical_filter="g DECam SDSS c0001 4720.0 1520.0",
+                                      collections="DECam/calib/20150218T000000Z")
+        except LookupError:
+            self.fail("Flat file missing from local butler.")
+        # TODO: check that we got a skymap
+        # TODO: check that we got a template
+
+    @unittest.skip("We know this doesn't work, but this is a test we want to have!")
+    def test_prep_butler_twice(self):
+        """prep_butler should have the correct calibs (and not raise an
+        exception!) on a second run with the same, or a different detector.
+        This explicitly tests the "you can't import something that's already
+        in the local butler" problem that's related to the "can't register
+        the instrument in init" problem.
+        """
+        self.interface.prep_butler(self.next_visit)
+        # TODO: update next_visit with a new group number
+        self.interface.prep_butler(self.next_visit)
 
     def test_ingest_image(self):
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
-                                            self.interface.butler.dimensions,
+                                            self.butler.dimensions,
                                             self.interface.instrument)
+        # TODO: we have to do this for the test because we can't register the
+        # instrument in _init_local_butler because of the export/import unique
+        # problem.
+        self.interface.instrument.register(self.butler.registry)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
 
-            datasets = list(self.interface.butler.registry.queryDatasets('raw',
-                                                                         collections=['LSSTCam/raw/all']))
+            datasets = list(self.butler.registry.queryDatasets('raw',
+                                                               collections=[f'{instname}/raw/all']))
             self.assertEqual(datasets[0].dataId, data_id)
 
     def test_ingest_image_fails_missing_file(self):
@@ -143,15 +200,19 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "nonexistentImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
-                                            self.interface.butler.dimensions,
+                                            self.butler.dimensions,
                                             self.interface.instrument)
+        # TODO: we have to do this for the test because we can't register the
+        # instrument in _init_local_butler because of the export/import unique
+        # problem.
+        self.interface.instrument.register(self.butler.registry)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
                 self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"):
             mock.return_value = file_data
             self.interface.ingest_image(filename)
         # There should not be any raw files in the registry.
-        datasets = list(self.interface.butler.registry.queryDatasets('raw',
-                                                                     collections=['LSSTCam/raw/all']))
+        datasets = list(self.butler.registry.queryDatasets('raw',
+                                                           collections=[f'{instname}/raw/all']))
         self.assertEqual(datasets, [])
 
     def test_run_pipeline(self):

@@ -70,8 +70,15 @@ storage_client = storage.Client()
 
 # Initialize middleware interface; TODO: we'll need one of these per detector.
 repo = f"/tmp/butler-{os.getpid()}"
+central_butler = Butler(calib_repo,
+                        # TODO: How do we get the appropriate instrument name
+                        # here and for what we pass to MiddlewareInterface?
+                        instrument=config_instrument,
+                        skymap="deepCoadd_skyMap",
+                        collections=[f"{config_instrument}/defaults"],
+                        writeable=False)
 butler = Butler(Butler.makeRepo(repo.name), writeable=True)
-mwi = MiddlewareInterface(calib_repo, image_bucket, config_instrument, butler)
+mwi = MiddlewareInterface(central_butler, image_bucket, config_instrument, butler)
 
 
 def check_for_snap(
