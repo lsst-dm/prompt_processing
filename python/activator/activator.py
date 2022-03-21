@@ -33,6 +33,7 @@ from flask import Flask, request
 from google.cloud import pubsub_v1, storage
 
 from lsst.daf.butler import Butler
+from lsst.obs.base.utils import getInstrument
 from .middleware_interface import MiddlewareInterface
 from .visit import Visit
 
@@ -41,6 +42,7 @@ PROJECT_ID = "prompt-proto"
 verification_token = os.environ["PUBSUB_VERIFICATION_TOKEN"]
 # The full instrument class name, including module path.
 config_instrument = os.environ["RUBIN_INSTRUMENT"]
+active_instrument = getInstrument(config_instrument)
 calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
 oid_regexp = re.compile(r"(.*?)/(\d+)/(.*?)/(\d+)/\1-\3-\4-.*?-.*?-\2\.f")
@@ -50,7 +52,7 @@ logging.basicConfig(
     # Use JSON format compatible with Google Cloud Logging
     format=(
         '{{"severity":"{levelname}", "labels":{{"instrument":"'
-        + config_instrument
+        + active_instrument.getName()
         + '"}}, "message":{message!r}}}'
     ),
     style="{",
@@ -62,20 +64,23 @@ app = Flask(__name__)
 subscriber = pubsub_v1.SubscriberClient()
 topic_path = subscriber.topic_path(
     PROJECT_ID,
-    f"{config_instrument}-image",
+    f"{active_instrument.getName()}-image",
 )
 subscription = None
 
 storage_client = storage.Client()
 
-# Initialize middleware interface; TODO: we'll need one of these per detector.
+# Initialize middleware interface.
+# TODO: this should not be done in activator.py, which is supposed to have only
+# framework/messaging support (ideally, it should not contain any LSST imports).
+# However, we don't want MiddlewareInterface to need to know details like where
+# the central repo is located, either, so perhaps we need a new module.
 repo = f"/tmp/butler-{os.getpid()}"
 central_butler = Butler(calib_repo,
-                        # TODO: How do we get the appropriate instrument name
-                        # here and for what we pass to MiddlewareInterface?
-                        instrument=config_instrument,
+                        # TODO: investigate whether these defaults, esp. skymap, slow down queries
+                        instrument=active_instrument.getName(),
                         skymap="deepCoadd_skyMap",
-                        collections=[f"{config_instrument}/defaults"],
+                        collections=[active_instrument.makeCollectionName("defaults")],
                         writeable=False)
 butler = Butler(Butler.makeRepo(repo.name), writeable=True)
 mwi = MiddlewareInterface(central_butler, image_bucket, config_instrument, butler)
@@ -132,7 +137,7 @@ def next_visit_handler() -> Tuple[str, int]:
         payload = base64.b64decode(envelope["message"]["data"])
         data = json.loads(payload)
         expected_visit = Visit(**data)
-        assert expected_visit.instrument == config_instrument
+        assert expected_visit.instrument == active_instrument.getName()
         snap_set = set()
 
         # Copy calibrations for this detector/visit
