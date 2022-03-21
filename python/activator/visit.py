@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Visit:
-    # elements should use built-in types that are hashable and JSON-persistable
+    # elements must be hashable and JSON-persistable; built-in types recommended
     instrument: str
     detector: int
     group: str
