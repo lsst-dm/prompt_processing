@@ -138,10 +138,12 @@ class MiddlewareInterface:
 
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
+                boresight_center = lsst.geom.SpherePoint(visit.ra, visit.dec, lsst.geom.degrees)
+                orientation = lsst.geom.Angle(visit.rot, lsst.geom.degrees)
                 detector = self.camera[visit.detector]
                 # TODO: where do we get flipX from? See RFC-605
-                wcs = lsst.obs.base.createInitialSkyWcsFromBoresight(visit.boresight_center,
-                                                                     visit.orientation,
+                wcs = lsst.obs.base.createInitialSkyWcsFromBoresight(boresight_center,
+                                                                     orientation,
                                                                      detector,
                                                                      flipX=False)
                 radii = []

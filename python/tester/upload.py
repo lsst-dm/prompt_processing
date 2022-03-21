@@ -10,8 +10,6 @@ import sys
 import time
 from visit import Visit
 
-from lsst.geom import SpherePoint, degrees
-
 
 @dataclass
 class Instrument:
@@ -243,12 +241,12 @@ def make_random_visits(instrument, group):
     """
     kind = KINDS[group % len(KINDS)]
     filter = FILTER_LIST[random.randrange(0, len(FILTER_LIST))]
-    ra = random.uniform(0.0, 360.0) * degrees
-    dec = random.uniform(-90.0, 90.0) * degrees
-    rot = random.uniform(0.0, 360.0) * degrees
+    ra = random.uniform(0.0, 360.0)
+    dec = random.uniform(-90.0, 90.0)
+    rot = random.uniform(0.0, 360.0)
     return {
         Visit(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter,
-              SpherePoint(ra, dec), rot, kind)
+              ra, dec, rot, kind)
         for detector in range(INSTRUMENTS[instrument].n_detectors)
     }
 
@@ -299,10 +297,9 @@ def get_samples(bucket, instrument):
                       group=group,
                       snaps=INSTRUMENTS[instrument].n_snaps,
                       filter=parsed.group('filter'),
-                      boresight_center=SpherePoint(hsc_metadata[exposure_id]["ra"],
-                                                   hsc_metadata[exposure_id]["dec"],
-                                                   degrees),
-                      orientation=hsc_metadata[exposure_id]["rot"] * degrees,
+                      ra=hsc_metadata[exposure_id]["ra"],
+                      dec=hsc_metadata[exposure_id]["dec"],
+                      rot=hsc_metadata[exposure_id]["rot"],
                       kind="SURVEY",
                       )
         _log.debug(f"File {blob.name} parsed as snap {snap_id} of visit {visit}.")
@@ -427,8 +424,9 @@ def splice_group(visit, group):
                  group=group,
                  snaps=visit.snaps,
                  filter=visit.filter,
-                 boresight_center=visit.boresight_center,
-                 orientation=visit.orientation,
+                 ra=visit.ra,
+                 dec=visit.dec,
+                 rot=visit.rot,
                  kind=visit.kind,
                  )
 
