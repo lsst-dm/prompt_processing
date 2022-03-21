@@ -72,9 +72,10 @@ class MiddlewareInterface:
         appropriate for use in the Google Cloud environment; typically only
         change this when running local tests.
     """
+
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
-                 prefix: str = "gs://"):
+                 prefix: str = "s3://"):
         self.prefix = prefix
         self.central_butler = central_butler
         self.image_bucket = image_bucket
@@ -98,6 +99,7 @@ class MiddlewareInterface:
         # TODO: we probably want to be able to configure this per-instrument?
         ap_pipeline_file = os.path.join(lsst.utils.getPackageDir('ap_pipe'), "pipelines/ApPipe.yaml")
         self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
+        self.pipeline.addConfigOverride("diaPipe", "apdb.db_url", "postgresql://postgres@localhost/postgres")
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
@@ -317,8 +319,8 @@ class MiddlewareInterface:
             in the `visit` object, but we'll have to test how that works once
             we implemented this with actual data.
         """
-        where = f"detector={visit.detector} and exposure in ({','.join(x for x in snaps)})"
-        pipeline = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where)
+        where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in snaps)})"
+        pipeline = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
         _log.info(f"Running pipeline {self.pipeline} on visit '{visit}', snaps {snaps}")
         # All dataset types should have been pre-registered.
         result = pipeline.run(register_dataset_types=False)
