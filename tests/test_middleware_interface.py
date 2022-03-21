@@ -93,15 +93,18 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                              prefix="file://")
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
-        center = lsst.geom.SpherePoint(155.4702849608958, -4.950050405424033, lsst.geom.degrees)
+        ra = 155.4702849608958
+        dec = -4.950050405424033
+        # DECam has no rotator
+        rot = 0.
         self.next_visit = Visit(instrument,
                                 detector=56,
                                 group=1,
                                 snaps=1,
                                 filter=filter,
-                                boresight_center=center,
-                                # DECam has no rotator
-                                orientation=lsst.geom.Angle(0, lsst.geom.degrees),
+                                ra=ra,
+                                dec=dec,
+                                rot=rot,
                                 kind="BIAS")
         self.logger_name = "lsst.activator.middleware_interface"
 
