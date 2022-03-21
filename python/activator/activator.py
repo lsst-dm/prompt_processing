@@ -32,7 +32,6 @@ from typing import Optional, Tuple
 from flask import Flask, request
 from google.cloud import pubsub_v1, storage
 
-import lsst.geom
 from lsst.daf.butler import Butler
 from .middleware_interface import MiddlewareInterface
 from .visit import Visit
@@ -120,9 +119,6 @@ def next_visit_handler() -> Tuple[str, int]:
 
         payload = base64.b64decode(envelope["message"]["data"])
         data = json.loads(payload)
-        # adapt hashable on-the-wire next_visit format to activator.Visit
-        data["boresight_center"] = lsst.geom.SpherePoint(data["ra"], data["dec"], lsst.geom.degrees),
-        data["orientation"] = lsst.geom.Angle(data["rot"], lsst.geom.degrees),
         expected_visit = Visit(**data)
         assert expected_visit.instrument == config_instrument
         snap_set = set()
