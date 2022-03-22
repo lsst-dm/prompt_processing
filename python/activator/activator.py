@@ -98,6 +98,18 @@ def check_for_snap(
 
 @app.route("/next-visit", methods=["POST"])
 def next_visit_handler() -> Tuple[str, int]:
+    """A Flask view function for handling next-visit events.
+
+    Like all Flask handlers, this function accepts input through the
+    ``request`` global rather than parameters.
+
+    Returns
+    -------
+    message : `str`
+        The HTTP response reason to return to the client.
+    status : `int`
+        The HTTP response status code to return to the client.
+    """
     if request.args.get("token", "") != verification_token:
         return "Invalid request", 400
     subscription = subscriber.create_subscription(
