@@ -79,9 +79,12 @@ repo = f"/tmp/butler-{os.getpid()}"
 central_butler = Butler(calib_repo,
                         # TODO: investigate whether these defaults, esp. skymap, slow down queries
                         instrument=active_instrument.getName(),
-                        skymap="deepCoadd_skyMap",
+                        # NOTE: with inferDefaults=True, it's possible we don't need to hardcode this
+                        #     value from the real repository.
+                        # skymap="hsc_rings_v1",
                         collections=[active_instrument.makeCollectionName("defaults")],
-                        writeable=False)
+                        writeable=False,
+                        inferDefaults=True)
 butler = Butler(Butler.makeRepo(repo.name), writeable=True)
 mwi = MiddlewareInterface(central_butler, image_bucket, config_instrument, butler)
 
