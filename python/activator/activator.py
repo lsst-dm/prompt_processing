@@ -140,7 +140,8 @@ def next_visit_handler() -> Tuple[str, int]:
         payload = base64.b64decode(envelope["message"]["data"])
         data = json.loads(payload)
         expected_visit = Visit(**data)
-        assert expected_visit.instrument == active_instrument.getName()
+        assert expected_visit.instrument == active_instrument.getName(), \
+            f"Expected {active_instrument.getName()}, received {expected_visit.instrument}."
         snap_set = set()
 
         # Copy calibrations for this detector/visit
