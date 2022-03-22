@@ -75,7 +75,6 @@ storage_client = storage.Client()
 # framework/messaging support (ideally, it should not contain any LSST imports).
 # However, we don't want MiddlewareInterface to need to know details like where
 # the central repo is located, either, so perhaps we need a new module.
-repo = f"/tmp/butler-{os.getpid()}"
 central_butler = Butler(calib_repo,
                         # TODO: investigate whether these defaults, esp. skymap, slow down queries
                         instrument=active_instrument.getName(),
@@ -85,7 +84,8 @@ central_butler = Butler(calib_repo,
                         collections=[active_instrument.makeCollectionName("defaults")],
                         writeable=False,
                         inferDefaults=True)
-butler = Butler(Butler.makeRepo(repo.name), writeable=True)
+repo = f"/tmp/butler-{os.getpid()}"
+butler = Butler(Butler.makeRepo(repo), writeable=True)
 mwi = MiddlewareInterface(central_butler, image_bucket, config_instrument, butler)
 
 
