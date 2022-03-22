@@ -276,6 +276,8 @@ class MiddlewareInterface:
         #     output=self.output_collection)
         # The below is taken from SimplePipelineExecutor.prep_butler.
         output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
+        self.butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
+                                                CollectionType.RUN)
         self.butler.registry.registerCollection(output_run, CollectionType.RUN)
         self.butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
         collections = [self.calibration_collection,
