@@ -34,6 +34,7 @@ from google.cloud import pubsub_v1, storage
 
 from lsst.daf.butler import Butler
 from lsst.obs.base.utils import getInstrument
+from .make_pgpass import make_pgpass
 from .middleware_interface import MiddlewareInterface
 from .visit import Visit
 
@@ -59,6 +60,13 @@ logging.basicConfig(
 )
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+
+
+# Write PostgreSQL credentials.
+# This MUST be done before creating a Butler or accessing the APDB.
+make_pgpass()
+
+
 app = Flask(__name__)
 
 subscriber = pubsub_v1.SubscriberClient()
