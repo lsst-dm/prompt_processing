@@ -555,7 +555,6 @@ data:
   collection_type: CHAINED
   name: DECam/defaults
   children:
-  - DECam/calib/unbounded
   - DECam/calib
   - refcats
   - templates
