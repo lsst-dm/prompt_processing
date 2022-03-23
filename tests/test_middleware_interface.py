@@ -109,6 +109,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 kind="BIAS")
         self.logger_name = "lsst.activator.middleware_interface"
 
+    @unittest.skip("__init__ doesn't alter repository yet")
     def test_init(self):
         """Basic tests of the initialized interface object.
         """
@@ -120,13 +121,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # TODO: this no longer works because we cannot register an instrument
         # and also import an export that contains that instrument.
         # Check that the butler instance is properly configured.
-        # instruments = list(self.butler.registry.queryDimensionRecords("instrument"))  # noqa: W505
-        # self.assertEqual(instname, instruments[0].name)
+        instruments = list(self.butler.registry.queryDimensionRecords("instrument"))  # noqa: W505
+        self.assertEqual(instname, instruments[0].name)
 
         # TODO: this isn't working
-        # collections = list(self.interface.butler.registry.queryCollections())
-        # self.assertIn("prompt", collections)
-        # self.assertIn("prompt-test_init", collections)
+        collections = list(self.interface.butler.registry.queryCollections())
+        self.assertIn("prompt", collections)
+        self.assertIn("prompt-test_init", collections)
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
