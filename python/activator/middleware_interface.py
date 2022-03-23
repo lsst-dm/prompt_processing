@@ -86,7 +86,13 @@ class MiddlewareInterface:
         self._init_local_butler(butler)
         self._init_ingester()
         # TODO DM-34098: note that we currently need to supply instrument here.
-        self.camera = self.central_butler.get("camera", instrument=self.instrument.getName())
+        # HACK: explicit collection gets around the fact that we don't have any
+        # timestamp/exposure information in a form we can pass to the Butler.
+        # This code will break once cameras start being versioned.
+        self.camera = self.central_butler.get(
+            "camera", instrument=self.instrument.getName(),
+            collections=self.instrument.makeCalibrationCollectionName("unbounded")
+        )
         self.skymap = self.central_butler.get("skyMap")
 
         # self.r = self.src.registry

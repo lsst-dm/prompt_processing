@@ -33,6 +33,8 @@ from flask import Flask, request
 from google.cloud import pubsub_v1, storage
 
 from lsst.daf.butler import Butler
+from lsst.obs.base.utils import getInstrument
+from .make_pgpass import make_pgpass
 from .middleware_interface import MiddlewareInterface
 from .visit import Visit
 
@@ -41,6 +43,7 @@ PROJECT_ID = "prompt-proto"
 verification_token = os.environ["PUBSUB_VERIFICATION_TOKEN"]
 # The full instrument class name, including module path.
 config_instrument = os.environ["RUBIN_INSTRUMENT"]
+active_instrument = getInstrument(config_instrument)
 calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
 oid_regexp = re.compile(r"(.*?)/(\d+)/(.*?)/(\d+)/\1-\3-\4-.*?-.*?-\2\.f")
@@ -50,34 +53,47 @@ logging.basicConfig(
     # Use JSON format compatible with Google Cloud Logging
     format=(
         '{{"severity":"{levelname}", "labels":{{"instrument":"'
-        + config_instrument
+        + active_instrument.getName()
         + '"}}, "message":{message!r}}}'
     ),
     style="{",
 )
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+
+
+# Write PostgreSQL credentials.
+# This MUST be done before creating a Butler or accessing the APDB.
+make_pgpass()
+
+
 app = Flask(__name__)
 
 subscriber = pubsub_v1.SubscriberClient()
 topic_path = subscriber.topic_path(
     PROJECT_ID,
-    f"{config_instrument}-image",
+    f"{active_instrument.getName()}-image",
 )
 subscription = None
 
 storage_client = storage.Client()
 
-# Initialize middleware interface; TODO: we'll need one of these per detector.
-repo = f"/tmp/butler-{os.getpid()}"
+# Initialize middleware interface.
+# TODO: this should not be done in activator.py, which is supposed to have only
+# framework/messaging support (ideally, it should not contain any LSST imports).
+# However, we don't want MiddlewareInterface to need to know details like where
+# the central repo is located, either, so perhaps we need a new module.
 central_butler = Butler(calib_repo,
-                        # TODO: How do we get the appropriate instrument name
-                        # here and for what we pass to MiddlewareInterface?
-                        instrument=config_instrument,
-                        skymap="deepCoadd_skyMap",
-                        collections=[f"{config_instrument}/defaults"],
-                        writeable=False)
-butler = Butler(Butler.makeRepo(repo.name), writeable=True)
+                        # TODO: investigate whether these defaults, esp. skymap, slow down queries
+                        instrument=active_instrument.getName(),
+                        # NOTE: with inferDefaults=True, it's possible we don't need to hardcode this
+                        #     value from the real repository.
+                        # skymap="hsc_rings_v1",
+                        collections=[active_instrument.makeCollectionName("defaults")],
+                        writeable=False,
+                        inferDefaults=True)
+repo = f"/tmp/butler-{os.getpid()}"
+butler = Butler(Butler.makeRepo(repo), writeable=True)
 mwi = MiddlewareInterface(central_butler, image_bucket, config_instrument, butler)
 
 
@@ -98,6 +114,18 @@ def check_for_snap(
 
 @app.route("/next-visit", methods=["POST"])
 def next_visit_handler() -> Tuple[str, int]:
+    """A Flask view function for handling next-visit events.
+
+    Like all Flask handlers, this function accepts input through the
+    ``request`` global rather than parameters.
+
+    Returns
+    -------
+    message : `str`
+        The HTTP response reason to return to the client.
+    status : `int`
+        The HTTP response status code to return to the client.
+    """
     if request.args.get("token", "") != verification_token:
         return "Invalid request", 400
     subscription = subscriber.create_subscription(
@@ -120,7 +148,8 @@ def next_visit_handler() -> Tuple[str, int]:
         payload = base64.b64decode(envelope["message"]["data"])
         data = json.loads(payload)
         expected_visit = Visit(**data)
-        assert expected_visit.instrument == config_instrument
+        assert expected_visit.instrument == active_instrument.getName(), \
+            f"Expected {active_instrument.getName()}, received {expected_visit.instrument}."
         snap_set = set()
 
         # Copy calibrations for this detector/visit
