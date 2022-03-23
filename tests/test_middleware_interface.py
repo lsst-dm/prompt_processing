@@ -194,8 +194,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             datasets = list(self.butler.registry.queryDatasets('raw',
                                                                collections=[f'{instname}/raw/all']))
             self.assertEqual(datasets[0].dataId, data_id)
-            # TODO: I think we also need to check that the visits are defined?
-            # Or should that happen in prep_butler?
+            # TODO: After raw ingest, we can define exposure dimension records
+            # and check that the visits are defined
 
     def test_ingest_image_fails_missing_file(self):
         """Trying to ingest a non-existent file should raise.

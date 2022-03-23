@@ -6,7 +6,7 @@ setupRequired(base)
 setupRequired(sconsUtils)
 setupRequired(utils)         # Used by scripts in bin.src
 
-# Used by middleware_interface module.
+# Used by middleware_interface module due to hard-coded pipeline references.
 setupRequired(ap_pipe)
 setupRequired(daf_butler)
 setupRequired(ctrl_mpexec)
