@@ -97,7 +97,14 @@ class MiddlewareInterface:
         self.skymap = self.central_butler.get("skyMap")
 
         # TODO: we probably want to be able to configure this per-instrument?
-        ap_pipeline_file = os.path.join(lsst.utils.getPackageDir('ap_pipe'), "pipelines/ApPipe.yaml")
+        # TODO: would be nice to remap ap_pipe/pipelines to use getName convention
+        camera_paths = {"DECam": "DarkEnergyCamera", "HSC": "HyperSuprimeCam"}
+        try:
+            camera_path = camera_paths[self.instrument.getName()]
+        except KeyError:
+            raise NotImplementedError("No ApPipe.yaml defined for camera {}" % self.instrument.getName())
+        ap_pipeline_file = os.path.join(lsst.utils.getPackageDir('ap_pipe'),
+                                        "pipelines/{}/ApPipe.yaml".format(camera_path))
         self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         self.pipeline.addConfigOverride("diaPipe", "apdb.db_url", "postgresql://postgres@localhost/postgres")
 
