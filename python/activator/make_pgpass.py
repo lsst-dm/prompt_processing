@@ -27,8 +27,6 @@ import os
 import stat
 
 
-IP_APDB = "10.229.96.4:5432"
-IP_REGISTRY = "10.229.96.5:5432"
 PSQL_DB = "postgres"
 PSQL_USER = "postgres"
 
@@ -45,14 +43,16 @@ def make_pgpass():
         Raised if the database passwords cannot be found.
     """
     try:
+        ip_apdb = os.environ["IP_APDB"]
         pass_apdb = os.environ["PSQL_APDB_PASS"]
+        ip_registry = os.environ["IP_REGISTRY"]
         pass_registry = os.environ["PSQL_REGISTRY_PASS"]
     except KeyError as e:
-        raise RuntimeError("Passwords have not been configured") from e
+        raise RuntimeError("Addresses and passwords have not been configured") from e
 
     filename = os.path.join(os.environ["HOME"], ".pgpass")
     with open(filename, mode="wt") as file:
-        file.write(f"{IP_APDB}:{PSQL_DB}:{PSQL_USER}:{pass_apdb}\n")
-        file.write(f"{IP_REGISTRY}:{PSQL_DB}:{PSQL_USER}:{pass_registry}\n")
+        file.write(f"{ip_apdb}:{PSQL_DB}:{PSQL_USER}:{pass_apdb}\n")
+        file.write(f"{ip_registry}:{PSQL_DB}:{PSQL_USER}:{pass_registry}\n")
     # Only user may access the file
     os.chmod(filename, stat.S_IRUSR)
