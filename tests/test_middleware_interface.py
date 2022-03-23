@@ -227,6 +227,17 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(datasets, [])
 
     def test_run_pipeline(self):
-        self.interface.run_pipeline(self.next_visit, {1})
-        data_id = {"visit": self.next_visit.group, "detector": self.next_visit.detector}
-        self.assertTrue(self.butler.datasetExists("calexp", dataId=data_id))
+        # Can't run an actual pipeline because raw/calib/refcat/template data are all zeroed out.
+        with unittest.mock.patch('activator.middleware_interface.SimplePipelineExecutor') as mock_executor:
+            self.interface.run_pipeline(self.next_visit, {1})
+            mock_executor.from_pipeline.assert_called_once_with(
+                self.interface.pipeline,
+                where=f"detector={self.next_visit.detector} and exposure in (1)",
+                butler=self.interface.butler
+            )
+            pipeline = mock_executor.from_pipeline(
+                self.interface.pipeline,
+                where=f"detector={self.next_visit.detector} and exposure in (1)",
+                butler=self.interface.butler
+            )
+            pipeline.run.assert_called_once_with(register_dataset_types=True)

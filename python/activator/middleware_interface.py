@@ -331,8 +331,9 @@ class MiddlewareInterface:
         where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in snaps)})"
         pipeline = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
         _log.info(f"Running pipeline {self.pipeline} on visit '{visit}', snaps {snaps}")
-        # All dataset types should have been pre-registered.
-        result = pipeline.run(register_dataset_types=False)
+        # If this is a fresh (local) repo, then types like calexp,
+        # *Diff_diaSrcTable, etc. have not been registered.
+        result = pipeline.run(register_dataset_types=True)
         _log.info(f"Pipeline produced {len(result)} output datasets.")
 
 
