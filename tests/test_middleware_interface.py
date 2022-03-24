@@ -137,6 +137,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 kind="SURVEY")
         self.logger_name = "lsst.activator.middleware_interface"
 
+    def tearDown(self):
+        super().tearDown()
+        # TemporaryDirectory warns on leaks
+        self.repo.cleanup()
+
     def test_init(self):
         """Basic tests of the initialized interface object.
         """
