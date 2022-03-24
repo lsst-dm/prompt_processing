@@ -33,7 +33,7 @@ from flask import Flask, request
 from google.cloud import pubsub_v1, storage
 
 from lsst.daf.butler import Butler
-from lsst.obs.base.utils import getInstrument
+from lsst.obs.base import Instrument
 from .make_pgpass import make_pgpass
 from .middleware_interface import MiddlewareInterface
 from .visit import Visit
@@ -43,7 +43,7 @@ PROJECT_ID = "prompt-proto"
 verification_token = os.environ["PUBSUB_VERIFICATION_TOKEN"]
 # The full instrument class name, including module path.
 config_instrument = os.environ["RUBIN_INSTRUMENT"]
-active_instrument = getInstrument(config_instrument)
+active_instrument = Instrument.from_string(config_instrument)
 calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
 oid_regexp = re.compile(r"(.*?)/(\d+)/(.*?)/(\d+)/\1-\3-\4-.*?-.*?-\2\.f")

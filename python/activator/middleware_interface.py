@@ -81,7 +81,7 @@ class MiddlewareInterface:
         self.prefix = prefix
         self.central_butler = central_butler
         self.image_bucket = image_bucket
-        self.instrument = lsst.obs.base.utils.getInstrument(instrument)
+        self.instrument = lsst.obs.base.Instrument.from_string(instrument)
 
         self.output_collection = f"{self.instrument.getName()}/prompt"
 
