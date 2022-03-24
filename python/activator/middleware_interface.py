@@ -295,8 +295,10 @@ class MiddlewareInterface:
         self.butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
                                                 CollectionType.RUN)
         self.butler.registry.registerCollection(output_run, CollectionType.RUN)
+        self.butler.registry.registerCollection(self.instrument.makeCollectionName("defaults"),
+                                                CollectionType.RUN)
         self.butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
-        collections = [self.calibration_collection,
+        collections = [self.instrument.makeCollectionName("defaults"),
                        self.instrument.makeDefaultRawIngestRunName(),
                        'refcats',
                        output_run]
