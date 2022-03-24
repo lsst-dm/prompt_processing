@@ -252,13 +252,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch('activator.middleware_interface.SimplePipelineExecutor') as mock_executor:
             self.interface.run_pipeline(self.next_visit, {1})
             mock_executor.from_pipeline.assert_called_once_with(
-                self.interface.pipeline,
+                'ApPipe.yaml',
                 where=f"detector={self.next_visit.detector} and exposure in (1)",
                 butler=self.interface.butler
             )
-            pipeline = mock_executor.from_pipeline(
-                self.interface.pipeline,
+            executor = mock_executor.from_pipeline(
+                'ApPipe.yaml',
                 where=f"detector={self.next_visit.detector} and exposure in (1)",
                 butler=self.interface.butler
             )
-            pipeline.run.assert_called_once_with(register_dataset_types=True)
+            executor.run.assert_called_once_with(register_dataset_types=True)
