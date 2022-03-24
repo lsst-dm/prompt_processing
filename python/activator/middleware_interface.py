@@ -22,6 +22,7 @@
 __all__ = ["MiddlewareInterface"]
 
 import logging
+import os
 import os.path
 import tempfile
 
@@ -37,6 +38,12 @@ from .visit import Visit
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+
+ip_apdb = os.environ["IP_APDB"]
+
+PIPELINE_MAP = dict(
+    SURVEY="ApPipe.yaml",
+)
 
 
 class MiddlewareInterface:
@@ -97,16 +104,18 @@ class MiddlewareInterface:
         self.skymap = self.central_butler.get("skyMap")
 
         # TODO: we probably want to be able to configure this per-instrument?
-        # TODO: would be nice to remap ap_pipe/pipelines to use getName convention
+        # TODO: DM-33453 will remap ap_pipe/pipelines to use getName convention
         camera_paths = {"DECam": "DarkEnergyCamera", "HSC": "HyperSuprimeCam"}
         try:
             camera_path = camera_paths[self.instrument.getName()]
         except KeyError:
             raise NotImplementedError("No ApPipe.yaml defined for camera {}" % self.instrument.getName())
-        ap_pipeline_file = os.path.join(lsst.utils.getPackageDir('ap_pipe'),
-                                        "pipelines/{}/ApPipe.yaml".format(camera_path))
+        ap_pipeline_file = os.path.join(lsst.utils.getPackageDir("ap_pipe"),
+                                        "pipelines", camera_path, "ApPipe.yaml")
         self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
-        self.pipeline.addConfigOverride("diaPipe", "apdb.db_url", "postgresql://postgres@localhost/postgres")
+        # TODO: can we write to a configurable apdb schema (rather than "postgres")
+        self.pipeline.addConfigOverride("diaPipe", "apdb.db_url",
+                                        f"postgresql://postgres@{ip_apdb}/postgres")
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
@@ -128,7 +137,7 @@ class MiddlewareInterface:
         # self.instrument.register(butler.registry)
 
         # Refresh butler after configuring it, to ensure all required
-        # dimensions are available.
+        # collections are available.
         butler.registry.refresh()
         self.butler = butler
 
@@ -329,11 +338,12 @@ class MiddlewareInterface:
             we implemented this with actual data.
         """
         where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in snaps)})"
-        pipeline = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
-        _log.info(f"Running pipeline {self.pipeline} on visit '{visit}', snaps {snaps}")
+        pipeline = PIPELINE_MAP[visit.kind]
+        executor = SimplePipelineExecutor.from_pipeline(pipeline, where=where, butler=self.butler)
+        _log.info(f"Running pipeline {pipeline} on visit '{visit}', snaps {snaps}")
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
-        result = pipeline.run(register_dataset_types=True)
+        result = executor.run(register_dataset_types=True)
         _log.info(f"Pipeline produced {len(result)} output datasets.")
 
 
