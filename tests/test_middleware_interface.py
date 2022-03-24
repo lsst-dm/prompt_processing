@@ -119,7 +119,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 ra=ra,
                                 dec=dec,
                                 rot=rot,
-                                kind="BIAS")
+                                kind="SURVEY")
         self.logger_name = "lsst.activator.middleware_interface"
 
     @unittest.skip("__init__ doesn't alter repository yet")
