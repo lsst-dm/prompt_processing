@@ -32,7 +32,6 @@ from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
-from activator.middleware_interface import MiddlewareInterface
 from activator.visit import Visit
 
 # The short name of the instrument used in the test repo.
@@ -76,8 +75,22 @@ def fake_file_data(filename, dimensions, instrument):
 class MiddlewareInterfaceTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
     """
+    @classmethod
+    def setUpClass(cls):
+        cls.env_patcher = unittest.mock.patch.dict(os.environ,
+                                                   {"IP_APDB": "localhost"})
+        cls.env_patcher.start()
+
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+
+        cls.env_patcher.stop()
 
     def setUp(self):
+        from activator.middleware_interface import MiddlewareInterface
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         central_repo = os.path.join(data_dir, "central_repo")
         central_butler = Butler(central_repo,
@@ -163,6 +176,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                       collections="DECam/calib/20150218T000000Z")
         except LookupError:
             self.fail("Flat file missing from local butler.")
+
+        try:
+            self.butler.datasetExists('raw', detector=56, instrument='DECam',
+                                      collections="DECam/prompt/20150218T000000Z")
+        except LookupError:
+            self.fail("Raw file missing from local butler.")
+
         # TODO: check that we got a skymap
         # TODO: check that we got a template
 
