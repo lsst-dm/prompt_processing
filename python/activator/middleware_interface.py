@@ -41,10 +41,6 @@ _log.setLevel(logging.DEBUG)
 
 ip_apdb = os.environ["IP_APDB"]
 
-PIPELINE_MAP = dict(
-    SURVEY="ApPipe.yaml",
-)
-
 
 class MiddlewareInterface:
     """Interface layer between the Butler middleware and the prompt processing
@@ -102,20 +98,6 @@ class MiddlewareInterface:
             collections=self.instrument.makeCalibrationCollectionName("unbounded")
         )
         self.skymap = self.central_butler.get("skyMap")
-
-        # TODO: we probably want to be able to configure this per-instrument?
-        # TODO: DM-33453 will remap ap_pipe/pipelines to use getName convention
-        camera_paths = {"DECam": "DarkEnergyCamera", "HSC": "HyperSuprimeCam"}
-        try:
-            camera_path = camera_paths[self.instrument.getName()]
-        except KeyError:
-            raise NotImplementedError("No ApPipe.yaml defined for camera {}" % self.instrument.getName())
-        ap_pipeline_file = os.path.join(lsst.utils.getPackageDir("ap_pipe"),
-                                        "pipelines", camera_path, "ApPipe.yaml")
-        self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
-        # TODO: can we write to a configurable apdb schema (rather than "postgres")
-        self.pipeline.addConfigOverride("diaPipe", "apdb.db_url",
-                                        f"postgresql://postgres@{ip_apdb}/postgres")
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
@@ -190,6 +172,7 @@ class MiddlewareInterface:
                                 transfer="copy")
 
         self._prep_collections()
+        self._prep_pipeline(visit)
 
     def _export_refcats(self, export, center, radius):
         """Export the refcats for this visit from the central butler.
@@ -307,6 +290,37 @@ class MiddlewareInterface:
         # Refresh butler after configuring it, to ensure all required
         # dimensions are available.
         self.butler.registry.refresh()
+    def _prep_pipeline(self, visit: Visit) -> None:
+        """Setup the pipeline to be run, based on the configured instrument and
+        details of the incoming visit.
+
+        Parameters
+        ----------
+        visit : Visit
+            Group of snaps from one detector to prepare the pipeline for.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if there is no AP pipeline file for this configuration.
+            TODO: could be a good case for a custom exception here.
+        """
+        # TODO: we probably want to be able to configure this per-instrument?
+        # TODO: DM-33453 will remap ap_pipe/pipelines to use getName convention
+        camera_paths = {"DECam": "DarkEnergyCamera", "HSC": "HyperSuprimeCam"}
+        try:
+            camera_path = camera_paths[self.instrument.getName()]
+        except KeyError:
+            raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
+        # TODO: DECam test data uses `panstarrs/gaia` for the refcat names.
+        yaml_file = "ApPipe.yaml" if self.instrument.getName() != "DECam" else "ApPipe_hits2015-3.yaml"
+        ap_pipeline_file = os.path.join(lsst.utils.getPackageDir("ap_pipe"),
+                                        "pipelines", camera_path, yaml_file)
+        self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
+        # TODO: Can we write to a configurable apdb schema, rather than
+        # "postgres"?
+        self.pipeline.addConfigOverride("diaPipe", "apdb.db_url",
+                                        f"postgresql://postgres@{ip_apdb}/postgres")
 
     def ingest_image(self, oid: str) -> None:
         """Ingest an image into the temporary butler.
@@ -339,10 +353,9 @@ class MiddlewareInterface:
             in the `visit` object, but we'll have to test how that works once
             we implemented this with actual data.
         """
+        # TODO: can we move this from_pipeline call to prep_butler?
         where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in snaps)})"
-        pipeline = PIPELINE_MAP[visit.kind]
-        executor = SimplePipelineExecutor.from_pipeline(pipeline, where=where, butler=self.butler)
-        _log.info(f"Running pipeline {pipeline} on visit '{visit}', snaps {snaps}")
+        executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
         result = executor.run(register_dataset_types=True)
