@@ -149,11 +149,12 @@ class MiddlewareInterface:
                 boresight_center = lsst.geom.SpherePoint(visit.ra, visit.dec, lsst.geom.degrees)
                 orientation = lsst.geom.Angle(visit.rot, lsst.geom.degrees)
                 detector = self.camera[visit.detector]
-                # TODO: where do we get flipX from? See RFC-605
+                flip_x = True if self.instrument.getName() == "DECam" else False
                 wcs = lsst.obs.base.createInitialSkyWcsFromBoresight(boresight_center,
                                                                      orientation,
                                                                      detector,
-                                                                     flipX=False)
+                                                                     flipX=flip_x)
+                # Compute the maximum sky circle that contains the detector.
                 radii = []
                 center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
                 for corner in detector.getCorners(lsst.afw.cameraGeom.PIXELS):

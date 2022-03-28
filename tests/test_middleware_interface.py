@@ -109,8 +109,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
         ra = 155.4702849608958
         dec = -4.950050405424033
-        # DECam has no rotator
-        rot = 0.
+        # DECam has no rotator; instrument angle is 90 degrees in our system.
+        rot = 90.
         self.next_visit = Visit(instrument,
                                 detector=56,
                                 group=1,
@@ -158,33 +158,48 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         loaded_shards = list(self.butler.registry.queryDataIds("htm7",
                                                                datasets="gaia",
                                                                collections="refcats"))
+
+        # Check that the right skymap is in the chained output collection.
+        self.butler.datasetExists("skyMap",
+                                  # TODO: we shouldn't need skymap here?
+                                  skymap="deepCoadd_skyMap",
+                                  collections=self.interface.output_collection)
+
         # These shards were identified by plotting the objects in each shard
         # on-sky and overplotting the detector corners.
         # TODO DM-34112: check these shards again with some plots, once I've
         # determined whether ci_hits2015 actually has enough shards.
-        expected_shards = [157401, 157405, 157407]
+        expected_shards = [157394, 157401, 157405]
         self.assertEqual(expected_shards, [x['htm7'] for x in loaded_shards])
-        # check that we got appropriate calibs.
+        # Check that the right calibs are in the chained output collection.
         try:
             self.butler.datasetExists('cpBias', detector=56, instrument='DECam',
                                       collections="DECam/calib/20150218T000000Z")
+            # TODO: Have to use the exact calib collection, because we don't
+            # have validity ranges for data.
+            # collections=self.interface.output_collection)
         except LookupError:
             self.fail("Bias file missing from local butler.")
         try:
             self.butler.datasetExists('cpFlat', detector=56, instrument='DECam',
                                       physical_filter="g DECam SDSS c0001 4720.0 1520.0",
                                       collections="DECam/calib/20150218T000000Z")
+            # TODO: Have to use the exact calib collection, because we don't
+            # have validity ranges for data.
+            # collections=self.interface.output_collection)
         except LookupError:
             self.fail("Flat file missing from local butler.")
 
-        try:
-            self.butler.datasetExists('raw', detector=56, instrument='DECam',
-                                      collections="DECam/prompt/20150218T000000Z")
-        except LookupError:
-            self.fail("Raw file missing from local butler.")
+        # Check that we configured the right pipeline.
+        self.assertEquals(self.interface.pipeline._pipelineIR.description,
+                          "End to end AP pipeline for the repo in /project/mrawls/hits2015-3")
 
-        # TODO: check that we got a skymap
-        # TODO: check that we got a template
+        # Check that the right templates are in the chained output collection.
+        for patch in (464, 465, 509, 510):
+            self.butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
+                                      # TODO: we shouldn't need skymap here?
+                                      skymap="deepCoadd_skyMap",
+                                      collections=self.interface.output_collection)
 
     @unittest.skip("We know this doesn't work, but this is a test we want to have!")
     def test_prep_butler_twice(self):
