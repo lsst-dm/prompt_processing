@@ -82,7 +82,7 @@ class MiddlewareInterface:
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
-                 prefix: str = "s3://"):
+                 prefix: str = "gs://"):
         self.prefix = prefix
         self.central_butler = central_butler
         self.image_bucket = image_bucket
