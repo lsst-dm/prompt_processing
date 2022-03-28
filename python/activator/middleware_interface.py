@@ -84,7 +84,6 @@ class MiddlewareInterface:
         self.image_bucket = image_bucket
         self.instrument = lsst.obs.base.utils.getInstrument(instrument)
 
-        self.calibration_collection = f"{self.instrument.getName()}/calib"
         self.output_collection = f"{self.instrument.getName()}/prompt"
 
         self._init_local_butler(butler)
@@ -167,11 +166,15 @@ class MiddlewareInterface:
 
                 # CHAINED collections
                 export.saveCollection("refcats")
+                export.saveCollection("templates")
+                export.saveCollection(self.instrument.makeCollectionName("defaults"))
 
             self.butler.import_(filename=export_file.name,
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
 
+        # Ensure all components of the instrument are registered.
+        self.instrument.register(self.butler.registry)
         self._prep_collections()
         self._prep_pipeline(visit)
 
@@ -275,22 +278,24 @@ class MiddlewareInterface:
         #             'refcats'],
         #     output=self.output_collection)
         # The below is taken from SimplePipelineExecutor.prep_butler.
-        output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
+        # TODO DM-34202: save run collection in self for now, but we won't need
+        # it when we no longer need to work around DM-34202.
+        self.output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
         self.butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
                                                 CollectionType.RUN)
-        self.butler.registry.registerCollection(output_run, CollectionType.RUN)
-        self.butler.registry.registerCollection(self.instrument.makeCollectionName("defaults"),
-                                                CollectionType.RUN)
+        self.butler.registry.registerCollection(self.output_run, CollectionType.RUN)
         self.butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
         collections = [self.instrument.makeCollectionName("defaults"),
                        self.instrument.makeDefaultRawIngestRunName(),
-                       'refcats',
-                       output_run]
+                       self.output_run]
         self.butler.registry.setCollectionChain(self.output_collection, collections)
 
-        # Refresh butler after configuring it, to ensure all required
-        # dimensions are available.
-        self.butler.registry.refresh()
+        # Need to create a new butler with all the output collections.
+        self.butler = Butler(butler=self.butler,
+                             collections=[self.output_collection],
+                             # TODO DM-34202: hack around a middleware bug.
+                             run=None)
+
     def _prep_pipeline(self, visit: Visit) -> None:
         """Setup the pipeline to be run, based on the configured instrument and
         details of the incoming visit.
@@ -357,6 +362,11 @@ class MiddlewareInterface:
         # TODO: can we move this from_pipeline call to prep_butler?
         where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in snaps)})"
         executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
+        # TODO DM-34202: hack around a middleware bug.
+        executor.butler = Butler(butler=self.butler,
+                                 collections=[self.output_collection],
+                                 run=self.output_run)
+        _log.info(f"Running '{self.pipeline._pipelineIR.description}' on {where}")
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
         result = executor.run(register_dataset_types=True)
