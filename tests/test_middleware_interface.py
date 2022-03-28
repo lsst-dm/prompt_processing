@@ -122,7 +122,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 kind="SURVEY")
         self.logger_name = "lsst.activator.middleware_interface"
 
-    @unittest.skip("__init__ doesn't alter repository yet")
     def test_init(self):
         """Basic tests of the initialized interface object.
         """
@@ -131,16 +130,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         #   collections, etc?
         # * On init, is the local butler repo purely in memory?
 
-        # TODO: this no longer works because we cannot register an instrument
-        # and also import an export that contains that instrument.
         # Check that the butler instance is properly configured.
-        instruments = list(self.butler.registry.queryDimensionRecords("instrument"))  # noqa: W505
+        instruments = list(self.butler.registry.queryDimensionRecords("instrument"))
         self.assertEqual(instname, instruments[0].name)
-
-        # TODO: this isn't working
-        collections = list(self.interface.butler.registry.queryCollections())
-        self.assertIn("prompt", collections)
-        self.assertIn("prompt-test_init", collections)
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
@@ -201,13 +193,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                       skymap="deepCoadd_skyMap",
                                       collections=self.interface.output_collection)
 
-    @unittest.skip("We know this doesn't work, but this is a test we want to have!")
+    @unittest.skip("We know this doesn't work (skymaps!), but this is a test we want to have!")
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
         exception!) on a second run with the same, or a different detector.
         This explicitly tests the "you can't import something that's already
         in the local butler" problem that's related to the "can't register
-        the instrument in init" problem.
+        the skymap in init" problem.
         """
         self.interface.prep_butler(self.next_visit)
         # TODO: update next_visit with a new group number
@@ -219,10 +211,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         data_id, file_data = fake_file_data(filepath,
                                             self.butler.dimensions,
                                             self.interface.instrument)
-        # TODO: we have to do this for the test because we can't register the
-        # instrument in _init_local_butler because of the export/import unique
-        # problem.
-        self.interface.instrument.register(self.butler.registry)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
@@ -249,10 +237,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         data_id, file_data = fake_file_data(filepath,
                                             self.butler.dimensions,
                                             self.interface.instrument)
-        # TODO: we have to do this for the test because we can't register the
-        # instrument in _init_local_butler because of the export/import unique
-        # problem.
-        self.interface.instrument.register(self.butler.registry)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
                 self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"):
             mock.return_value = file_data

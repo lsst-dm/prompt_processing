@@ -110,15 +110,10 @@ class MiddlewareInterface:
             Local butler to process data in and hold calibrations, etc.; must
             be writeable.
         """
-        # TODO: Replace registring the instrument with importing a "base" repo
-        # structure from an export.yaml file.
-        # TODO: Cannot do this until we have a way to only extract calibs we
-        # don't already have, otherwise we get a unique constraint error when
-        # importing the export in prep_butler().
-        # self.instrument.register(butler.registry)
+        self.instrument.register(butler.registry)
 
         # Refresh butler after configuring it, to ensure all required
-        # collections are available.
+        # dimensions and collections are available.
         butler.registry.refresh()
         self.butler = butler
 
@@ -173,8 +168,6 @@ class MiddlewareInterface:
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
 
-        # Ensure all components of the instrument are registered.
-        self.instrument.register(self.butler.registry)
         self._prep_collections()
         self._prep_pipeline(visit)
 
@@ -220,6 +213,11 @@ class MiddlewareInterface:
         wcs : `lsst.afw.geom.SkyWcs`
             Rough WCS for the upcoming visit, to help finding patches.
         """
+        # TODO: This exports the whole skymap, but we want to only export the
+        # subset of the skymap that covers this data.
+        # TODO: We only want to import the skymap dimension once in init,
+        # otherwise we get a UNIQUE constraint error when prepping for the
+        # second visit.
         export.saveDatasets(self.central_butler.registry.queryDatasets("skyMap",
                                                                        collections="skymaps",
                                                                        findFirst=True))
@@ -257,10 +255,12 @@ class MiddlewareInterface:
         # TODO: we can't filter by validity range because it's not
         # supported in queryDatasets yet.
         calib_where = f"detector={detector_id} and physical_filter='{filter}'"
-        export.saveDatasets(self.central_butler.registry.queryDatasets(
-            ...,
-            collections=self.instrument.makeCalibrationCollectionName(),
-            where=calib_where))
+        export.saveDatasets(
+            self.central_butler.registry.queryDatasets(
+                ...,
+                collections=self.instrument.makeCalibrationCollectionName(),
+                where=calib_where),
+            elements=[])  # elements=[] means do not export dimension records
         target_types = {CollectionType.CALIBRATION}
         for collection in self.central_butler.registry.queryCollections(...,
                                                                         collectionTypes=target_types):
