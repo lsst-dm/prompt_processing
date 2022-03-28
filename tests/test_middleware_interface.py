@@ -263,17 +263,21 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(datasets, [])
 
     def test_run_pipeline(self):
-        # Can't run an actual pipeline because raw/calib/refcat/template data are all zeroed out.
-        with unittest.mock.patch('activator.middleware_interface.SimplePipelineExecutor') as mock_executor:
+        """Test that running the pipeline uses the correct arguments.
+        We can't run an actual pipeline because raw/calib/refcat/template data
+        are all zeroed out.
+        """
+        # Have to setup the data so that we can create the pipeline executor.
+        self.interface.prep_butler(self.next_visit)
+        filename = "fakeRawImage.fits"
+        filepath = os.path.join(self.input_data, filename)
+        data_id, file_data = fake_file_data(filepath,
+                                            self.butler.dimensions,
+                                            self.interface.instrument)
+        with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
+            mock.return_value = file_data
+            self.interface.ingest_image(filename)
+
+        with unittest.mock.patch("activator.middleware_interface.SimplePipelineExecutor.run") as mock_run:
             self.interface.run_pipeline(self.next_visit, {1})
-            mock_executor.from_pipeline.assert_called_once_with(
-                'ApPipe.yaml',
-                where=f"detector={self.next_visit.detector} and exposure in (1)",
-                butler=self.interface.butler
-            )
-            executor = mock_executor.from_pipeline(
-                'ApPipe.yaml',
-                where=f"detector={self.next_visit.detector} and exposure in (1)",
-                butler=self.interface.butler
-            )
-            executor.run.assert_called_once_with(register_dataset_types=True)
+        mock_run.assert_called_once_with(register_dataset_types=True)
