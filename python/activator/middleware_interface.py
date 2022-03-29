@@ -39,8 +39,6 @@ from .visit import Visit
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
-ip_apdb = os.environ["IP_APDB"]
-
 
 class MiddlewareInterface:
     """Interface layer between the Butler middleware and the prompt processing
@@ -79,6 +77,7 @@ class MiddlewareInterface:
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
                  prefix: str = "gs://"):
+        self.ip_apdb = os.environ["IP_APDB"]
         self.prefix = prefix
         self.central_butler = central_butler
         self.image_bucket = image_bucket
@@ -326,7 +325,7 @@ class MiddlewareInterface:
         # TODO: Can we write to a configurable apdb schema, rather than
         # "postgres"?
         self.pipeline.addConfigOverride("diaPipe", "apdb.db_url",
-                                        f"postgresql://postgres@{ip_apdb}/postgres")
+                                        f"postgresql://postgres@{self.ip_apdb}/postgres")
 
     def ingest_image(self, oid: str) -> None:
         """Ingest an image into the temporary butler.

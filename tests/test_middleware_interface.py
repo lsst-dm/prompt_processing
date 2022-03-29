@@ -33,6 +33,7 @@ from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
 from activator.visit import Visit
+from activator.middleware_interface import MiddlewareInterface
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -90,7 +91,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         cls.env_patcher.stop()
 
     def setUp(self):
-        from activator.middleware_interface import MiddlewareInterface
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         central_repo = os.path.join(data_dir, "central_repo")
         central_butler = Butler(central_repo,
