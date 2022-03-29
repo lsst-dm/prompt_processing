@@ -167,8 +167,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         try:
             self.butler.datasetExists('cpBias', detector=56, instrument='DECam',
                                       collections="DECam/calib/20150218T000000Z")
-            # TODO: Have to use the exact calib collection, because we don't
-            # have validity ranges for data.
+            # TODO: Have to use the exact run collection, because we can't
+            # query by validity range.
             # collections=self.interface.output_collection)
         except LookupError:
             self.fail("Bias file missing from local butler.")
@@ -176,17 +176,19 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.butler.datasetExists('cpFlat', detector=56, instrument='DECam',
                                       physical_filter="g DECam SDSS c0001 4720.0 1520.0",
                                       collections="DECam/calib/20150218T000000Z")
-            # TODO: Have to use the exact calib collection, because we don't
-            # have validity ranges for data.
+            # TODO: Have to use the exact run collection, because we can't
+            # query by validity range.
             # collections=self.interface.output_collection)
         except LookupError:
             self.fail("Flat file missing from local butler.")
 
         # Check that we configured the right pipeline.
-        self.assertEquals(self.interface.pipeline._pipelineIR.description,
-                          "End to end AP pipeline for the repo in /project/mrawls/hits2015-3")
+        self.assertEqual(self.interface.pipeline._pipelineIR.description,
+                         "End to end Alert Production pipeline specialized for HiTS-2015")
 
         # Check that the right templates are in the chained output collection.
+        # Need to refresh the butler to get all the dimensions/collections.
+        self.butler.registry.refresh()
         for patch in (464, 465, 509, 510):
             self.butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
                                       # TODO: we shouldn't need skymap here?
