@@ -321,10 +321,8 @@ class MiddlewareInterface:
             camera_path = camera_paths[self.instrument.getName()]
         except KeyError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
-        # TODO: DECam test data uses `panstarrs/gaia` for the refcat names.
-        yaml_file = "ApPipe.yaml" if self.instrument.getName() != "DECam" else "ApPipe_hits2015-3.yaml"
-        ap_pipeline_file = os.path.join(lsst.utils.getPackageDir("ap_pipe"),
-                                        "pipelines", camera_path, yaml_file)
+        ap_pipeline_file = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                                        "pipelines", camera_path, "ApPipe.yaml")
         self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         # TODO: Can we write to a configurable apdb schema, rather than
         # "postgres"?
