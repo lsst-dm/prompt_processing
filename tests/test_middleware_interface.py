@@ -285,3 +285,33 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch("activator.middleware_interface.SimplePipelineExecutor.run") as mock_run:
             self.interface.run_pipeline(self.next_visit, {1})
         mock_run.assert_called_once_with(register_dataset_types=True)
+
+    def test_run_pipeline_empty_quantum_graph(self):
+        """Test that running a pipeline that results in an empty quantum graph
+        (because the snap ids are wrong), raises.
+        """
+        # Have to setup the data so that we can create the pipeline executor.
+        self.interface.prep_butler(self.next_visit)
+        filename = "fakeRawImage.fits"
+        filepath = os.path.join(self.input_data, filename)
+        data_id, file_data = fake_file_data(filepath,
+                                            self.butler.dimensions,
+                                            self.interface.instrument,
+                                            self.next_visit)
+        with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
+            mock.return_value = file_data
+            self.interface.ingest_image(filename)
+
+        with self.assertRaisesRegex(RuntimeError, "No data to process"):
+            self.interface.run_pipeline(self.next_visit, {2})
+
+    def test_run_pipeline_missing_raws(self):
+        """Test that running a pipeline with no raws, raises.
+        """
+        # Have to setup the data so that we can create the pipeline executor.
+        self.interface.prep_butler(self.next_visit)
+
+        # TODO: this exception will almost certainly change once we change how
+        # we do defineVisits.
+        with self.assertRaisesRegex(RuntimeError, "No exposures given"):
+            self.interface.run_pipeline(self.next_visit, {2})
