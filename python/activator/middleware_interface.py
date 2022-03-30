@@ -87,6 +87,10 @@ class MiddlewareInterface:
 
         self._init_local_butler(butler)
         self._init_ingester()
+
+        define_visits_config = lsst.obs.base.DefineVisitsConfig()
+        self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
+
         # TODO DM-34098: note that we currently need to supply instrument here.
         # HACK: explicit collection gets around the fact that we don't have any
         # timestamp/exposure information in a form we can pass to the Butler.
@@ -358,6 +362,16 @@ class MiddlewareInterface:
             in the `visit` object, but we'll have to test how that works once
             we implemented this with actual data.
         """
+        # TODO: we want to define visits earlier, but we have to ingest a
+        # faked raw file and appropriate SSO data during prep (and then
+        # cleanup when ingesting the real data).
+        # TODO: Also, using this approach (instead of saving the datasetRefs
+        # returned by ingest and using them to define visits) also requires
+        # pruning this list down to only the exposures that aren't already
+        # defined (otherwise defineVisits.run does extra "nothing" work).
+        exposures = set(self.butler.registry.queryDataIds(["exposure"]))
+        self.define_visits.run(exposures)
+
         # TODO: can we move this from_pipeline call to prep_butler?
         where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in snaps)})"
         executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
