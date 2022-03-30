@@ -22,21 +22,19 @@
 __all__ = ["MiddlewareInterface"]
 
 import logging
+import os
+import os.path
 import tempfile
 
 import lsst.afw.cameraGeom
+from lsst.ctrl.mpexec import SimplePipelineExecutor
 from lsst.daf.butler import Butler, CollectionType
+import lsst.geom
 from lsst.meas.algorithms.htmIndexer import HtmIndexer
 import lsst.obs.base
-import lsst.geom
+import lsst.pipe.base
 
 from .visit import Visit
-
-PIPELINE_MAP = dict(
-    BIAS="bias.yaml",
-    DARK="dark.yaml",
-    FLAT="flat.yaml",
-)
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -75,16 +73,24 @@ class MiddlewareInterface:
         appropriate for use in the Google Cloud environment; typically only
         change this when running local tests.
     """
+
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
                  prefix: str = "gs://"):
+        self.ip_apdb = os.environ["IP_APDB"]
         self.prefix = prefix
         self.central_butler = central_butler
         self.image_bucket = image_bucket
         self.instrument = lsst.obs.base.utils.getInstrument(instrument)
 
+        self.output_collection = f"{self.instrument.getName()}/prompt"
+
         self._init_local_butler(butler)
         self._init_ingester()
+
+        define_visits_config = lsst.obs.base.DefineVisitsConfig()
+        self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
+
         # TODO DM-34098: note that we currently need to supply instrument here.
         # HACK: explicit collection gets around the fact that we don't have any
         # timestamp/exposure information in a form we can pass to the Butler.
@@ -94,9 +100,6 @@ class MiddlewareInterface:
             collections=self.instrument.makeCalibrationCollectionName("unbounded")
         )
         self.skymap = self.central_butler.get("skyMap")
-
-        # self.r = self.src.registry
-        self.calibration_collection = f"{instrument}/calib"
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
@@ -110,14 +113,10 @@ class MiddlewareInterface:
             Local butler to process data in and hold calibrations, etc.; must
             be writeable.
         """
-        # TODO: Replace registring the instrument with importing a "base" repo
-        # structure from an export.yaml file.
-        # TODO: Cannot do this until we have a way to only extract calibs we
-        # don't already have, otherwise we get a unique constraint error when
-        # importing the export in prep_butler().
-        # self.instrument.register(butler.registry)
+        self.instrument.register(butler.registry)
+
         # Refresh butler after configuring it, to ensure all required
-        # dimensions are available.
+        # dimensions and collections are available.
         butler.registry.refresh()
         self.butler = butler
 
@@ -147,11 +146,12 @@ class MiddlewareInterface:
                 boresight_center = lsst.geom.SpherePoint(visit.ra, visit.dec, lsst.geom.degrees)
                 orientation = lsst.geom.Angle(visit.rot, lsst.geom.degrees)
                 detector = self.camera[visit.detector]
-                # TODO: where do we get flipX from? See RFC-605
+                flip_x = True if self.instrument.getName() == "DECam" else False
                 wcs = lsst.obs.base.createInitialSkyWcsFromBoresight(boresight_center,
                                                                      orientation,
                                                                      detector,
-                                                                     flipX=False)
+                                                                     flipX=flip_x)
+                # Compute the maximum sky circle that contains the detector.
                 radii = []
                 center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
                 for corner in detector.getCorners(lsst.afw.cameraGeom.PIXELS):
@@ -164,10 +164,15 @@ class MiddlewareInterface:
 
                 # CHAINED collections
                 export.saveCollection("refcats")
+                export.saveCollection("templates")
+                export.saveCollection(self.instrument.makeCollectionName("defaults"))
 
             self.butler.import_(filename=export_file.name,
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
+
+        self._prep_collections()
+        self._prep_pipeline(visit)
 
     def _export_refcats(self, export, center, radius):
         """Export the refcats for this visit from the central butler.
@@ -211,6 +216,11 @@ class MiddlewareInterface:
         wcs : `lsst.afw.geom.SkyWcs`
             Rough WCS for the upcoming visit, to help finding patches.
         """
+        # TODO: This exports the whole skymap, but we want to only export the
+        # subset of the skymap that covers this data.
+        # TODO: We only want to import the skymap dimension once in init,
+        # otherwise we get a UNIQUE constraint error when prepping for the
+        # second visit.
         export.saveDatasets(self.central_butler.registry.queryDatasets("skyMap",
                                                                        collections="skymaps",
                                                                        findFirst=True))
@@ -248,14 +258,76 @@ class MiddlewareInterface:
         # TODO: we can't filter by validity range because it's not
         # supported in queryDatasets yet.
         calib_where = f"detector={detector_id} and physical_filter='{filter}'"
-        export.saveDatasets(self.central_butler.registry.queryDatasets(
-            ...,
-            collections=self.instrument.makeCalibrationCollectionName(),
-            where=calib_where))
+        export.saveDatasets(
+            self.central_butler.registry.queryDatasets(
+                ...,
+                collections=self.instrument.makeCalibrationCollectionName(),
+                where=calib_where),
+            elements=[])  # elements=[] means do not export dimension records
         target_types = {CollectionType.CALIBRATION}
         for collection in self.central_butler.registry.queryCollections(...,
                                                                         collectionTypes=target_types):
             export.saveCollection(collection)
+
+    def _prep_collections(self):
+        """Pre-register output collections in advance of running the pipeline.
+        """
+        # NOTE: Because we receive a butler on init, we can't use this
+        # prep_butler() because it takes a repo path.
+        # butler = SimplePipelineExecutor.prep_butler(
+        #     self.repo,
+        #     inputs=[self.calibration_collection,
+        #             self.instrument.makeDefaultRawIngestRunName(),
+        #             'refcats'],
+        #     output=self.output_collection)
+        # The below is taken from SimplePipelineExecutor.prep_butler.
+        # TODO DM-34202: save run collection in self for now, but we won't need
+        # it when we no longer need to work around DM-34202.
+        self.output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
+        self.butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
+                                                CollectionType.RUN)
+        self.butler.registry.registerCollection(self.output_run, CollectionType.RUN)
+        self.butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
+        collections = [self.instrument.makeCollectionName("defaults"),
+                       self.instrument.makeDefaultRawIngestRunName(),
+                       self.output_run]
+        self.butler.registry.setCollectionChain(self.output_collection, collections)
+
+        # Need to create a new butler with all the output collections.
+        self.butler = Butler(butler=self.butler,
+                             collections=[self.output_collection],
+                             # TODO DM-34202: hack around a middleware bug.
+                             run=None)
+
+    def _prep_pipeline(self, visit: Visit) -> None:
+        """Setup the pipeline to be run, based on the configured instrument and
+        details of the incoming visit.
+
+        Parameters
+        ----------
+        visit : Visit
+            Group of snaps from one detector to prepare the pipeline for.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if there is no AP pipeline file for this configuration.
+            TODO: could be a good case for a custom exception here.
+        """
+        # TODO: we probably want to be able to configure this per-instrument?
+        # TODO: DM-33453 will remap ap_pipe/pipelines to use getName convention
+        camera_paths = {"DECam": "DarkEnergyCamera", "HSC": "HyperSuprimeCam"}
+        try:
+            camera_path = camera_paths[self.instrument.getName()]
+        except KeyError:
+            raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
+        ap_pipeline_file = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+                                        "pipelines", camera_path, "ApPipe.yaml")
+        self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
+        # TODO: Can we write to a configurable apdb schema, rather than
+        # "postgres"?
+        self.pipeline.addConfigOverride("diaPipe", "apdb.db_url",
+                                        f"postgresql://postgres@{self.ip_apdb}/postgres")
 
     def ingest_image(self, oid: str) -> None:
         """Ingest an image into the temporary butler.
@@ -276,7 +348,7 @@ class MiddlewareInterface:
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
 
     def run_pipeline(self, visit: Visit, snaps: set) -> None:
-        """Process the received image.
+        """Process the received image(s).
 
         Parameters
         ----------
@@ -288,21 +360,31 @@ class MiddlewareInterface:
             in the `visit` object, but we'll have to test how that works once
             we implemented this with actual data.
         """
-        pipeline = PIPELINE_MAP[visit.kind]
-        _log.info(f"Running pipeline {pipeline} on visit '{visit}', snaps {snaps}")
-        cmd = [
-            "echo",
-            "pipetask",
-            "run",
-            "-b",
-            self.butler,
-            "-p",
-            pipeline,
-            "-i",
-            f"{self.instrument}/raw/all",
-        ]
-        _log.debug("pipetask command line: %s", cmd)
-        # subprocess.run(cmd, check=True)
+        # TODO: we want to define visits earlier, but we have to ingest a
+        # faked raw file and appropriate SSO data during prep (and then
+        # cleanup when ingesting the real data).
+        # TODO: Also, using this approach (instead of saving the datasetRefs
+        # returned by ingest and using them to define visits) also requires
+        # pruning this list down to only the exposures that aren't already
+        # defined (otherwise defineVisits.run does extra "nothing" work).
+        exposures = set(self.butler.registry.queryDataIds(["exposure"]))
+        self.define_visits.run(exposures)
+
+        # TODO: can we move this from_pipeline call to prep_butler?
+        where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in snaps)})"
+        executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
+        if len(executor.quantum_graph) == 0:
+            # TODO: a good place for a custom exception?
+            raise RuntimeError("No data to process.")
+        # TODO DM-34202: hack around a middleware bug.
+        executor.butler = Butler(butler=self.butler,
+                                 collections=[self.output_collection],
+                                 run=self.output_run)
+        _log.info(f"Running '{self.pipeline._pipelineIR.description}' on {where}")
+        # If this is a fresh (local) repo, then types like calexp,
+        # *Diff_diaSrcTable, etc. have not been registered.
+        result = executor.run(register_dataset_types=True)
+        _log.info(f"Pipeline produced {len(result)} output datasets.")
 
 
 def filter_calibs(dataset_ref, visit_info):

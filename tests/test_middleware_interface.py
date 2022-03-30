@@ -24,6 +24,7 @@ import os.path
 import unittest
 import unittest.mock
 
+import astropy.coordinates
 import astropy.units as u
 
 import astro_metadata_translator
@@ -32,8 +33,8 @@ from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
-from activator.middleware_interface import MiddlewareInterface
 from activator.visit import Visit
+from activator.middleware_interface import MiddlewareInterface
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -41,7 +42,7 @@ instname = "DECam"
 filter = "g DECam SDSS c0001 4720.0 1520.0"
 
 
-def fake_file_data(filename, dimensions, instrument):
+def fake_file_data(filename, dimensions, instrument, visit):
     """Return file data for a mock file to be ingested.
 
     Parameters
@@ -52,19 +53,33 @@ def fake_file_data(filename, dimensions, instrument):
         The full set of dimensions for this butler.
     instrument : `lsst.obs.base.Instrument`
         The instrument the file is supposed to be from.
+    visit : `Visit`
+        Group of snaps from one detector to be processed.
 
     Returns
     -------
     data_id, file_data, : `DataCoordinate`, `RawFileData`
         The id and descriptor for the mock file.
     """
-    data_id = DataCoordinate.standardize({"exposure": 1, "detector": 1, "instrument": instrument.getName()},
+    data_id = DataCoordinate.standardize({"exposure": 1,
+                                          "detector": visit.detector,
+                                          "instrument": instrument.getName()},
                                          universe=dimensions)
-    obs_info = astro_metadata_translator.makeObservationInfo(instrument=instrument.getName(),
-                                                             exposure_id=1,
-                                                             observation_id="1",
-                                                             physical_filter=filter,
-                                                             exposure_time=30.0*u.second)
+
+    time = astropy.time.Time("2015-02-18T05:28:18.716517500", scale="tai")
+    obs_info = astro_metadata_translator.makeObservationInfo(
+        instrument=instrument.getName(),
+        datetime_begin=time,
+        datetime_end=time + 30*u.second,
+        exposure_id=1,
+        visit_id=1,
+        boresight_rotation_angle=astropy.coordinates.Angle(visit.rot*u.degree),
+        boresight_rotation_coord='sky',
+        tracking_radec=astropy.coordinates.SkyCoord(visit.ra, visit.dec, frame="icrs", unit="deg"),
+        observation_id="1",
+        physical_filter=filter,
+        exposure_time=30.0*u.second,
+        observation_type="science")
     dataset_info = RawFileDatasetInfo(data_id, obs_info)
     file_data = RawFileData([dataset_info],
                             lsst.resources.ResourcePath(filename),
@@ -76,6 +91,20 @@ def fake_file_data(filename, dimensions, instrument):
 class MiddlewareInterfaceTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
     """
+    @classmethod
+    def setUpClass(cls):
+        cls.env_patcher = unittest.mock.patch.dict(os.environ,
+                                                   {"IP_APDB": "localhost"})
+        cls.env_patcher.start()
+
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+
+        cls.env_patcher.stop()
+
     def setUp(self):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         central_repo = os.path.join(data_dir, "central_repo")
@@ -95,8 +124,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
         ra = 155.4702849608958
         dec = -4.950050405424033
-        # DECam has no rotator
-        rot = 0.
+        # DECam has no rotator; instrument angle is 90 degrees in our system.
+        rot = 90.
         self.next_visit = Visit(instrument,
                                 detector=56,
                                 group=1,
@@ -105,7 +134,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 ra=ra,
                                 dec=dec,
                                 rot=rot,
-                                kind="BIAS")
+                                kind="SURVEY")
         self.logger_name = "lsst.activator.middleware_interface"
 
     def test_init(self):
@@ -116,11 +145,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         #   collections, etc?
         # * On init, is the local butler repo purely in memory?
 
-        # TODO: this no longer works because we cannot register an instrument
-        # and also import an export that contains that instrument.
         # Check that the butler instance is properly configured.
-        # instruments = list(self.butler.registry.queryDimensionRecords("instrument"))  # noqa: W505
-        # self.assertEqual(instname, instruments[0].name)
+        instruments = list(self.butler.registry.queryDimensionRecords("instrument"))
+        self.assertEqual(instname, instruments[0].name)
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
@@ -138,34 +165,58 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         loaded_shards = list(self.butler.registry.queryDataIds("htm7",
                                                                datasets="gaia",
                                                                collections="refcats"))
+
+        # Check that the right skymap is in the chained output collection.
+        self.butler.datasetExists("skyMap",
+                                  # TODO: we shouldn't need skymap here?
+                                  skymap="deepCoadd_skyMap",
+                                  collections=self.interface.output_collection)
+
         # These shards were identified by plotting the objects in each shard
         # on-sky and overplotting the detector corners.
         # TODO DM-34112: check these shards again with some plots, once I've
         # determined whether ci_hits2015 actually has enough shards.
-        expected_shards = [157401, 157405, 157407]
+        expected_shards = [157394, 157401, 157405]
         self.assertEqual(expected_shards, [x['htm7'] for x in loaded_shards])
-        # check that we got appropriate calibs.
+        # Check that the right calibs are in the chained output collection.
         try:
             self.butler.datasetExists('cpBias', detector=56, instrument='DECam',
                                       collections="DECam/calib/20150218T000000Z")
+            # TODO: Have to use the exact run collection, because we can't
+            # query by validity range.
+            # collections=self.interface.output_collection)
         except LookupError:
             self.fail("Bias file missing from local butler.")
         try:
             self.butler.datasetExists('cpFlat', detector=56, instrument='DECam',
-                                      physical_filter="g DECam SDSS c0001 4720.0 1520.0",
+                                      physical_filter=filter,
                                       collections="DECam/calib/20150218T000000Z")
+            # TODO: Have to use the exact run collection, because we can't
+            # query by validity range.
+            # collections=self.interface.output_collection)
         except LookupError:
             self.fail("Flat file missing from local butler.")
-        # TODO: check that we got a skymap
-        # TODO: check that we got a template
 
-    @unittest.skip("We know this doesn't work, but this is a test we want to have!")
+        # Check that we configured the right pipeline.
+        self.assertEqual(self.interface.pipeline._pipelineIR.description,
+                         "End to end Alert Production pipeline specialized for HiTS-2015")
+
+        # Check that the right templates are in the chained output collection.
+        # Need to refresh the butler to get all the dimensions/collections.
+        self.butler.registry.refresh()
+        for patch in (464, 465, 509, 510):
+            self.butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
+                                      # TODO: we shouldn't need skymap here?
+                                      skymap="deepCoadd_skyMap",
+                                      collections=self.interface.output_collection)
+
+    @unittest.skip("We know this doesn't work (skymaps!), but this is a test we want to have!")
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
         exception!) on a second run with the same, or a different detector.
         This explicitly tests the "you can't import something that's already
         in the local butler" problem that's related to the "can't register
-        the instrument in init" problem.
+        the skymap in init" problem.
         """
         self.interface.prep_butler(self.next_visit)
         # TODO: update next_visit with a new group number
@@ -176,11 +227,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
                                             self.butler.dimensions,
-                                            self.interface.instrument)
-        # TODO: we have to do this for the test because we can't register the
-        # instrument in _init_local_butler because of the export/import unique
-        # problem.
-        self.interface.instrument.register(self.butler.registry)
+                                            self.interface.instrument,
+                                            self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
@@ -188,6 +236,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             datasets = list(self.butler.registry.queryDatasets('raw',
                                                                collections=[f'{instname}/raw/all']))
             self.assertEqual(datasets[0].dataId, data_id)
+            # TODO: After raw ingest, we can define exposure dimension records
+            # and check that the visits are defined
 
     def test_ingest_image_fails_missing_file(self):
         """Trying to ingest a non-existent file should raise.
@@ -204,11 +254,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
                                             self.butler.dimensions,
-                                            self.interface.instrument)
-        # TODO: we have to do this for the test because we can't register the
-        # instrument in _init_local_butler because of the export/import unique
-        # problem.
-        self.interface.instrument.register(self.butler.registry)
+                                            self.interface.instrument,
+                                            self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
                 self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"):
             mock.return_value = file_data
@@ -219,7 +266,52 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(datasets, [])
 
     def test_run_pipeline(self):
-        with self.assertLogs(self.logger_name, level="INFO") as cm:
-            self.interface.run_pipeline(self.next_visit, 1)
-        msg = f"INFO:{self.logger_name}:Running pipeline bias.yaml on visit '{self.next_visit}', snaps 1"
-        self.assertEqual(cm.output, [msg])
+        """Test that running the pipeline uses the correct arguments.
+        We can't run an actual pipeline because raw/calib/refcat/template data
+        are all zeroed out.
+        """
+        # Have to setup the data so that we can create the pipeline executor.
+        self.interface.prep_butler(self.next_visit)
+        filename = "fakeRawImage.fits"
+        filepath = os.path.join(self.input_data, filename)
+        data_id, file_data = fake_file_data(filepath,
+                                            self.butler.dimensions,
+                                            self.interface.instrument,
+                                            self.next_visit)
+        with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
+            mock.return_value = file_data
+            self.interface.ingest_image(filename)
+
+        with unittest.mock.patch("activator.middleware_interface.SimplePipelineExecutor.run") as mock_run:
+            self.interface.run_pipeline(self.next_visit, {1})
+        mock_run.assert_called_once_with(register_dataset_types=True)
+
+    def test_run_pipeline_empty_quantum_graph(self):
+        """Test that running a pipeline that results in an empty quantum graph
+        (because the snap ids are wrong), raises.
+        """
+        # Have to setup the data so that we can create the pipeline executor.
+        self.interface.prep_butler(self.next_visit)
+        filename = "fakeRawImage.fits"
+        filepath = os.path.join(self.input_data, filename)
+        data_id, file_data = fake_file_data(filepath,
+                                            self.butler.dimensions,
+                                            self.interface.instrument,
+                                            self.next_visit)
+        with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
+            mock.return_value = file_data
+            self.interface.ingest_image(filename)
+
+        with self.assertRaisesRegex(RuntimeError, "No data to process"):
+            self.interface.run_pipeline(self.next_visit, {2})
+
+    def test_run_pipeline_missing_raws(self):
+        """Test that running a pipeline with no raws, raises.
+        """
+        # Have to setup the data so that we can create the pipeline executor.
+        self.interface.prep_butler(self.next_visit)
+
+        # TODO: this exception will almost certainly change once we change how
+        # we do defineVisits.
+        with self.assertRaisesRegex(RuntimeError, "No exposures given"):
+            self.interface.run_pipeline(self.next_visit, {2})
