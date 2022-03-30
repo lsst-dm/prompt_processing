@@ -24,6 +24,7 @@ import os.path
 import unittest
 import unittest.mock
 
+import astropy.coordinates
 import astropy.units as u
 
 import astro_metadata_translator
@@ -41,7 +42,7 @@ instname = "DECam"
 filter = "g DECam SDSS c0001 4720.0 1520.0"
 
 
-def fake_file_data(filename, dimensions, instrument):
+def fake_file_data(filename, dimensions, instrument, visit):
     """Return file data for a mock file to be ingested.
 
     Parameters
@@ -52,19 +53,33 @@ def fake_file_data(filename, dimensions, instrument):
         The full set of dimensions for this butler.
     instrument : `lsst.obs.base.Instrument`
         The instrument the file is supposed to be from.
+    visit : `Visit`
+        Group of snaps from one detector to be processed.
 
     Returns
     -------
     data_id, file_data, : `DataCoordinate`, `RawFileData`
         The id and descriptor for the mock file.
     """
-    data_id = DataCoordinate.standardize({"exposure": 1, "detector": 1, "instrument": instrument.getName()},
+    data_id = DataCoordinate.standardize({"exposure": 1,
+                                          "detector": visit.detector,
+                                          "instrument": instrument.getName()},
                                          universe=dimensions)
-    obs_info = astro_metadata_translator.makeObservationInfo(instrument=instrument.getName(),
-                                                             exposure_id=1,
-                                                             observation_id="1",
-                                                             physical_filter=filter,
-                                                             exposure_time=30.0*u.second)
+
+    time = astropy.time.Time("2015-02-18T05:28:18.716517500", scale="tai")
+    obs_info = astro_metadata_translator.makeObservationInfo(
+        instrument=instrument.getName(),
+        datetime_begin=time,
+        datetime_end=time + 30*u.second,
+        exposure_id=1,
+        visit_id=1,
+        boresight_rotation_angle=astropy.coordinates.Angle(visit.rot*u.degree),
+        boresight_rotation_coord='sky',
+        tracking_radec=astropy.coordinates.SkyCoord(visit.ra, visit.dec, frame="icrs", unit="deg"),
+        observation_id="1",
+        physical_filter=filter,
+        exposure_time=30.0*u.second,
+        observation_type="science")
     dataset_info = RawFileDatasetInfo(data_id, obs_info)
     file_data = RawFileData([dataset_info],
                             lsst.resources.ResourcePath(filename),
@@ -174,7 +189,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.fail("Bias file missing from local butler.")
         try:
             self.butler.datasetExists('cpFlat', detector=56, instrument='DECam',
-                                      physical_filter="g DECam SDSS c0001 4720.0 1520.0",
+                                      physical_filter=filter,
                                       collections="DECam/calib/20150218T000000Z")
             # TODO: Have to use the exact run collection, because we can't
             # query by validity range.
@@ -212,7 +227,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
                                             self.butler.dimensions,
-                                            self.interface.instrument)
+                                            self.interface.instrument,
+                                            self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
@@ -238,7 +254,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
                                             self.butler.dimensions,
-                                            self.interface.instrument)
+                                            self.interface.instrument,
+                                            self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
                 self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"):
             mock.return_value = file_data
@@ -259,7 +276,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
                                             self.butler.dimensions,
-                                            self.interface.instrument)
+                                            self.interface.instrument,
+                                            self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)

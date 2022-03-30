@@ -373,6 +373,9 @@ class MiddlewareInterface:
         # TODO: can we move this from_pipeline call to prep_butler?
         where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in snaps)})"
         executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
+        if len(executor.quantum_graph) == 0:
+            # TODO: a good place for a custom exception?
+            raise RuntimeError("No data to process.")
         # TODO DM-34202: hack around a middleware bug.
         executor.butler = Butler(butler=self.butler,
                                  collections=[self.output_collection],
