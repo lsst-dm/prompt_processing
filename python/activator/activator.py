@@ -46,7 +46,12 @@ config_instrument = os.environ["RUBIN_INSTRUMENT"]
 active_instrument = Instrument.from_string(config_instrument)
 calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
-oid_regexp = re.compile(r"(.*?)/(\d+)/(.*?)/(\d+)/\1-\3-\4-.*?-.*?-\2\.f")
+# Format for filenames of raws uploaded to image_bucket:
+# instrument/detector/group/snap/instrument-group-snap-expid-filter-detector.(fits, fz, fits.gz)
+oid_regexp = re.compile(
+    r"(?P<instrument>.*?)/(?P<detector>\d+)/(?P<group>.*?)/(?P<snap>\d+)/"
+    r"(?P=instrument)-(?P=group)-(?P=snap)-(?P<expid>.*?)-(?P<filter>.*?)-(?P=detector)\.f"
+)
 timeout = os.environ.get("IMAGE_TIMEOUT", 50)
 
 logging.basicConfig(
@@ -166,7 +171,7 @@ def next_visit_handler() -> Tuple[str, int]:
         expected_visit = Visit(**data)
         assert expected_visit.instrument == active_instrument.getName(), \
             f"Expected {active_instrument.getName()}, received {expected_visit.instrument}."
-        snap_set = set()
+        expid_set = set()
 
         # Copy calibrations for this detector/visit
         mwi.prep_butler(expected_visit)
@@ -180,15 +185,16 @@ def next_visit_handler() -> Tuple[str, int]:
                 expected_visit.detector,
             )
             if oid:
+                m = re.match(oid_regexp, oid)
                 mwi.ingest_image(oid)
-                snap_set.add(snap)
+                expid_set.add(m.group('expid'))
 
         _log.debug(
             "Waiting for snaps from group"
             f" '{expected_visit.group}' detector {expected_visit.detector}"
         )
         start = time.time()
-        while len(snap_set) < expected_visit.snaps:
+        while len(expid_set) < expected_visit.snaps:
             response = subscriber.pull(
                 subscription=subscription.name,
                 max_messages=189 + 8 + 8,
@@ -204,7 +210,7 @@ def next_visit_handler() -> Tuple[str, int]:
                     continue
                 _log.warning(
                     "Timed out waiting for image in"
-                    f" group '{expected_visit.group}' after receiving snaps {snap_set}"
+                    f" group '{expected_visit.group}' after receiving exposures {expid_set}"
                 )
                 break
 
@@ -214,8 +220,8 @@ def next_visit_handler() -> Tuple[str, int]:
                 oid = received.message.attributes["objectId"]
                 m = re.match(oid_regexp, oid)
                 if m:
-                    instrument, detector, group, snap = m.groups()
-                    _log.debug("instrument, detector, group, snap = %s", m.groups())
+                    instrument, detector, group, snap, expid = m.groups()
+                    _log.debug("instrument, detector, group, snap, expid = %s", m.groups())
                     if (
                         instrument == expected_visit.instrument
                         and int(detector) == int(expected_visit.detector)
@@ -224,14 +230,14 @@ def next_visit_handler() -> Tuple[str, int]:
                     ):
                         # Ingest the snap
                         mwi.ingest_image(oid)
-                        snap_set.add(snap)
+                        expid_set.add(expid)
                 else:
                     _log.error(f"Failed to match object id '{oid}'")
             subscriber.acknowledge(subscription=subscription.name, ack_ids=ack_list)
 
         # Got all the snaps; run the pipeline
         _log.info(f"Running pipeline on group: {expected_visit.group} detector: {expected_visit.detector}")
-        mwi.run_pipeline(expected_visit, snap_set)
+        mwi.run_pipeline(expected_visit, expid_set)
         return "Pipeline executed", 200
     finally:
         subscriber.delete_subscription(subscription=subscription.name)

@@ -377,15 +377,19 @@ class MiddlewareInterface:
         assert len(result) == 1, "Should have ingested exactly one image."
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
 
-    def run_pipeline(self, visit: Visit, snaps: set) -> None:
+    def run_pipeline(self, visit: Visit, exposure_ids: set) -> None:
         """Process the received image(s).
 
         Parameters
         ----------
         visit : Visit
             Group of snaps from one detector to be processed.
-        snaps : `set`
-            Identifiers of the snaps that were received.
+        exposure_ids : `set`
+            Identifiers of the exposures that were received.
+            TODO: We need to be careful about the distinction between snap IDs
+            (a running series from 0 to N-1) and exposure IDs (which are more
+            complex and encode other info). Butler currently does not recognize
+            a snap ID, as such.
             TODO: I believe this is unnecessary because it should be encoded
             in the `visit` object, but we'll have to test how that works once
             we implemented this with actual data.
@@ -401,7 +405,7 @@ class MiddlewareInterface:
         self.define_visits.run(exposures)
 
         # TODO: can we move this from_pipeline call to prep_butler?
-        where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in snaps)})"
+        where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in exposure_ids)})"
         executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
         if len(executor.quantum_graph) == 0:
             # TODO: a good place for a custom exception?
