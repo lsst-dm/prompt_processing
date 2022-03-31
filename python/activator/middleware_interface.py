@@ -26,6 +26,7 @@ import os
 import os.path
 import tempfile
 
+from lsst.utils import getPackageDir
 from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
 from lsst.ctrl.mpexec import SimplePipelineExecutor
@@ -320,8 +321,10 @@ class MiddlewareInterface:
             Raised if there is no AP pipeline file for this configuration.
             TODO: could be a good case for a custom exception here.
         """
-        # utils.getPackageDir doesn't work in production environment.
-        ap_pipeline_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", "..",
+        # TODO: We hacked the basepath in the Dockerfile so this works both in
+        # development and in service container, but it would be better if there
+        # were a path that's valid in both.
+        ap_pipeline_file = os.path.join(getPackageDir("prompt_prototype"),
                                         "pipelines", self.instrument.getName(), "ApPipe.yaml")
         try:
             self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
