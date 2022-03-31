@@ -8,7 +8,7 @@ ARG CALIB_REPO
 ARG IMAGE_BUCKET
 ARG IMAGE_TIMEOUT
 WORKDIR $APP_HOME
-COPY . activator/
+COPY python/activator activator/
 CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
     && exec gunicorn --bind :$PORT --workers 1 --threads 1 --timeout 0 activator.activator:app
