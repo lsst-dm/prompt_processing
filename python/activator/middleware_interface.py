@@ -320,17 +320,13 @@ class MiddlewareInterface:
             Raised if there is no AP pipeline file for this configuration.
             TODO: could be a good case for a custom exception here.
         """
-        # TODO: we probably want to be able to configure this per-instrument?
-        # TODO: DM-33453 will remap ap_pipe/pipelines to use getName convention
-        camera_paths = {"DECam": "DarkEnergyCamera", "HSC": "HyperSuprimeCam"}
-        try:
-            camera_path = camera_paths[self.instrument.getName()]
-        except KeyError:
-            raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
         # utils.getPackageDir doesn't work in production environment.
         ap_pipeline_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", "..",
-                                        "pipelines", camera_path, "ApPipe.yaml")
-        self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
+                                        "pipelines", self.instrument.getName(), "ApPipe.yaml")
+        try:
+            self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
+        except FileNotFoundError:
+            raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
         # TODO: Can we write to a configurable apdb schema, rather than
         # "postgres"?
         self.pipeline.addConfigOverride("diaPipe", "apdb.db_url",
