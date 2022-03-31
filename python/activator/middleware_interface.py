@@ -404,6 +404,11 @@ class MiddlewareInterface:
         exposures = set(self.butler.registry.queryDataIds(["exposure"]))
         self.define_visits.run(exposures)
 
+        # TODO: temporary workaround for uploader and image header not agreeing
+        # on what the exposure ID is. We use the full exposure list here
+        # because we can't support multiple visits anyway.
+        exposure_ids = {data_id["exposure"] for data_id in exposures}
+
         # TODO: can we move this from_pipeline call to prep_butler?
         where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in exposure_ids)})"
         executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
