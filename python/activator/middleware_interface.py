@@ -327,7 +327,8 @@ class MiddlewareInterface:
             camera_path = camera_paths[self.instrument.getName()]
         except KeyError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
-        ap_pipeline_file = os.path.join(os.path.abspath(os.path.dirname(__file__)),
+        # utils.getPackageDir doesn't work in production environment.
+        ap_pipeline_file = os.path.join(os.path.abspath(os.path.dirname(__file__)), "..", "..",
                                         "pipelines", camera_path, "ApPipe.yaml")
         self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         # TODO: Can we write to a configurable apdb schema, rather than

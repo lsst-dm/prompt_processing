@@ -12,7 +12,7 @@
 # Include these paths.
 Dockerfile.*
 !python/activator/*.py
-!python/activator/pipelines
+!pipelines
 
 # Exclude .gitignored files, even if they match the above paths.
 #!include:.gitignore

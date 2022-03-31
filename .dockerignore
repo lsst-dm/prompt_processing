@@ -2,4 +2,4 @@
 *
 # Include these paths.
 !python/activator/*.py
-!python/activator/pipelines
+!pipelines
