@@ -423,4 +423,4 @@ class MiddlewareInterface:
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
         result = executor.run(register_dataset_types=True)
-        _log.info(f"Pipeline produced {len(result)} output datasets.")
+        _log.info(f"Pipeline successfully run on {len(result)} quanta.")
