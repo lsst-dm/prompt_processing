@@ -424,11 +424,3 @@ class MiddlewareInterface:
         # *Diff_diaSrcTable, etc. have not been registered.
         result = executor.run(register_dataset_types=True)
         _log.info(f"Pipeline produced {len(result)} output datasets.")
-
-
-def filter_calibs(dataset_ref, visit_info):
-    for dimension in ("instrument", "detector", "physical_filter"):
-        if dimension in dataset_ref.dataId:
-            if dataset_ref.dataId[dimension] != visit_info[dimension]:
-                return False
-    return True
