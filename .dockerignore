@@ -1,0 +1,5 @@
+# Exclude everything unless otherwise stated.
+*
+# Include these paths.
+!python/activator/*.py
+!pipelines

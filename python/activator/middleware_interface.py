@@ -26,6 +26,8 @@ import os
 import os.path
 import tempfile
 
+from lsst.utils import getPackageDir
+from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
 from lsst.ctrl.mpexec import SimplePipelineExecutor
 from lsst.daf.butler import Butler, CollectionType
@@ -81,7 +83,12 @@ class MiddlewareInterface:
         self.prefix = prefix
         self.central_butler = central_butler
         self.image_bucket = image_bucket
-        self.instrument = lsst.obs.base.utils.getInstrument(instrument)
+        # TODO: _download_store turns MWI into a tagged class; clean this up later
+        if not prefix.startswith("file"):
+            self._download_store = tempfile.TemporaryDirectory(prefix="holding-")
+        else:
+            self._download_store = None
+        self.instrument = lsst.obs.base.Instrument.from_string(instrument)
 
         self.output_collection = f"{self.instrument.getName()}/prompt"
 
@@ -314,20 +321,40 @@ class MiddlewareInterface:
             Raised if there is no AP pipeline file for this configuration.
             TODO: could be a good case for a custom exception here.
         """
-        # TODO: we probably want to be able to configure this per-instrument?
-        # TODO: DM-33453 will remap ap_pipe/pipelines to use getName convention
-        camera_paths = {"DECam": "DarkEnergyCamera", "HSC": "HyperSuprimeCam"}
+        # TODO: We hacked the basepath in the Dockerfile so this works both in
+        # development and in service container, but it would be better if there
+        # were a path that's valid in both.
+        ap_pipeline_file = os.path.join(getPackageDir("prompt_prototype"),
+                                        "pipelines", self.instrument.getName(), "ApPipe.yaml")
         try:
-            camera_path = camera_paths[self.instrument.getName()]
-        except KeyError:
+            self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
+        except FileNotFoundError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
-        ap_pipeline_file = os.path.join(os.path.abspath(os.path.dirname(__file__)),
-                                        "pipelines", camera_path, "ApPipe.yaml")
-        self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         # TODO: Can we write to a configurable apdb schema, rather than
         # "postgres"?
         self.pipeline.addConfigOverride("diaPipe", "apdb.db_url",
                                         f"postgresql://postgres@{self.ip_apdb}/postgres")
+
+    def _download(self, remote):
+        """Download an image located on a remote store.
+
+        Parameters
+        ----------
+        remote : `lsst.resources.ResourcePath`
+            The location from which to download the file. Must not be a
+            file:// URI.
+
+        Returns
+        -------
+        local : `lsst.resources.ResourcePath`
+            The location to which the file has been downloaded.
+        """
+        local = ResourcePath(os.path.join(self._download_store.name, remote.basename()))
+        # TODO: this requires the service account to have the otherwise admin-ish
+        # storage.buckets.get permission (DM-34188). Once that's resolved, see if
+        # prompt-service can do without the "Storage Legacy Bucket Reader" role.
+        local.transfer_from(remote, "copy")
+        return local
 
     def ingest_image(self, oid: str) -> None:
         """Ingest an image into the temporary butler.
@@ -339,7 +366,10 @@ class MiddlewareInterface:
             image bucket.
         """
         _log.info(f"Ingesting image id '{oid}'")
-        file = f"{self.prefix}{self.image_bucket}/{oid}"
+        file = ResourcePath(f"{self.prefix}{self.image_bucket}/{oid}")
+        if not file.isLocal:
+            # TODO: RawIngestTask doesn't currently support remote files.
+            file = self._download(file)
         result = self.rawIngestTask.run([file])
         # We only ingest one image at a time.
         # TODO: replace this assert with a custom exception, once we've decided
@@ -347,15 +377,19 @@ class MiddlewareInterface:
         assert len(result) == 1, "Should have ingested exactly one image."
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
 
-    def run_pipeline(self, visit: Visit, snaps: set) -> None:
+    def run_pipeline(self, visit: Visit, exposure_ids: set) -> None:
         """Process the received image(s).
 
         Parameters
         ----------
         visit : Visit
             Group of snaps from one detector to be processed.
-        snaps : `set`
-            Identifiers of the snaps that were received.
+        exposure_ids : `set`
+            Identifiers of the exposures that were received.
+            TODO: We need to be careful about the distinction between snap IDs
+            (a running series from 0 to N-1) and exposure IDs (which are more
+            complex and encode other info). Butler currently does not recognize
+            a snap ID, as such.
             TODO: I believe this is unnecessary because it should be encoded
             in the `visit` object, but we'll have to test how that works once
             we implemented this with actual data.
@@ -370,8 +404,13 @@ class MiddlewareInterface:
         exposures = set(self.butler.registry.queryDataIds(["exposure"]))
         self.define_visits.run(exposures)
 
+        # TODO: temporary workaround for uploader and image header not agreeing
+        # on what the exposure ID is. We use the full exposure list here
+        # because we can't support multiple visits anyway.
+        exposure_ids = {data_id["exposure"] for data_id in exposures}
+
         # TODO: can we move this from_pipeline call to prep_butler?
-        where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in snaps)})"
+        where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in exposure_ids)})"
         executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
         if len(executor.quantum_graph) == 0:
             # TODO: a good place for a custom exception?
@@ -384,12 +423,4 @@ class MiddlewareInterface:
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
         result = executor.run(register_dataset_types=True)
-        _log.info(f"Pipeline produced {len(result)} output datasets.")
-
-
-def filter_calibs(dataset_ref, visit_info):
-    for dimension in ("instrument", "detector", "physical_filter"):
-        if dimension in dataset_ref.dataId:
-            if dataset_ref.dataId[dimension] != visit_info[dimension]:
-                return False
-    return True
+        _log.info(f"Pipeline successfully run on {len(result)} quanta.")

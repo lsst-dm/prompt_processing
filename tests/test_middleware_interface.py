@@ -137,6 +137,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 kind="SURVEY")
         self.logger_name = "lsst.activator.middleware_interface"
 
+    def tearDown(self):
+        super().tearDown()
+        # TemporaryDirectory warns on leaks
+        self.repo.cleanup()
+
     def test_init(self):
         """Basic tests of the initialized interface object.
         """
@@ -286,9 +291,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.run_pipeline(self.next_visit, {1})
         mock_run.assert_called_once_with(register_dataset_types=True)
 
+    @unittest.skip("run_pipeline ignores the exposure_ids arg, so we can't test passing invalid ones.")
     def test_run_pipeline_empty_quantum_graph(self):
         """Test that running a pipeline that results in an empty quantum graph
-        (because the snap ids are wrong), raises.
+        (because the exposure ids are wrong), raises.
         """
         # Have to setup the data so that we can create the pipeline executor.
         self.interface.prep_butler(self.next_visit)

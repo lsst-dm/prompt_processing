@@ -7,10 +7,12 @@ on:
     paths:
       - '.github/workflows/build-service.yml'
       - 'python/activator/**'
+      - 'Dockerfile.activator'
   pull_request:
     paths:
       - '.github/workflows/build-service.yml'
       - 'python/activator/**'
+      - 'Dockerfile.activator'
   workflow_dispatch:
 
 permissions:
@@ -58,7 +60,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Build image
-        run: docker build python/activator --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}"
+        run: docker build . -f Dockerfile.activator --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}"
       - name: Push image to GitHub Container Registry
         run: |
           IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME

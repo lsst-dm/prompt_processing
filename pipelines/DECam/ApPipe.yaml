@@ -39,7 +39,7 @@ tasks:
     class: lsst.pipe.tasks.calibrate.CalibrateTask
     config:
       # Use dataset's reference catalogs
-      file: $PROMPT_PROTOTYPE_DIR/python/activator/pipelines/calibrate.py
+      file: $PROMPT_PROTOTYPE_DIR/pipelines/calibrate.py
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:

@@ -363,6 +363,9 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
         # closures for the bucket and data.
         def upload_from_pool(visit, snap_id):
             src_blob = snap_dict[snap_id][visit]
+            # TODO: use the images' native exposure ID here, or (better) hack
+            # the sent images so that they have the generated ID. Pipeline
+            # execution fails if they don't match.
             exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
             filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
                                 exposure_id, visit.filter)

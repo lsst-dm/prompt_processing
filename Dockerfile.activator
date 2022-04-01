@@ -1,6 +1,7 @@
 FROM ghcr.io/lsst-dm/prompt-proto-base:latest
 ENV PYTHONUNBUFFERED True
 ENV APP_HOME /app
+ENV PROMPT_PROTOTYPE_DIR $APP_HOME
 ARG RUBIN_INSTRUMENT
 ARG PUBSUB_VERIFICATION_TOKEN
 ARG PORT
@@ -8,7 +9,8 @@ ARG CALIB_REPO
 ARG IMAGE_BUCKET
 ARG IMAGE_TIMEOUT
 WORKDIR $APP_HOME
-COPY . activator/
+COPY python/activator activator/
+COPY pipelines pipelines/
 CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
     && exec gunicorn --bind :$PORT --workers 1 --threads 1 --timeout 0 activator.activator:app
