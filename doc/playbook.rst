@@ -105,7 +105,9 @@ To create or edit the Cloud Run service in the Google Cloud Console:
   * RUBIN_INSTRUMENT: full instrument class name, including module path
   * PUBSUB_VERIFICATION_TOKEN: choose an arbitrary string matching the Pub/Sub endpoint URL below
   * IMAGE_BUCKET: bucket containing raw images (``rubin-prompt-proto-main``)
-  * CALIB_REPO: repo containing calibrations (and templates); only used for log messages at present
+  * CALIB_REPO: repo containing calibrations (and templates)
+  * IP_APDB: IP address and port of the APDB (see `Databases`_, below)
+  * IP_REGISTRY: IP address and port of the registry database (see `Databases`_)
 
 * There is also one optional parameter:
 
@@ -115,6 +117,12 @@ To create or edit the Cloud Run service in the Google Cloud Console:
 
   * PORT
 
+* Also in the Variables & Secrets tab, reference the following secrets:
+
+  * ``butler-registry-db-pass``, as the environment variable ``PSQL_REGISTRY_PASS``
+  * ``apdb-db-pass``, as the environment variable ``PSQL_APDB_PASS``
+
+* In the Connections tab, select the ``db-connector`` VPC connector. Do *not* create anything under "Cloud SQL connections"
 * Set the "Request timeout" to 600 seconds (if a worker has not responded by then, it will be killed).
 * Set the "Maximum requests per container" to 1.
 * Under "Autoscaling", the minimum number should be set to 0 to save money while debugging, but it would be a multiple of the number of detectors in production.
