@@ -8,7 +8,7 @@ import random
 import re
 import sys
 import time
-from visit import Visit
+from activator.visit import Visit
 
 
 @dataclass
