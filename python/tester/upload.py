@@ -8,6 +8,7 @@ import random
 import re
 import sys
 import time
+from activator.raw import RAW_REGEXP, get_raw_path
 from activator.visit import Visit
 
 
@@ -31,25 +32,6 @@ PUBSUB_TOKEN = "abc123"
 KINDS = ("BIAS", "DARK", "FLAT")
 
 PROJECT_ID = "prompt-proto"
-
-
-def raw_path(instrument, detector, group, snap, exposure_id, filter):
-    """The path on which to store raws in the raw bucket.
-
-    This format is also assumed by ``activator/activator.py.``
-    """
-    return (
-        f"{instrument}/{detector}/{group}/{snap}"
-        f"/{instrument}-{group}-{snap}"
-        f"-{exposure_id}-{filter}-{detector}.fz"
-    )
-
-
-# TODO: unify the format code across prompt_prototype
-RAW_REGEXP = re.compile(
-    r"(?P<instrument>.*?)/(?P<detector>\d+)/(?P<group>.*?)/(?P<snap>\d+)/"
-    r"(?P=instrument)-(?P=group)-(?P=snap)-(?P<expid>.*?)-(?P<filter>.*?)-(?P=detector)\.f"
-)
 
 
 logging.basicConfig(
@@ -367,8 +349,8 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
             # the sent images so that they have the generated ID. Pipeline
             # execution fails if they don't match.
             exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
-            filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                exposure_id, visit.filter)
+            filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
+                                    exposure_id, visit.filter)
             src_bucket.copy_blob(src_blob, dest_bucket, new_name=filename)
         process_group(publisher, visit_infos, upload_from_pool)
         _log.info("Slewing to next group")
@@ -399,8 +381,8 @@ def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base)
         # closures for the bucket and data.
         def upload_dummy(visit, snap_id):
             exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
-            filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                exposure_id, visit.filter)
+            filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
+                                    exposure_id, visit.filter)
             dest_bucket.blob(filename).upload_from_string("Test")
         process_group(publisher, visit_infos, upload_dummy)
         _log.info("Slewing to next group")

@@ -36,6 +36,7 @@ from lsst.daf.butler import Butler
 from lsst.obs.base import Instrument
 from .make_pgpass import make_pgpass
 from .middleware_interface import MiddlewareInterface
+from .raw import RAW_REGEXP
 from .visit import Visit
 
 PROJECT_ID = "prompt-proto"
@@ -46,12 +47,6 @@ config_instrument = os.environ["RUBIN_INSTRUMENT"]
 active_instrument = Instrument.from_string(config_instrument)
 calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
-# Format for filenames of raws uploaded to image_bucket:
-# instrument/detector/group/snap/instrument-group-snap-expid-filter-detector.(fits, fz, fits.gz)
-oid_regexp = re.compile(
-    r"(?P<instrument>.*?)/(?P<detector>\d+)/(?P<group>.*?)/(?P<snap>\d+)/"
-    r"(?P=instrument)-(?P=group)-(?P=snap)-(?P<expid>.*?)-(?P<filter>.*?)-(?P=detector)\.f"
-)
 timeout = os.environ.get("IMAGE_TIMEOUT", 50)
 
 logging.basicConfig(
@@ -185,7 +180,7 @@ def next_visit_handler() -> Tuple[str, int]:
                 expected_visit.detector,
             )
             if oid:
-                m = re.match(oid_regexp, oid)
+                m = re.match(RAW_REGEXP, oid)
                 mwi.ingest_image(oid)
                 expid_set.add(m.group('expid'))
 
@@ -218,7 +213,7 @@ def next_visit_handler() -> Tuple[str, int]:
             for received in response.received_messages:
                 ack_list.append(received.ack_id)
                 oid = received.message.attributes["objectId"]
-                m = re.match(oid_regexp, oid)
+                m = re.match(RAW_REGEXP, oid)
                 if m:
                     instrument, detector, group, snap, expid = m.groups()
                     _log.debug("instrument, detector, group, snap, expid = %s", m.groups())

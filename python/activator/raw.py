@@ -1,4 +1,3 @@
-#!/bin/bash
 # This file is part of prompt_prototype.
 #
 # Developed for the LSST Data Management System.
@@ -20,19 +19,29 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# This script uploads the raw files from the ap_verify_ci_cosmos_pdr2 dataset
-# to Google Storage. It renames the files to match prompt_prototype conventions.
-# The user must have gsutil already configured, and must have
-# ap_verify_ci_cosmos_pdr2 set up.
+"""Common definitions of raw paths.
 
-set -e  # Abort on any error
+This module provides tools to convert raw paths into exposure metadata and
+vice versa.
+"""
 
-RAW_DIR="${AP_VERIFY_CI_COSMOS_PDR2_DIR:?'dataset is not set up'}/raw"
-UPLOAD_BUCKET=rubin-prompt-proto-unobserved
+__all__ = ["RAW_REGEXP", "get_raw_path"]
 
-# Filename format is defined in activator/raw.py:
-# instrument/detector/group/snap/instrument-group-snap-exposureId-filter-detector
-gsutil cp "${RAW_DIR}/HSC-0059150-050.fits.gz" \
-    gs://${UPLOAD_BUCKET}/HSC/50/2016030700001/0/HSC-2016030700001-0-0059150-HSC-G-50.fits.gz
-gsutil cp "${RAW_DIR}/HSC-0059160-051.fits.gz" \
-    gs://${UPLOAD_BUCKET}/HSC/51/2016030700002/0/HSC-2016030700002-0-0059160-HSC-G-51.fits.gz
+import re
+
+# Format for filenames of raws uploaded to image bucket:
+# instrument/detector/group/snap/instrument-group-snap-expid-filter-detector.(fits, fz, fits.gz)
+RAW_REGEXP = re.compile(
+    r"(?P<instrument>.*?)/(?P<detector>\d+)/(?P<group>.*?)/(?P<snap>\d+)/"
+    r"(?P=instrument)-(?P=group)-(?P=snap)-(?P<expid>.*?)-(?P<filter>.*?)-(?P=detector)\.f"
+)
+
+
+def get_raw_path(instrument, detector, group, snap, exposure_id, filter):
+    """The path on which to store raws in the image bucket.
+    """
+    return (
+        f"{instrument}/{detector}/{group}/{snap}"
+        f"/{instrument}-{group}-{snap}"
+        f"-{exposure_id}-{filter}-{detector}.fz"
+    )
