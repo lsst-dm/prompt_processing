@@ -116,7 +116,7 @@ def check_for_snap(
         was found. If multiple files match, this function logs an error
         but returns one of the files anyway.
     """
-    prefix = f"{instrument}/{detector}/{group}/{snap}/{instrument}-{group}-{snap}-"
+    prefix = f"{instrument}/{detector}/{group}/{snap}/"
     _log.debug(f"Checking for '{prefix}'")
     blobs = list(storage_client.list_blobs(image_bucket, prefix=prefix))
     if not blobs:

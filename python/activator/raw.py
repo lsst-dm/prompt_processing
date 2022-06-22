@@ -30,10 +30,10 @@ __all__ = ["RAW_REGEXP", "get_raw_path"]
 import re
 
 # Format for filenames of raws uploaded to image bucket:
-# instrument/detector/group/snap/instrument-group-snap-expid-filter-detector.(fits, fz, fits.gz)
+# instrument/detector/group/snap/expid/filter/*.(fits, fz, fits.gz)
 RAW_REGEXP = re.compile(
-    r"(?P<instrument>.*?)/(?P<detector>\d+)/(?P<group>.*?)/(?P<snap>\d+)/"
-    r"(?P=instrument)-(?P=group)-(?P=snap)-(?P<expid>.*?)-(?P<filter>.*?)-(?P=detector)\.f"
+    r"(?P<instrument>.*?)/(?P<detector>\d+)/(?P<group>.*?)/(?P<snap>\d+)/(?P<expid>.*?)/(?P<filter>.*?)/"
+    r"[^/]+\.f"
 )
 
 
@@ -41,7 +41,7 @@ def get_raw_path(instrument, detector, group, snap, exposure_id, filter):
     """The path on which to store raws in the image bucket.
     """
     return (
-        f"{instrument}/{detector}/{group}/{snap}"
+        f"{instrument}/{detector}/{group}/{snap}/{exposure_id}/{filter}"
         f"/{instrument}-{group}-{snap}"
         f"-{exposure_id}-{filter}-{detector}.fz"
     )
