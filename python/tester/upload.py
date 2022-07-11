@@ -362,10 +362,9 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
         # closures for the bucket and data.
         def upload_from_pool(visit, snap_id):
             src_blob = snap_dict[snap_id][visit]
-            # TODO: use the images' native exposure ID here, or (better) hack
-            # the sent images so that they have the generated ID. Pipeline
-            # execution fails if they don't match.
-            exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
+            # TODO: converting raw_pool from a nested mapping to an indexable
+            # custom class would make it easier to include such metadata as expId.
+            exposure_id = int(re.match(RAW_REGEXP, src_blob.name).group('expid'))
             filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
                                     exposure_id, visit.filter)
             src_bucket.copy_blob(src_blob, dest_bucket, new_name=filename)
