@@ -333,8 +333,17 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
         group IDs.
     group_base : `int`
         The base number from which to offset new group numbers.
+
+    Exceptions
+    ----------
+    ValueError
+        Raised if ``n_groups`` exceeds the number of groups in ``raw_pool``.
     """
-    for i, true_group in enumerate(itertools.islice(itertools.cycle(raw_pool), n_groups)):
+    if n_groups > len(raw_pool):
+        raise ValueError(f"Requested {n_groups} groups, but only {len(raw_pool)} "
+                         "unobserved raws are available.")
+
+    for i, true_group in enumerate(itertools.islice(raw_pool, n_groups)):
         group = group_base + i
         _log.debug(f"Processing group {group} from unobserved {true_group}...")
         # snap_dict maps snap_id to {visit: blob}
