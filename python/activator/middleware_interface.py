@@ -386,28 +386,16 @@ class MiddlewareInterface:
             Group of snaps from one detector to be processed.
         exposure_ids : `set`
             Identifiers of the exposures that were received.
-            TODO: We need to be careful about the distinction between snap IDs
-            (a running series from 0 to N-1) and exposure IDs (which are more
-            complex and encode other info). Butler currently does not recognize
-            a snap ID, as such.
-            TODO: I believe this is unnecessary because it should be encoded
-            in the `visit` object, but we'll have to test how that works once
-            we implemented this with actual data.
         """
         # TODO: we want to define visits earlier, but we have to ingest a
         # faked raw file and appropriate SSO data during prep (and then
         # cleanup when ingesting the real data).
-        # TODO: Also, using this approach (instead of saving the datasetRefs
-        # returned by ingest and using them to define visits) also requires
-        # pruning this list down to only the exposures that aren't already
-        # defined (otherwise defineVisits.run does extra "nothing" work).
-        exposures = set(self.butler.registry.queryDataIds(["exposure"]))
-        self.define_visits.run(exposures)
-
-        # TODO: temporary workaround for uploader and image header not agreeing
-        # on what the exposure ID is. We use the full exposure list here
-        # because we can't support multiple visits anyway.
-        exposure_ids = {data_id["exposure"] for data_id in exposures}
+        try:
+            self.define_visits.run({"instrument": self.instrument.getName(),
+                                    "exposure": exp} for exp in exposure_ids)
+        except lsst.daf.butler.registry.DataIdError as e:
+            # TODO: a good place for a custom exception?
+            raise RuntimeError("No data to process.") from e
 
         # TODO: can we move this from_pipeline call to prep_butler?
         where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in exposure_ids)})"
