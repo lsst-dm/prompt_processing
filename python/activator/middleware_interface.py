@@ -167,6 +167,33 @@ class MiddlewareInterface:
                                                               detector,
                                                               flipX=flip_x)
 
+    def _detector_bounding_circle(self, detector: lsst.afw.cameraGeom.Detector,
+                                  wcs: lsst.afw.geom.SkyWcs
+                                  ) -> (lsst.geom.SpherePoint, lsst.geom.Angle):
+        # Could return a sphgeom.Circle, but that would require a lot of
+        # sphgeom->geom conversions downstream. Even their Angles are different!
+        """Compute a small sky circle that contains the detector.
+
+        Parameters
+        ----------
+        detector : `lsst.afw.cameraGeom.Detector`
+            The detector for which to compute an on-sky bounding circle.
+        wcs : `lsst.afw.geom.SkyWcs`
+            The conversion from detector to sky coordinates.
+
+        Returns
+        -------
+        center : `lsst.geom.SpherePoint`
+            The center of the bounding circle.
+        radius : `lsst.geom.Angle`
+            The opening angle of the bounding circle.
+        """
+        radii = []
+        center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
+        for corner in detector.getCorners(lsst.afw.cameraGeom.PIXELS):
+            radii.append(wcs.pixelToSky(corner).separation(center))
+        return center, max(radii)
+
     def prep_butler(self, visit: Visit) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
 
@@ -181,13 +208,7 @@ class MiddlewareInterface:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
                 detector = self.camera[visit.detector]
                 wcs = self._predict_wcs(detector, visit)
-
-                # Compute the maximum sky circle that contains the detector.
-                radii = []
-                center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
-                for corner in detector.getCorners(lsst.afw.cameraGeom.PIXELS):
-                    radii.append(wcs.pixelToSky(corner).separation(center))
-                radius = max(radii)
+                center, radius = self._detector_bounding_circle(detector, wcs)
 
                 self._export_refcats(export, center, radius)
                 self._export_skymap_and_templates(export, center, detector, wcs)
