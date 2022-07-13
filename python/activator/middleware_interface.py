@@ -204,12 +204,12 @@ class MiddlewareInterface:
         """
         _log.info(f"Preparing Butler for visit '{visit}'")
 
+        detector = self.camera[visit.detector]
+        wcs = self._predict_wcs(detector, visit)
+        center, radius = self._detector_bounding_circle(detector, wcs)
+
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
-                detector = self.camera[visit.detector]
-                wcs = self._predict_wcs(detector, visit)
-                center, radius = self._detector_bounding_circle(detector, wcs)
-
                 self._export_refcats(export, center, radius)
                 self._export_skymap_and_templates(export, center, detector, wcs)
                 self._export_calibs(export, visit.detector, visit.filter)
