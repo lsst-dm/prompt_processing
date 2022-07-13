@@ -144,26 +144,44 @@ class MiddlewareInterface:
         self.rawIngestTask = lsst.obs.base.RawIngestTask(config=config,
                                                          butler=self.butler)
 
+    def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector, visit: Visit) -> lsst.afw.geom.SkyWcs:
+        """Calculate the expected detector WCS for an incoming observation.
+
+        Parameters
+        ----------
+        detector : `lsst.afw.cameraGeom.Detector`
+            The detector for which to generate a WCS.
+        visit : `Visit`
+            Predicted observation metadata for the detector.
+
+        Returns
+        -------
+        wcs : `lsst.afw.geom.SkyWcs`
+            An approximate WCS for ``visit``.
+        """
+        boresight_center = lsst.geom.SpherePoint(visit.ra, visit.dec, lsst.geom.degrees)
+        orientation = lsst.geom.Angle(visit.rot, lsst.geom.degrees)
+        flip_x = True if self.instrument.getName() == "DECam" else False
+        return lsst.obs.base.createInitialSkyWcsFromBoresight(boresight_center,
+                                                              orientation,
+                                                              detector,
+                                                              flipX=flip_x)
+
     def prep_butler(self, visit: Visit) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
 
         Parameters
         ----------
-        visit : Visit
+        visit : `Visit`
             Group of snaps from one detector to prepare the butler for.
         """
         _log.info(f"Preparing Butler for visit '{visit}'")
 
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
-                boresight_center = lsst.geom.SpherePoint(visit.ra, visit.dec, lsst.geom.degrees)
-                orientation = lsst.geom.Angle(visit.rot, lsst.geom.degrees)
                 detector = self.camera[visit.detector]
-                flip_x = True if self.instrument.getName() == "DECam" else False
-                wcs = lsst.obs.base.createInitialSkyWcsFromBoresight(boresight_center,
-                                                                     orientation,
-                                                                     detector,
-                                                                     flipX=flip_x)
+                wcs = self._predict_wcs(detector, visit)
+
                 # Compute the maximum sky circle that contains the detector.
                 radii = []
                 center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
