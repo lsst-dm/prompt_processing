@@ -172,10 +172,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                                collections="refcats"))
 
         # Check that the right skymap is in the chained output collection.
-        self.butler.datasetExists("skyMap",
-                                  # TODO: we shouldn't need skymap here?
-                                  skymap="deepCoadd_skyMap",
-                                  collections=self.interface.output_collection)
+        self.assertTrue(
+            self.butler.datasetExists("skyMap",
+                                      # TODO: we shouldn't need skymap here?
+                                      skymap="deepCoadd_skyMap",
+                                      collections=self.interface.output_collection)
+        )
 
         # These shards were identified by plotting the objects in each shard
         # on-sky and overplotting the detector corners.
@@ -185,20 +187,24 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(expected_shards, [x['htm7'] for x in loaded_shards])
         # Check that the right calibs are in the chained output collection.
         try:
-            self.butler.datasetExists('cpBias', detector=56, instrument='DECam',
-                                      collections="DECam/calib/20150218T000000Z")
-            # TODO: Have to use the exact run collection, because we can't
-            # query by validity range.
-            # collections=self.interface.output_collection)
+            self.assertTrue(
+                self.butler.datasetExists('cpBias', detector=56, instrument='DECam',
+                                          collections="DECam/calib/20150218T000000Z")
+                # TODO: Have to use the exact run collection, because we can't
+                # query by validity range.
+                # collections=self.interface.output_collection)
+            )
         except LookupError:
             self.fail("Bias file missing from local butler.")
         try:
-            self.butler.datasetExists('cpFlat', detector=56, instrument='DECam',
-                                      physical_filter=filter,
-                                      collections="DECam/calib/20150218T000000Z")
-            # TODO: Have to use the exact run collection, because we can't
-            # query by validity range.
-            # collections=self.interface.output_collection)
+            self.assertTrue(
+                self.butler.datasetExists('cpFlat', detector=56, instrument='DECam',
+                                          physical_filter=filter,
+                                          collections="DECam/calib/20150218T000000Z")
+                # TODO: Have to use the exact run collection, because we can't
+                # query by validity range.
+                # collections=self.interface.output_collection)
+            )
         except LookupError:
             self.fail("Flat file missing from local butler.")
 
@@ -210,10 +216,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Need to refresh the butler to get all the dimensions/collections.
         self.butler.registry.refresh()
         for patch in (464, 465, 509, 510):
-            self.butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
-                                      # TODO: we shouldn't need skymap here?
-                                      skymap="deepCoadd_skyMap",
-                                      collections=self.interface.output_collection)
+            self.assertTrue(
+                self.butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
+                                          # TODO: we shouldn't need skymap here?
+                                          skymap="deepCoadd_skyMap",
+                                          collections=self.interface.output_collection)
+            )
 
     @unittest.skip("We know this doesn't work (skymaps!), but this is a test we want to have!")
     def test_prep_butler_twice(self):
