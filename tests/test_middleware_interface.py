@@ -158,26 +158,25 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
         self.assertEqual(self.interface.rawIngestTask.config.transfer, "copy")
 
-    def test_prep_butler(self):
-        """Test that the butler has all necessary data for the next visit.
+    def _check_imports(self, butler):
+        """Test that the butler has the expected supporting data.
         """
-        self.interface.prep_butler(self.next_visit)
-        self.assertEqual(self.butler.get('camera',
-                                         instrument=instname,
-                                         collections=[f"{instname}/calib/unbounded"]).getName(), instname)
-
-        # check that we got appropriate refcat shards
-        loaded_shards = list(self.butler.registry.queryDataIds("htm7",
-                                                               datasets="gaia",
-                                                               collections="refcats"))
+        self.assertEqual(butler.get('camera',
+                                    instrument=instname,
+                                    collections=[f"{instname}/calib/unbounded"]).getName(), instname)
 
         # Check that the right skymap is in the chained output collection.
         self.assertTrue(
-            self.butler.datasetExists("skyMap",
-                                      # TODO: we shouldn't need skymap here?
-                                      skymap="deepCoadd_skyMap",
-                                      collections=self.interface.output_collection)
+            butler.datasetExists("skyMap",
+                                 # TODO: we shouldn't need skymap here?
+                                 skymap="deepCoadd_skyMap",
+                                 collections=self.interface.output_collection)
         )
+
+        # check that we got appropriate refcat shards
+        loaded_shards = list(butler.registry.queryDataIds("htm7",
+                                                          datasets="gaia",
+                                                          collections="refcats"))
 
         # These shards were identified by plotting the objects in each shard
         # on-sky and overplotting the detector corners.
@@ -188,8 +187,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the right calibs are in the chained output collection.
         try:
             self.assertTrue(
-                self.butler.datasetExists('cpBias', detector=56, instrument='DECam',
-                                          collections="DECam/calib/20150218T000000Z")
+                butler.datasetExists('cpBias', detector=56, instrument='DECam',
+                                     collections="DECam/calib/20150218T000000Z")
                 # TODO: Have to use the exact run collection, because we can't
                 # query by validity range.
                 # collections=self.interface.output_collection)
@@ -198,9 +197,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.fail("Bias file missing from local butler.")
         try:
             self.assertTrue(
-                self.butler.datasetExists('cpFlat', detector=56, instrument='DECam',
-                                          physical_filter=filter,
-                                          collections="DECam/calib/20150218T000000Z")
+                butler.datasetExists('cpFlat', detector=56, instrument='DECam',
+                                     physical_filter=filter,
+                                     collections="DECam/calib/20150218T000000Z")
                 # TODO: Have to use the exact run collection, because we can't
                 # query by validity range.
                 # collections=self.interface.output_collection)
@@ -208,20 +207,25 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         except LookupError:
             self.fail("Flat file missing from local butler.")
 
+        # Check that the right templates are in the chained output collection.
+        # Need to refresh the butler to get all the dimensions/collections.
+        butler.registry.refresh()
+        for patch in (464, 465, 509, 510):
+            butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
+                                 # TODO: we shouldn't need skymap here?
+                                 skymap="deepCoadd_skyMap",
+                                 collections=self.interface.output_collection)
+
+    def test_prep_butler(self):
+        """Test that the butler has all necessary data for the next visit.
+        """
+        self.interface.prep_butler(self.next_visit)
+
+        self._check_imports(self.butler)
+
         # Check that we configured the right pipeline.
         self.assertEqual(self.interface.pipeline._pipelineIR.description,
                          "End to end Alert Production pipeline specialized for HiTS-2015")
-
-        # Check that the right templates are in the chained output collection.
-        # Need to refresh the butler to get all the dimensions/collections.
-        self.butler.registry.refresh()
-        for patch in (464, 465, 509, 510):
-            self.assertTrue(
-                self.butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
-                                          # TODO: we shouldn't need skymap here?
-                                          skymap="deepCoadd_skyMap",
-                                          collections=self.interface.output_collection)
-            )
 
     @unittest.skip("We know this doesn't work (skymaps!), but this is a test we want to have!")
     def test_prep_butler_twice(self):
