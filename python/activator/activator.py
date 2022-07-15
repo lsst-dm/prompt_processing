@@ -184,10 +184,7 @@ def next_visit_handler() -> Tuple[str, int]:
                 mwi.ingest_image(oid)
                 expid_set.add(m.group('expid'))
 
-        _log.debug(
-            "Waiting for snaps from group"
-            f" '{expected_visit.group}' detector {expected_visit.detector}"
-        )
+        _log.debug(f"Waiting for snaps from {expected_visit}.")
         start = time.time()
         while len(expid_set) < expected_visit.snaps:
             response = subscriber.pull(
@@ -198,14 +195,11 @@ def next_visit_handler() -> Tuple[str, int]:
             end = time.time()
             if len(response.received_messages) == 0:
                 if end - start < timeout:
-                    _log.debug(
-                        f"Empty pull after {end - start}s"
-                        f" for group '{expected_visit.group}'"
-                    )
+                    _log.debug(f"Empty pull after {end - start}s for {expected_visit}.")
                     continue
                 _log.warning(
-                    "Timed out waiting for image in"
-                    f" group '{expected_visit.group}' after receiving exposures {expid_set}"
+                    f"Timed out waiting for image in {expected_visit} "
+                    f"after receiving exposures {expid_set}"
                 )
                 break
 
@@ -231,7 +225,7 @@ def next_visit_handler() -> Tuple[str, int]:
             subscriber.acknowledge(subscription=subscription.name, ack_ids=ack_list)
 
         # Got all the snaps; run the pipeline
-        _log.info(f"Running pipeline on group: {expected_visit.group} detector: {expected_visit.detector}")
+        _log.info(f"Running pipeline on {expected_visit}.")
         mwi.run_pipeline(expected_visit, expid_set)
         return "Pipeline executed", 200
     finally:

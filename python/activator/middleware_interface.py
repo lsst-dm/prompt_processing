@@ -204,7 +204,7 @@ class MiddlewareInterface:
         visit : `Visit`
             Group of snaps from one detector to prepare the butler for.
         """
-        _log.info(f"Preparing Butler for visit '{visit}'")
+        _log.info(f"Preparing Butler for visit {visit!r}")
 
         detector = self.camera[visit.detector]
         wcs = self._predict_wcs(detector, visit)
@@ -460,7 +460,8 @@ class MiddlewareInterface:
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
         result = executor.run(register_dataset_types=True)
-        _log.info(f"Pipeline successfully run on {len(result)} quanta.")
+        _log.info(f"Pipeline successfully run on {len(result)} quanta for "
+                  f"detector {visit.detector} of {exposure_ids}.")
 
 
 def _query_missing_datasets(src_repo: Butler, dest_repo: Butler,
