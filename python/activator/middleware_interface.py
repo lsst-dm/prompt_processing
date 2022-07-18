@@ -75,6 +75,12 @@ class MiddlewareInterface:
         appropriate for use in the Google Cloud environment; typically only
         change this when running local tests.
     """
+    _COLLECTION_TEMPLATE = "templates"
+    """The collection used for templates.
+    """
+    _COLLECTION_SKYMAP = "skymaps"
+    """The collection used for skymaps.
+    """
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
@@ -90,7 +96,7 @@ class MiddlewareInterface:
             self._download_store = None
         self.instrument = lsst.obs.base.Instrument.from_string(instrument)
 
-        self.output_collection = f"{self.instrument.getName()}/prompt"
+        self.output_collection = self.instrument.makeCollectionName("prompt")
 
         self._init_local_butler(butler)
         self._init_ingester()
@@ -104,7 +110,7 @@ class MiddlewareInterface:
         # This code will break once cameras start being versioned.
         self.camera = self.central_butler.get(
             "camera", instrument=self.instrument.getName(),
-            collections=self.instrument.makeCalibrationCollectionName("unbounded")
+            collections=self.instrument.makeUnboundedCalibrationRunName()
         )
         self.skymap = self.central_butler.get("skyMap")
 
@@ -170,9 +176,9 @@ class MiddlewareInterface:
                 self._export_calibs(export, visit.detector, visit.filter)
 
                 # CHAINED collections
-                export.saveCollection("refcats")
-                export.saveCollection("templates")
-                export.saveCollection(self.instrument.makeCollectionName("defaults"))
+                export.saveCollection(self.instrument.makeRefCatCollectionName())
+                export.saveCollection(self._COLLECTION_TEMPLATE)
+                export.saveCollection(self.instrument.makeUmbrellaCollectionName())
 
             self.butler.import_(filename=export_file.name,
                                 directory=self.central_butler.datastore.root,
@@ -203,10 +209,11 @@ class MiddlewareInterface:
         # collection, so we have to specify a list here. Replace this
         # with another solution ASAP.
         possible_refcats = ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110"]
-        export.saveDatasets(self.central_butler.registry.queryDatasets(possible_refcats,
-                                                                       collections="refcats",
-                                                                       where=htm_where,
-                                                                       findFirst=True))
+        export.saveDatasets(self.central_butler.registry.queryDatasets(
+            possible_refcats,
+            collections=self.instrument.makeRefCatCollectionName(),
+            where=htm_where,
+            findFirst=True))
 
     def _export_skymap_and_templates(self, export, center, detector, wcs):
         """Export the skymap and templates for this visit from the central
@@ -229,7 +236,7 @@ class MiddlewareInterface:
         # otherwise we get a UNIQUE constraint error when prepping for the
         # second visit.
         export.saveDatasets(self.central_butler.registry.queryDatasets("skyMap",
-                                                                       collections="skymaps",
+                                                                       collections=self._COLLECTION_SKYMAP,
                                                                        findFirst=True))
         # Getting only one tract should be safe: we're getting the
         # tract closest to this detector, so we should be well within
@@ -247,7 +254,7 @@ class MiddlewareInterface:
         # TODO: alternately, can we just assume that there is exactly
         # one coadd type in the central butler?
         export.saveDatasets(self.central_butler.registry.queryDatasets("*Coadd",
-                                                                       collections="templates",
+                                                                       collections=self._COLLECTION_TEMPLATE,
                                                                        where=template_where))
 
     def _export_calibs(self, export, detector_id, filter):
@@ -295,7 +302,7 @@ class MiddlewareInterface:
                                                 CollectionType.RUN)
         self.butler.registry.registerCollection(self.output_run, CollectionType.RUN)
         self.butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
-        collections = [self.instrument.makeCollectionName("defaults"),
+        collections = [self.instrument.makeUmbrellaCollectionName(),
                        self.instrument.makeDefaultRawIngestRunName(),
                        self.output_run]
         self.butler.registry.setCollectionChain(self.output_collection, collections)
@@ -386,28 +393,16 @@ class MiddlewareInterface:
             Group of snaps from one detector to be processed.
         exposure_ids : `set`
             Identifiers of the exposures that were received.
-            TODO: We need to be careful about the distinction between snap IDs
-            (a running series from 0 to N-1) and exposure IDs (which are more
-            complex and encode other info). Butler currently does not recognize
-            a snap ID, as such.
-            TODO: I believe this is unnecessary because it should be encoded
-            in the `visit` object, but we'll have to test how that works once
-            we implemented this with actual data.
         """
         # TODO: we want to define visits earlier, but we have to ingest a
         # faked raw file and appropriate SSO data during prep (and then
         # cleanup when ingesting the real data).
-        # TODO: Also, using this approach (instead of saving the datasetRefs
-        # returned by ingest and using them to define visits) also requires
-        # pruning this list down to only the exposures that aren't already
-        # defined (otherwise defineVisits.run does extra "nothing" work).
-        exposures = set(self.butler.registry.queryDataIds(["exposure"]))
-        self.define_visits.run(exposures)
-
-        # TODO: temporary workaround for uploader and image header not agreeing
-        # on what the exposure ID is. We use the full exposure list here
-        # because we can't support multiple visits anyway.
-        exposure_ids = {data_id["exposure"] for data_id in exposures}
+        try:
+            self.define_visits.run({"instrument": self.instrument.getName(),
+                                    "exposure": exp} for exp in exposure_ids)
+        except lsst.daf.butler.registry.DataIdError as e:
+            # TODO: a good place for a custom exception?
+            raise RuntimeError("No data to process.") from e
 
         # TODO: can we move this from_pipeline call to prep_butler?
         where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in exposure_ids)})"

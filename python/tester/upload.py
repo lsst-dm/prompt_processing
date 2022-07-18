@@ -8,7 +8,8 @@ import random
 import re
 import sys
 import time
-from visit import Visit
+from activator.raw import RAW_REGEXP, get_raw_path
+from activator.visit import Visit
 
 
 @dataclass
@@ -31,25 +32,6 @@ PUBSUB_TOKEN = "abc123"
 KINDS = ("BIAS", "DARK", "FLAT")
 
 PROJECT_ID = "prompt-proto"
-
-
-def raw_path(instrument, detector, group, snap, exposure_id, filter):
-    """The path on which to store raws in the raw bucket.
-
-    This format is also assumed by ``activator/activator.py.``
-    """
-    return (
-        f"{instrument}/{detector}/{group}/{snap}"
-        f"/{instrument}-{group}-{snap}"
-        f"-{exposure_id}-{filter}-{detector}.fz"
-    )
-
-
-# TODO: unify the format code across prompt_prototype
-RAW_REGEXP = re.compile(
-    r"(?P<instrument>.*?)/(?P<detector>\d+)/(?P<group>.*?)/(?P<snap>\d+)/"
-    r"(?P=instrument)-(?P=group)-(?P=snap)-(?P<expid>.*?)-(?P<filter>.*?)-(?P=detector)\.f"
-)
 
 
 logging.basicConfig(
@@ -275,7 +257,15 @@ def get_samples(bucket, instrument):
     #     upload time, another is to download the blob and actually read
     #     its header.
     hsc_metadata = {
+        59126: {"ra": 149.28531249999997, "dec": 2.935002777777778, "rot": 270.0},
+        59134: {"ra": 149.45749166666664, "dec": 2.926961111111111, "rot": 270.0},
+        59138: {"ra": 149.45739166666664, "dec": 1.4269472222222224, "rot": 270.0},
+        59142: {"ra": 149.4992083333333, "dec": 2.8853, "rot": 270.0},
         59150: {"ra": 149.96643749999996, "dec": 2.2202916666666668, "rot": 270.0},
+        59152: {"ra": 149.9247333333333, "dec": 2.1577777777777776, "rot": 270.0},
+        59154: {"ra": 150.22329166666663, "dec": 2.238341666666667, "rot": 270.0},
+        59156: {"ra": 150.26497083333334, "dec": 2.1966694444444443, "rot": 270.0},
+        59158: {"ra": 150.30668333333332, "dec": 2.2591888888888887, "rot": 270.0},
         59160: {"ra": 150.18157499999998, "dec": 2.2800083333333334, "rot": 270.0},
     }
 
@@ -343,8 +333,17 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
         group IDs.
     group_base : `int`
         The base number from which to offset new group numbers.
+
+    Exceptions
+    ----------
+    ValueError
+        Raised if ``n_groups`` exceeds the number of groups in ``raw_pool``.
     """
-    for i, true_group in enumerate(itertools.islice(itertools.cycle(raw_pool), n_groups)):
+    if n_groups > len(raw_pool):
+        raise ValueError(f"Requested {n_groups} groups, but only {len(raw_pool)} "
+                         "unobserved raws are available.")
+
+    for i, true_group in enumerate(itertools.islice(raw_pool, n_groups)):
         group = group_base + i
         _log.debug(f"Processing group {group} from unobserved {true_group}...")
         # snap_dict maps snap_id to {visit: blob}
@@ -363,12 +362,11 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
         # closures for the bucket and data.
         def upload_from_pool(visit, snap_id):
             src_blob = snap_dict[snap_id][visit]
-            # TODO: use the images' native exposure ID here, or (better) hack
-            # the sent images so that they have the generated ID. Pipeline
-            # execution fails if they don't match.
-            exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
-            filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                exposure_id, visit.filter)
+            # TODO: converting raw_pool from a nested mapping to an indexable
+            # custom class would make it easier to include such metadata as expId.
+            exposure_id = int(re.match(RAW_REGEXP, src_blob.name).group('expid'))
+            filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
+                                    exposure_id, visit.filter)
             src_bucket.copy_blob(src_blob, dest_bucket, new_name=filename)
         process_group(publisher, visit_infos, upload_from_pool)
         _log.info("Slewing to next group")
@@ -399,8 +397,8 @@ def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base)
         # closures for the bucket and data.
         def upload_dummy(visit, snap_id):
             exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
-            filename = raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                exposure_id, visit.filter)
+            filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
+                                    exposure_id, visit.filter)
             dest_bucket.blob(filename).upload_from_string("Test")
         process_group(publisher, visit_infos, upload_dummy)
         _log.info("Slewing to next group")

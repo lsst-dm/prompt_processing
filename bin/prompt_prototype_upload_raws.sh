@@ -20,19 +20,37 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# This script uploads the raw files from the ap_verify_ci_cosmos_pdr2 dataset
-# to Google Storage. It renames the files to match prompt_prototype conventions.
-# The user must have gsutil already configured, and must have
-# ap_verify_ci_cosmos_pdr2 set up.
+# This script uploads the raw files from the HSC PDR2 run to Google Storage. It
+# renames the files to match prompt_prototype conventions. The user must have
+# gsutil already configured.
 
 set -e  # Abort on any error
 
-RAW_DIR="${AP_VERIFY_CI_COSMOS_PDR2_DIR:?'dataset is not set up'}/raw"
+RAW_DIR="/datasets/hsc/raw/ssp_pdr2/2016-03-07"
 UPLOAD_BUCKET=rubin-prompt-proto-unobserved
 
-# Filename format is defined in tester/upload.py and activator/activator.py:
-# instrument/detector/group/snap/instrument-group-snap-exposureId-filter-detector
-gsutil cp "${RAW_DIR}/HSC-0059150-050.fits.gz" \
-    gs://${UPLOAD_BUCKET}/HSC/50/2016030700001/0/HSC-2016030700001-0-0059150-HSC-G-50.fits.gz
-gsutil cp "${RAW_DIR}/HSC-0059160-051.fits.gz" \
-    gs://${UPLOAD_BUCKET}/HSC/51/2016030700002/0/HSC-2016030700002-0-0059160-HSC-G-51.fits.gz
+# Filename format is defined in activator/raw.py:
+# instrument/detector/group/snap/exposureId/filter/instrument-group-snap-exposureId-filter-detector
+gsutil cp "${RAW_DIR}/HSCA05913553.fits" \
+    gs://${UPLOAD_BUCKET}/HSC/0/2016030700001/0/0059134/HSC-G/HSC-2016030700001-0-0059134-HSC-G-0.fits
+gsutil cp "${RAW_DIR}/HSCA05913542.fits" \
+    gs://${UPLOAD_BUCKET}/HSC/4/2016030700001/0/0059134/HSC-G/HSC-2016030700001-0-0059134-HSC-G-4.fits
+gsutil cp "${RAW_DIR}/HSCA05913543.fits" \
+    gs://${UPLOAD_BUCKET}/HSC/5/2016030700001/0/0059134/HSC-G/HSC-2016030700001-0-0059134-HSC-G-5.fits
+
+gsutil cp "${RAW_DIR}/HSCA05914353.fits" \
+    gs://${UPLOAD_BUCKET}/HSC/0/2016030700002/0/0059142/HSC-G/HSC-2016030700002-0-0059142-HSC-G-0.fits
+gsutil cp "${RAW_DIR}/HSCA05914343.fits" \
+    gs://${UPLOAD_BUCKET}/HSC/5/2016030700002/0/0059142/HSC-G/HSC-2016030700002-0-0059142-HSC-G-5.fits
+gsutil cp "${RAW_DIR}/HSCA05914337.fits" \
+    gs://${UPLOAD_BUCKET}/HSC/11/2016030700002/0/0059142/HSC-G/HSC-2016030700002-0-0059142-HSC-G-11.fits
+
+gsutil cp "${RAW_DIR}/HSCA05915112.fits" \
+    gs://${UPLOAD_BUCKET}/HSC/50/2016030700003/0/0059150/HSC-G/HSC-2016030700003-0-0059150-HSC-G-50.fits
+gsutil cp "${RAW_DIR}/HSCA05915116.fits" \
+    gs://${UPLOAD_BUCKET}/HSC/58/2016030700003/0/0059150/HSC-G/HSC-2016030700003-0-0059150-HSC-G-58.fits
+
+gsutil cp "${RAW_DIR}/HSCA05916109.fits" \
+    gs://${UPLOAD_BUCKET}/HSC/43/2016030700004/0/0059150/HSC-G/HSC-2016030700004-0-0059160-HSC-G-43.fits
+gsutil cp "${RAW_DIR}/HSCA05916113.fits" \
+    gs://${UPLOAD_BUCKET}/HSC/51/2016030700004/0/0059150/HSC-G/HSC-2016030700004-0-0059160-HSC-G-51.fits
