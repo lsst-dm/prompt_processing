@@ -55,3 +55,8 @@ class VisitTest(unittest.TestCase):
         serialized = json.dumps(self.testbed.__dict__).encode("utf-8")
         deserialized = Visit(**json.loads(serialized))
         self.assertEqual(deserialized, self.testbed)
+
+    def test_str(self):
+        self.assertNotEqual(str(self.testbed), repr(self.testbed))
+        self.assertIn(str(self.testbed.detector), str(self.testbed))
+        self.assertIn(str(self.testbed.group), str(self.testbed))
