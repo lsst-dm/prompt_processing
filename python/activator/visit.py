@@ -16,3 +16,9 @@ class Visit:
     dec: float
     rot: float
     kind: str
+
+    def __str__(self):
+        """Return a short string that disambiguates the visit but does not
+        include "metadata" fields.
+        """
+        return f"(instrument={self.instrument}, group={self.group}, detector={self.detector})"
