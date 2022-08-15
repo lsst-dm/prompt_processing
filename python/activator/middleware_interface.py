@@ -472,14 +472,14 @@ class MiddlewareInterface:
         assert len(result) == 1, "Should have ingested exactly one image."
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
 
-    def run_pipeline(self, visit: Visit, exposure_ids: set) -> None:
+    def run_pipeline(self, visit: Visit, exposure_ids: set[int]) -> None:
         """Process the received image(s).
 
         Parameters
         ----------
         visit : Visit
             Group of snaps from one detector to be processed.
-        exposure_ids : `set`
+        exposure_ids : `set` [`int`]
             Identifiers of the exposures that were received.
         """
         # TODO: we want to define visits earlier, but we have to ingest a
