@@ -383,23 +383,20 @@ class MiddlewareInterface:
         #             'refcats'],
         #     output=self.output_collection)
         # The below is taken from SimplePipelineExecutor.prep_butler.
-        # TODO DM-34202: save run collection in self for now, but we won't need
-        # it when we no longer need to work around DM-34202.
-        self.output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
+        output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
         self.butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
                                                 CollectionType.RUN)
-        self.butler.registry.registerCollection(self.output_run, CollectionType.RUN)
+        self.butler.registry.registerCollection(output_run, CollectionType.RUN)
         self.butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
         collections = [self.instrument.makeUmbrellaCollectionName(),
                        self.instrument.makeDefaultRawIngestRunName(),
-                       self.output_run]
+                       output_run]
         self.butler.registry.setCollectionChain(self.output_collection, collections)
 
         # Need to create a new butler with all the output collections.
         self.butler = Butler(butler=self.butler,
                              collections=[self.output_collection],
-                             # TODO DM-34202: hack around a middleware bug.
-                             run=None)
+                             run=output_run)
 
     def _prep_pipeline(self, visit: Visit) -> None:
         """Setup the pipeline to be run, based on the configured instrument and
@@ -499,10 +496,6 @@ class MiddlewareInterface:
         if len(executor.quantum_graph) == 0:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.")
-        # TODO DM-34202: hack around a middleware bug.
-        executor.butler = Butler(butler=self.butler,
-                                 collections=[self.output_collection],
-                                 run=self.output_run)
         _log.info(f"Running '{self.pipeline._pipelineIR.description}' on {where}")
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
