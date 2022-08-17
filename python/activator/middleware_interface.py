@@ -276,7 +276,11 @@ class MiddlewareInterface:
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
 
-        self._prep_collections()
+        # TODO: Until DM-35941, need to create a new butler to update governor
+        # dimensions; refresh isn't enough.
+        self.butler = Butler(butler=self.butler,
+                             collections=[self.output_collection],
+                             )
         self._prep_pipeline(visit)
 
     def _export_refcats(self, export, center, radius):
@@ -418,6 +422,11 @@ class MiddlewareInterface:
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
+
+        Returns
+        -------
+        run : `str`
+            The name of a new run collection to use for outputs.
         """
         # NOTE: Because we receive a butler on init, we can't use this
         # prep_butler() because it takes a repo path.
@@ -434,12 +443,7 @@ class MiddlewareInterface:
                        self.instrument.makeDefaultRawIngestRunName(),
                        output_run]
         self.butler.registry.setCollectionChain(self.output_collection, collections)
-
-        # TODO: Until DM-35941, need to create a new butler to update governor
-        # dimensions; refresh isn't enough.
-        self.butler = Butler(butler=self.butler,
-                             collections=[self.output_collection],
-                             run=output_run)
+        return output_run
 
     def _prep_pipeline(self, visit: Visit) -> None:
         """Setup the pipeline to be run, based on the configured instrument and
@@ -543,10 +547,15 @@ class MiddlewareInterface:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.") from e
 
-        # TODO: can we move this from_pipeline call to prep_butler?
+        output_run = self._prep_collections()
+
         where = f"instrument='{visit.instrument}' and detector={visit.detector} " \
                 f"and exposure in ({','.join(str(x) for x in exposure_ids)})"
-        executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
+        executor = SimplePipelineExecutor.from_pipeline(self.pipeline,
+                                                        where=where,
+                                                        butler=Butler(butler=self.butler,
+                                                                      collections=self.butler.collections,
+                                                                      run=output_run))
         if len(executor.quantum_graph) == 0:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.")
