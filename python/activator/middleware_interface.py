@@ -439,10 +439,7 @@ class MiddlewareInterface:
         # The below is taken from SimplePipelineExecutor.prep_butler.
         output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
         self.butler.registry.registerCollection(output_run, CollectionType.RUN)
-        collections = [self.instrument.makeUmbrellaCollectionName(),
-                       self.instrument.makeDefaultRawIngestRunName(),
-                       output_run]
-        self.butler.registry.setCollectionChain(self.output_collection, collections)
+        _prepend_collection(self.butler, self.output_collection, [output_run])
         return output_run
 
     def _prep_pipeline(self, visit: Visit) -> None:
@@ -601,3 +598,23 @@ def _query_missing_datasets(src_repo: Butler, dest_repo: Butler,
     # this operation.
     return itertools.filterfalse(lambda ref: ref in known_datasets,
                                  src_repo.registry.queryDatasets(*args, **kwargs))
+
+
+def _prepend_collection(butler: Butler, chain: str, new_collections: collections.abc.Iterable[str]) -> None:
+    """Add a specific collection to the front of an existing chain.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler in which the collections exist.
+    chain : `str`
+        The chained collection to prepend to.
+    new_collections : iterable [`str`]
+        The collections to prepend to ``chain``.
+
+    Notes
+    -----
+    This function is not safe against concurrent modifications to ``chain``.
+    """
+    old_chain = butler.registry.getCollectionChain(chain)  # May be empty
+    butler.registry.setCollectionChain(chain, list(new_collections) + list(old_chain), flatten=False)

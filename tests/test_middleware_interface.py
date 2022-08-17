@@ -30,13 +30,13 @@ import astropy.coordinates
 import astropy.units as u
 
 import astro_metadata_translator
-from lsst.daf.butler import Butler, DataCoordinate
+from lsst.daf.butler import Butler, CollectionType, DataCoordinate
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
 from activator.visit import Visit
-from activator.middleware_interface import MiddlewareInterface, _query_missing_datasets
+from activator.middleware_interface import MiddlewareInterface, _query_missing_datasets, _prepend_collection
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -385,3 +385,20 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         result = set(_query_missing_datasets(src_butler, existing_butler, "skyMap", ..., skymap="mymap"))
         src_butler.registry.queryDatasets.assert_called_once_with("skyMap", ..., skymap="mymap")
         self.assertEqual(result, {data1})
+
+    def test_prepend_collection(self):
+        self.butler.registry.registerCollection("_prepend1", CollectionType.TAGGED)
+        self.butler.registry.registerCollection("_prepend2", CollectionType.TAGGED)
+        self.butler.registry.registerCollection("_prepend3", CollectionType.TAGGED)
+        self.butler.registry.registerCollection("_prepend_base", CollectionType.CHAINED)
+
+        # Empty chain.
+        self.assertEqual(list(self.butler.registry.getCollectionChain("_prepend_base")), [])
+        _prepend_collection(self.butler, "_prepend_base", ["_prepend1"])
+        self.assertEqual(list(self.butler.registry.getCollectionChain("_prepend_base")), ["_prepend1"])
+
+        # Non-empty chain.
+        self.butler.registry.setCollectionChain("_prepend_base", ["_prepend1", "_prepend2"])
+        _prepend_collection(self.butler, "_prepend_base", ["_prepend3"])
+        self.assertEqual(list(self.butler.registry.getCollectionChain("_prepend_base")),
+                         ["_prepend3", "_prepend1", "_prepend2"])
