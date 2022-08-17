@@ -88,6 +88,9 @@ class MiddlewareInterface:
     # self.image_host is a valid URI with non-empty path and no query or fragment.
     # self._download_store is None if and only if self.image_host is a local URI.
     # self.instrument, self.camera, and self.skymap do not change after __init__.
+    # self.butler defaults to a chained collection named
+    #   self.output_collection, which contains zero or more output runs,
+    #   pre-made inputs, and raws, in that order.
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
@@ -138,10 +141,24 @@ class MiddlewareInterface:
         """
         self.instrument.register(butler.registry)
 
+        # Will be populated in prep_butler.
+        butler.registry.registerCollection(self.instrument.makeUmbrellaCollectionName(),
+                                           CollectionType.CHAINED)
+        # Will be populated on ingest.
+        butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(), CollectionType.RUN)
+        # Will be populated on pipeline execution.
+        butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
+        collections = [self.instrument.makeUmbrellaCollectionName(),
+                       self.instrument.makeDefaultRawIngestRunName(),
+                       ]
+        butler.registry.setCollectionChain(self.output_collection, collections)
+
         # Refresh butler after configuring it, to ensure all required
         # dimensions and collections are available.
         butler.registry.refresh()
-        self.butler = butler
+        self.butler = Butler(butler=butler,
+                             collections=[self.output_collection],
+                             )
 
     def _init_ingester(self):
         """Prepare the raw file ingester to receive images into this butler.
@@ -399,16 +416,14 @@ class MiddlewareInterface:
         #     output=self.output_collection)
         # The below is taken from SimplePipelineExecutor.prep_butler.
         output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
-        self.butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
-                                                CollectionType.RUN)
         self.butler.registry.registerCollection(output_run, CollectionType.RUN)
-        self.butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
         collections = [self.instrument.makeUmbrellaCollectionName(),
                        self.instrument.makeDefaultRawIngestRunName(),
                        output_run]
         self.butler.registry.setCollectionChain(self.output_collection, collections)
 
-        # Need to create a new butler with all the output collections.
+        # TODO: Until DM-35941, need to create a new butler to update governor
+        # dimensions; refresh isn't enough.
         self.butler = Butler(butler=self.butler,
                              collections=[self.output_collection],
                              run=output_run)

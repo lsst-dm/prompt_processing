@@ -155,6 +155,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the butler instance is properly configured.
         instruments = list(self.butler.registry.queryDimensionRecords("instrument"))
         self.assertEqual(instname, instruments[0].name)
+        self.assertEqual(set(self.interface.butler.collections), {self.interface.output_collection})
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
