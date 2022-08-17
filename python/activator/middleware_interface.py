@@ -72,7 +72,7 @@ class MiddlewareInterface:
         Local butler to process data in and hold calibrations, etc.; must be
         writeable.
     prefix : `str`, optional
-        URI identification prefix; prepended to ``image_bucket`` when
+        URI scheme followed by ``://``; prepended to ``image_bucket`` when
         constructing URIs to retrieve incoming files. The default is
         appropriate for use in the Google Cloud environment; typically only
         change this when running local tests.
@@ -84,15 +84,18 @@ class MiddlewareInterface:
     """The collection used for skymaps.
     """
 
+    # Class invariants:
+    # self.image_host is a valid URI with non-empty path and no query or fragment.
+    # self._download_store is None if and only if self.image_host is a local URI.
+
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
                  prefix: str = "gs://"):
         self.ip_apdb = os.environ["IP_APDB"]
-        self.prefix = prefix
         self.central_butler = central_butler
-        self.image_bucket = image_bucket
+        self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
-        if not prefix.startswith("file"):
+        if not self.image_host.startswith("file"):
             self._download_store = tempfile.TemporaryDirectory(prefix="holding-")
         else:
             self._download_store = None
@@ -458,7 +461,7 @@ class MiddlewareInterface:
             image bucket.
         """
         _log.info(f"Ingesting image id '{oid}'")
-        file = ResourcePath(f"{self.prefix}{self.image_bucket}/{oid}")
+        file = ResourcePath(f"{self.image_host}/{oid}")
         if not file.isLocal:
             # TODO: RawIngestTask doesn't currently support remote files.
             file = self._download(file)
