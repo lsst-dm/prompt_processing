@@ -87,6 +87,7 @@ class MiddlewareInterface:
     # Class invariants:
     # self.image_host is a valid URI with non-empty path and no query or fragment.
     # self._download_store is None if and only if self.image_host is a local URI.
+    # self.instrument, self.camera, and self.skymap do not change after __init__.
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
@@ -105,9 +106,7 @@ class MiddlewareInterface:
 
         self._init_local_butler(butler)
         self._init_ingester()
-
-        define_visits_config = lsst.obs.base.DefineVisitsConfig()
-        self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
+        self._init_visit_definer()
 
         # HACK: explicit collection gets around the fact that we don't have any
         # timestamp/exposure information in a form we can pass to the Butler.
@@ -128,6 +127,9 @@ class MiddlewareInterface:
     def _init_local_butler(self, butler: Butler):
         """Prepare the local butler to ingest into and process from.
 
+        ``self.instrument`` must already exist. ``self.butler`` is correctly
+        initialized after this method returns.
+
         Parameters
         ----------
         butler : `lsst.daf.butler.Butler`
@@ -143,6 +145,8 @@ class MiddlewareInterface:
 
     def _init_ingester(self):
         """Prepare the raw file ingester to receive images into this butler.
+
+        ``self._init_local_butler`` must have already been run.
         """
         config = lsst.obs.base.RawIngestConfig()
         config.transfer = "copy"  # Copy files into the local butler.
@@ -151,6 +155,14 @@ class MiddlewareInterface:
         config.failFast = True  # We want failed ingests to fail immediately.
         self.rawIngestTask = lsst.obs.base.RawIngestTask(config=config,
                                                          butler=self.butler)
+
+    def _init_visit_definer(self):
+        """Prepare the visit definer to define visits for this butler.
+
+        ``self._init_local_butler`` must have already been run.
+        """
+        define_visits_config = lsst.obs.base.DefineVisitsConfig()
+        self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
 
     def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector, visit: Visit) -> lsst.afw.geom.SkyWcs:
         """Calculate the expected detector WCS for an incoming observation.
