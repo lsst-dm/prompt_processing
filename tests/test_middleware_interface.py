@@ -224,10 +224,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected_shards = {157394, 157401, 157405}
         self._check_imports(self.butler, detector=56, expected_shards=expected_shards)
 
-        # Check that we configured the right pipeline.
-        self.assertEqual(self.interface.pipeline._pipelineIR.description,
-                         "End to end Alert Production pipeline specialized for HiTS-2015")
-
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
         exception!) on a second run with the same, or a different detector.
@@ -320,8 +316,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.ingest_image(filename)
 
         with unittest.mock.patch("activator.middleware_interface.SimplePipelineExecutor.run") as mock_run:
-            self.interface.run_pipeline(self.next_visit, {1})
+            with self.assertLogs(self.logger_name, level="INFO") as logs:
+                self.interface.run_pipeline(self.next_visit, {1})
         mock_run.assert_called_once_with(register_dataset_types=True)
+        # Check that we configured the right pipeline.
+        self.assertIn("End to end Alert Production pipeline specialized for HiTS-2015",
+                      "\n".join(logs.output))
 
     def test_run_pipeline_empty_quantum_graph(self):
         """Test that running a pipeline that results in an empty quantum graph

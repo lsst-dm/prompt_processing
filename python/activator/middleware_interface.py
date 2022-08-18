@@ -281,7 +281,6 @@ class MiddlewareInterface:
         self.butler = Butler(butler=self.butler,
                              collections=[self.output_collection],
                              )
-        self._prep_pipeline(visit)
 
     def _export_refcats(self, export, center, radius):
         """Export the refcats for this visit from the central butler.
@@ -451,6 +450,11 @@ class MiddlewareInterface:
         visit : Visit
             Group of snaps from one detector to prepare the pipeline for.
 
+        Returns
+        -------
+        pipeline : `lsst.pipe.base.Pipeline`
+            The pipeline to run for ``visit``.
+
         Raises
         ------
         RuntimeError
@@ -463,13 +467,14 @@ class MiddlewareInterface:
         ap_pipeline_file = os.path.join(getPackageDir("prompt_prototype"),
                                         "pipelines", self.instrument.getName(), "ApPipe.yaml")
         try:
-            self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
+            pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         except FileNotFoundError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
         # TODO: Can we write to a configurable apdb schema, rather than
         # "postgres"?
-        self.pipeline.addConfigOverride("diaPipe", "apdb.db_url",
-                                        f"postgresql://postgres@{self.ip_apdb}/postgres")
+        pipeline.addConfigOverride("diaPipe", "apdb.db_url",
+                                   f"postgresql://postgres@{self.ip_apdb}/postgres")
+        return pipeline
 
     def _download(self, remote):
         """Download an image located on a remote store.
@@ -548,7 +553,8 @@ class MiddlewareInterface:
 
         where = f"instrument='{visit.instrument}' and detector={visit.detector} " \
                 f"and exposure in ({','.join(str(x) for x in exposure_ids)})"
-        executor = SimplePipelineExecutor.from_pipeline(self.pipeline,
+        pipeline = self._prep_pipeline(visit)
+        executor = SimplePipelineExecutor.from_pipeline(pipeline,
                                                         where=where,
                                                         butler=Butler(butler=self.butler,
                                                                       collections=self.butler.collections,
@@ -556,7 +562,7 @@ class MiddlewareInterface:
         if len(executor.quantum_graph) == 0:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.")
-        _log.info(f"Running '{self.pipeline._pipelineIR.description}' on {where}")
+        _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
         result = executor.run(register_dataset_types=True)
