@@ -404,3 +404,96 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         _prepend_collection(self.butler, "_prepend_base", ["_prepend3"])
         self.assertEqual(list(self.butler.registry.getCollectionChain("_prepend_base")),
                          ["_prepend3", "_prepend1", "_prepend2"])
+
+
+class MiddlewareInterfaceWriteableTest(unittest.TestCase):
+    """Test the MiddlewareInterface class with faked data.
+
+    This class creates a fresh test repository for writing to. This means test
+    setup takes longer than for MiddlewareInterfaceTest, so it should be
+    used sparingly.
+    """
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+
+        cls.env_patcher = unittest.mock.patch.dict(os.environ,
+                                                   {"IP_APDB": "localhost"})
+        cls.env_patcher.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+
+        cls.env_patcher.stop()
+
+    def _create_copied_repo(self):
+        """Create a fresh repository that's a copy of the test data.
+
+        This method sets self.central_repo and arranges cleanup; cleanup would
+        be awkward if this method returned a Butler instead.
+        """
+        # Copy test data to fresh Butler to allow write tests.
+        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+        data_repo = os.path.join(data_dir, "central_repo")
+        data_butler = Butler(data_repo, writeable=False)
+        self.central_repo = tempfile.TemporaryDirectory()
+        # TemporaryDirectory warns on leaks
+        self.addCleanup(tempfile.TemporaryDirectory.cleanup, self.central_repo)
+
+        # Butler.transfer_from can't easily copy collections, so use
+        # export/import instead.
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as export_file:
+            with data_butler.export(filename=export_file.name) as export:
+                export.saveDatasets(data_butler.registry.queryDatasets(..., collections=...))
+                for collection in data_butler.registry.queryCollections():
+                    export.saveCollection(collection)
+            central_butler = Butler(Butler.makeRepo(self.central_repo.name), writeable=True)
+            central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
+
+    def setUp(self):
+        self._create_copied_repo()
+        central_butler = Butler(self.central_repo.name,
+                                instrument=instname,
+                                skymap="deepCoadd_skyMap",
+                                collections=[f"{instname}/defaults"],
+                                writeable=False)
+        instrument = "lsst.obs.decam.DarkEnergyCamera"
+        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+        self.input_data = os.path.join(data_dir, "input_data")
+        repo = tempfile.TemporaryDirectory()
+        # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
+        # getting garbage-collected.
+        self.addCleanup(tempfile.TemporaryDirectory.cleanup, repo)
+        self.butler = Butler(Butler.makeRepo(repo.name), writeable=True)
+
+        # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
+        ra = 155.4702849608958
+        dec = -4.950050405424033
+        # DECam has no rotator; instrument angle is 90 degrees in our system.
+        rot = 90.
+        self.next_visit = Visit(instrument,
+                                detector=56,
+                                group="1",
+                                snaps=1,
+                                filter=filter,
+                                ra=ra,
+                                dec=dec,
+                                rot=rot,
+                                kind="SURVEY")
+        self.logger_name = "lsst.activator.middleware_interface"
+
+        # Populate repository.
+        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, self.butler,
+                                             prefix="file://")
+        self.interface.prep_butler(self.next_visit)
+        filename = "fakeRawImage.fits"
+        filepath = os.path.join(self.input_data, filename)
+        self.raw_data_id, file_data = fake_file_data(filepath,
+                                                     self.butler.dimensions,
+                                                     self.interface.instrument,
+                                                     self.next_visit)
+        with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
+            mock.return_value = file_data
+            self.interface.ingest_image(filename)
+        self.interface.define_visits.run([self.raw_data_id])
