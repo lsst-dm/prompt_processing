@@ -30,7 +30,9 @@ import astropy.coordinates
 import astropy.units as u
 
 import astro_metadata_translator
+import lsst.afw.image
 from lsst.daf.butler import Butler, CollectionType, DataCoordinate
+import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
@@ -452,12 +454,15 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
 
     def setUp(self):
+        # TODO: test two parallel repos once DM-36051 fixed; can't do it
+        # earlier because the test data has only one raw.
+
         self._create_copied_repo()
         central_butler = Butler(self.central_repo.name,
                                 instrument=instname,
                                 skymap="deepCoadd_skyMap",
                                 collections=[f"{instname}/defaults"],
-                                writeable=False)
+                                writeable=True)
         instrument = "lsst.obs.decam.DarkEnergyCamera"
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.input_data = os.path.join(data_dir, "input_data")
@@ -495,5 +500,50 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                      self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(filename)
+            self.interface.ingest_image(self.next_visit, filename)
         self.interface.define_visits.run([self.raw_data_id])
+
+        # Simulate pipeline execution.
+        exp = lsst.afw.image.ExposureF(20, 20)
+        run = self.interface._prep_collections()
+        self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
+        # Dataset types defined for local Butler on pipeline run, but no
+        # guarantee this happens in central Butler.
+        butler_tests.addDatasetType(self.interface.butler, "calexp", {"instrument", "visit", "detector"},
+                                    "ExposureF")
+        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run)
+
+    def _check_datasets(self, butler, types, collections, count, data_id):
+        datasets = list(butler.registry.queryDatasets(types, collections=collections))
+        self.assertEqual(len(datasets), count)
+        for dataset in datasets:
+            self.assertEqual(dataset.dataId, data_id)
+
+    def test_export_outputs(self):
+        self.interface.export_outputs(self.next_visit, {self.raw_data_id["exposure"]})
+
+        central_butler = Butler(self.central_repo.name, writeable=False)
+        raw_collection = f"{instname}/raw/all"
+        export_collection = f"{instname}/prompt-results"
+        self._check_datasets(central_butler,
+                             "raw", raw_collection, 1, self.raw_data_id)
+        # Did not export raws directly to raw/all.
+        self.assertNotEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.RUN)
+        self._check_datasets(central_butler,
+                             "calexp", export_collection, 1, self.processed_data_id)
+        # Did not export calibs or other inputs.
+        self._check_datasets(central_butler,
+                             ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection,
+                             0, {"error": "dnc"})
+        # Nothing placed in "input" collections.
+        self._check_datasets(central_butler,
+                             ["raw", "calexp"], f"{instname}/defaults", 0, {"error": "dnc"})
+
+    def test_export_outputs_bad_visit(self):
+        bad_visit = dataclasses.replace(self.next_visit, detector=88)
+        with self.assertRaises(ValueError):
+            self.interface.export_outputs(bad_visit, {self.raw_data_id["exposure"]})
+
+    def test_export_outputs_bad_exposure(self):
+        with self.assertRaises(ValueError):
+            self.interface.export_outputs(self.next_visit, {88})

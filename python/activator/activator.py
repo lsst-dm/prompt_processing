@@ -84,7 +84,7 @@ storage_client = storage.Client()
 # the central repo is located, either, so perhaps we need a new module.
 central_butler = Butler(calib_repo,
                         collections=[active_instrument.makeCollectionName("defaults")],
-                        writeable=False,
+                        writeable=True,
                         inferDefaults=False)
 repo = f"/tmp/butler-{os.getpid()}"
 butler = Butler(Butler.makeRepo(repo), writeable=True)

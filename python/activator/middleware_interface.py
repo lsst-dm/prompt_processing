@@ -27,6 +27,7 @@ import logging
 import os
 import os.path
 import tempfile
+import typing
 
 from lsst.utils import getPackageDir
 from lsst.resources import ResourcePath
@@ -59,6 +60,11 @@ class MiddlewareInterface:
     is no guarantee that a processing run may, or may not, share a group,
     detector, or both with a previous run handled by the same object.
 
+    ``MiddlewareInterface`` objects are not thread- or process-safe, and must
+    not share any state with other instances (see ``butler`` in the parameter
+    list). They may, however, share a ``central_butler``, and concurrent
+    operations on this butler are guaranteed to be appropriately synchronized.
+
     Parameters
     ----------
     central_butler : `lsst.daf.butler.Butler`
@@ -75,7 +81,8 @@ class MiddlewareInterface:
         use of the butler.
     butler : `lsst.daf.butler.Butler`
         Local butler to process data in and hold calibrations, etc.; must be
-        writeable.
+        writeable. Must not be shared with any other ``MiddlewareInterface``
+        object.
     prefix : `str`, optional
         URI scheme followed by ``://``; prepended to ``image_bucket`` when
         constructing URIs to retrieve incoming files. The default is
@@ -449,7 +456,8 @@ class MiddlewareInterface:
         Returns
         -------
         run : `str`
-            The name of a new run collection to use for outputs.
+            The name of a new run collection to use for outputs. The run name
+            is prefixed by ``self.output_collection``.
         """
         # NOTE: Because we receive a butler on init, we can't use this
         # prep_butler() because it takes a repo path.
@@ -594,6 +602,111 @@ class MiddlewareInterface:
         result = executor.run(register_dataset_types=True)
         _log.info(f"Pipeline successfully run on {len(result)} quanta for "
                   f"detector {visit.detector} of {exposure_ids}.")
+
+    def export_outputs(self, visit: Visit, exposure_ids: set[int]) -> None:
+        """Copy raws and pipeline outputs from processing a set of images back
+        to the central Butler.
+
+        The copied raws can be found in the collection ``<instrument>/raw/all``,
+        while the outputs can be found in ``"<instrument>/prompt-results"``.
+
+        Parameters
+        ----------
+        visit : Visit
+            The visit whose outputs need to be exported.
+        exposure_ids : `set` [`int`]
+            Identifiers of the exposures that were processed.
+        """
+        # TODO: this method will not be responsible for raws after DM-36051.
+        self._export_subset(visit, exposure_ids, "raw",
+                            in_collections=self._get_raw_run_name(visit),
+                            out_collection=self.instrument.makeDefaultRawIngestRunName())
+        umbrella = self.instrument.makeCollectionName("prompt-results")
+        self._export_subset(visit, exposure_ids,
+                            # TODO: find a way to merge datasets like *_config
+                            # or *_schema that are duplicated across multiple
+                            # workers.
+                            self._get_safe_dataset_types(self.butler),
+                            self.output_collection + "/*",  # exclude inputs
+                            umbrella)
+        _log.info(f"Pipeline products saved to collection '{umbrella}' for "
+                  f"detector {visit.detector} of {exposure_ids}.")
+
+    @staticmethod
+    def _get_safe_dataset_types(butler):
+        """Return the set of dataset types that can be safely merged from a worker.
+
+        Parameters
+        ----------
+        butler : `lsst.daf.butler.Butler`
+            The butler in which to search for dataset types.
+
+        Returns
+        -------
+        types : iterable [`str`]
+            The dataset types to return.
+        """
+        return [dstype for dstype in butler.registry.queryDatasetTypes(...)
+                if "detector" in dstype.dimensions]
+
+    def _export_subset(self, visit: Visit, exposure_ids: set[int],
+                       dataset_types: typing.Any, in_collections: typing.Any, out_collection: str) -> None:
+        """Copy datasets associated with a processing run back to the
+        central Butler.
+
+        Parameters
+        ----------
+        visit : Visit
+            The visit whose outputs need to be exported.
+        exposure_ids : `set` [`int`]
+            Identifiers of the exposures that were processed.
+        dataset_types
+            The dataset type(s) to transfer; can be any expression described in
+            :ref:`daf_butler_dataset_type_expressions`.
+        in_collections
+            The collections to transfer from; can be any expression described
+            in :ref:`daf_butler_collection_expressions`.
+        out_collection : `str`
+            The chained collection in which to include the datasets. Need not
+            exist before the call.
+        """
+        try:
+            # Need to iterate over datasets at least twice, so list.
+            datasets = list(self.butler.registry.queryDatasets(
+                dataset_types,
+                collections=in_collections,
+                # in_collections may include other runs, so need to filter.
+                # Since AP processing is strictly visit-detector, these three
+                # dimensions should suffice.
+                # DO NOT assume that visit == exposure!
+                where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
+                instrument=self.instrument.getName(),
+                detector=visit.detector,
+            ))
+        except lsst.daf.butler.registry.DataIdError as e:
+            raise ValueError("Invalid visit or exposures.") from e
+        if not datasets:
+            raise ValueError(f"No datasets match visit={visit} and exposures={exposure_ids}.")
+
+        with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
+            # MUST NOT export governor dimensions, as this causes deadlocks in
+            # central registry. Can omit most other dimensions (all dimensions,
+            # after DM-36051) to avoid locks or redundant work.
+            # TODO: saveDatasets(elements={"exposure", "visit"}) doesn't work.
+            # Use import(skip_dimensions) until DM-36062 is fixed.
+            with self.butler.export(filename=export_file.name) as export:
+                export.saveDatasets(datasets)
+            self.central_butler.import_(filename=export_file.name,
+                                        directory=self.butler.datastore.root,
+                                        skip_dimensions={"instrument", "detector",
+                                                         "skymap", "tract", "patch"},
+                                        transfer="copy")
+        # No-op if collection already exists.
+        self.central_butler.registry.registerCollection(out_collection, CollectionType.CHAINED)
+        runs = {ref.run for ref in datasets}
+        # Don't unlink any previous runs.
+        # TODO: need to secure this against concurrent modification
+        _prepend_collection(self.central_butler, out_collection, runs)
 
 
 def _query_missing_datasets(src_repo: Butler, dest_repo: Butler,
