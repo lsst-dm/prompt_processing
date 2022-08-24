@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import dataclasses
 import itertools
 import tempfile
 import os.path
@@ -236,31 +237,20 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface.prep_butler(self.next_visit)
 
         # Second visit with everything same except group.
-        self.next_visit = Visit(instrument=self.next_visit.instrument,
-                                detector=self.next_visit.detector,
-                                group=str(int(self.next_visit.group) + 1),
-                                snaps=self.next_visit.snaps,
-                                filter=self.next_visit.filter,
-                                ra=self.next_visit.ra,
-                                dec=self.next_visit.dec,
-                                rot=self.next_visit.rot,
-                                kind=self.next_visit.kind)
+        self.next_visit = dataclasses.replace(self.next_visit, group=str(int(self.next_visit.group) + 1))
         self.interface.prep_butler(self.next_visit)
         expected_shards = {157394, 157401, 157405}
         self._check_imports(self.butler, detector=56, expected_shards=expected_shards)
 
         # Third visit with different detector and coordinates.
         # Only 5, 10, 56, 60 have valid calibs.
-        self.next_visit = Visit(instrument=self.next_visit.instrument,
-                                detector=5,
-                                group=str(int(self.next_visit.group) + 1),
-                                snaps=self.next_visit.snaps,
-                                filter=self.next_visit.filter,
-                                # Offset by a bit over 1 patch.
-                                ra=self.next_visit.ra + 0.4,
-                                dec=self.next_visit.dec - 0.4,
-                                rot=self.next_visit.rot,
-                                kind=self.next_visit.kind)
+        self.next_visit = dataclasses.replace(self.next_visit,
+                                              detector=5,
+                                              group=str(int(self.next_visit.group) + 1),
+                                              # Offset by a bit over 1 patch.
+                                              ra=self.next_visit.ra + 0.4,
+                                              dec=self.next_visit.dec - 0.4,
+                                              )
         self.interface.prep_butler(self.next_visit)
         expected_shards.update({157218, 157229})
         self._check_imports(self.butler, detector=5, expected_shards=expected_shards)
