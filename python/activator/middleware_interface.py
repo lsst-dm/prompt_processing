@@ -468,6 +468,12 @@ class MiddlewareInterface:
         #             'refcats'],
         #     output=self.output_collection)
         # The below is taken from SimplePipelineExecutor.prep_butler.
+        # TODO: currently the run **must** be unique for each unit of
+        # processing. It must be unique per group because in the prototype the
+        # same exposures may be rerun under different group IDs, and they must
+        # be unique per detector because the same worker may be tasked with
+        # different detectors from the same group. Replace with a single
+        # universal run on DM-36586.
         output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
         self.butler.registry.registerCollection(output_run, CollectionType.RUN)
         _prepend_collection(self.butler, self.output_collection, [output_run])
