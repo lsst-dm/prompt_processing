@@ -129,7 +129,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         rot = 90.
         self.next_visit = Visit(instrument_name,
                                 detector=56,
-                                group=1,
+                                group="1",
                                 snaps=1,
                                 filter=filter,
                                 ra=ra,
@@ -238,7 +238,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Second visit with everything same except group.
         self.next_visit = Visit(instrument=self.next_visit.instrument,
                                 detector=self.next_visit.detector,
-                                group=self.next_visit.group + 1,
+                                group=str(int(self.next_visit.group) + 1),
                                 snaps=self.next_visit.snaps,
                                 filter=self.next_visit.filter,
                                 ra=self.next_visit.ra,
@@ -253,7 +253,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Only 5, 10, 56, 60 have valid calibs.
         self.next_visit = Visit(instrument=self.next_visit.instrument,
                                 detector=5,
-                                group=self.next_visit.group + 1,
+                                group=str(int(self.next_visit.group) + 1),
                                 snaps=self.next_visit.snaps,
                                 filter=self.next_visit.filter,
                                 # Offset by a bit over 1 patch.

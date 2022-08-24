@@ -213,7 +213,7 @@ def make_random_visits(instrument, group):
     ----------
     instrument : `str`
         The short name of the instrument carrying out the observation.
-    group : `int`
+    group : `str`
         The group number being observed.
 
     Returns
@@ -344,7 +344,7 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
                          "unobserved raws are available.")
 
     for i, true_group in enumerate(itertools.islice(raw_pool, n_groups)):
-        group = group_base + i
+        group = str(group_base + i)
         _log.debug(f"Processing group {group} from unobserved {true_group}...")
         # snap_dict maps snap_id to {visit: blob}
         snap_dict = {}
@@ -390,7 +390,7 @@ def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base)
         The base number from which to offset new group numbers.
     """
     for i in range(n_groups):
-        group = group_base + i
+        group = str(group_base + i)
         visit_infos = make_random_visits(instrument, group)
 
         # TODO: may be cleaner to use a functor object than to depend on
