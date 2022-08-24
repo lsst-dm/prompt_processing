@@ -256,6 +256,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     # This may be impossible to unit test, since it seems to depend on Google-side parallelism.
 
     def test_ingest_image(self):
+        self.interface.prep_butler(self.next_visit)  # Ensure raw collections exist.
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
@@ -264,7 +265,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(filename)
+            self.interface.ingest_image(self.next_visit, filename)
 
             datasets = list(self.butler.registry.queryDatasets('raw',
                                                                collections=[f'{instname}/raw/all']))
@@ -283,6 +284,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         through ingest_image(), we'll want to have a test of "missing file
         ingestion", and this can serve as a starting point.
         """
+        self.interface.prep_butler(self.next_visit)  # Ensure raw collections exist.
         filename = "nonexistentImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
@@ -292,7 +294,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
                 self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"):
             mock.return_value = file_data
-            self.interface.ingest_image(filename)
+            self.interface.ingest_image(self.next_visit, filename)
         # There should not be any raw files in the registry.
         datasets = list(self.butler.registry.queryDatasets('raw',
                                                            collections=[f'{instname}/raw/all']))
@@ -313,7 +315,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(filename)
+            self.interface.ingest_image(self.next_visit, filename)
 
         with unittest.mock.patch("activator.middleware_interface.SimplePipelineExecutor.run") as mock_run:
             with self.assertLogs(self.logger_name, level="INFO") as logs:
@@ -337,7 +339,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(filename)
+            self.interface.ingest_image(self.next_visit, filename)
 
         with self.assertRaisesRegex(RuntimeError, "No data to process"):
             self.interface.run_pipeline(self.next_visit, {2})

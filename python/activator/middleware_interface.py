@@ -152,7 +152,8 @@ class MiddlewareInterface:
         butler.registry.registerCollection(self.instrument.makeUmbrellaCollectionName(),
                                            CollectionType.CHAINED)
         # Will be populated on ingest.
-        butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(), CollectionType.RUN)
+        butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
+                                           CollectionType.CHAINED)
         # Will be populated on pipeline execution.
         butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
         collections = [self.instrument.makeUmbrellaCollectionName(),
@@ -275,6 +276,14 @@ class MiddlewareInterface:
             self.butler.import_(filename=export_file.name,
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
+
+        # Create unique run to store this visit's raws. This makes it easier to
+        # clean up the central repo later.
+        # TODO: not needed after DM-36051, or if we find a way to give all test
+        # raws unique exposure IDs.
+        input_raws = self._get_raw_run_name(visit)
+        self.butler.registry.registerCollection(input_raws, CollectionType.RUN)
+        _prepend_collection(self.butler, self.instrument.makeDefaultRawIngestRunName(), [input_raws])
 
         # TODO: Until DM-35941, need to create a new butler to update governor
         # dimensions; refresh isn't enough.
@@ -419,6 +428,21 @@ class MiddlewareInterface:
         for k, g in itertools.groupby(ordered, key=get_key):
             yield k, len(list(g))
 
+    def _get_raw_run_name(self, visit):
+        """Define a run collection specific to a particular visit.
+
+        Parameters
+        ----------
+        visit : Visit
+            The visit whose raws will be stored in this run.
+
+        Returns
+        -------
+        run : `str`
+            The name of a run collection to use for raws.
+        """
+        return self.instrument.makeCollectionName("raw", visit.group)
+
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
 
@@ -497,7 +521,7 @@ class MiddlewareInterface:
         local.transfer_from(remote, "copy")
         return local
 
-    def ingest_image(self, oid: str) -> None:
+    def ingest_image(self, visit: Visit, oid: str) -> None:
         """Ingest an image into the temporary butler.
 
         The temporary butler must not already contain a ``raw`` dataset
@@ -507,6 +531,8 @@ class MiddlewareInterface:
 
         Parameters
         ----------
+        visit : Visit
+            The visit for which the image was taken.
         oid : `str`
             Google storage identifier for incoming image, relative to the
             image bucket.
@@ -518,7 +544,7 @@ class MiddlewareInterface:
         if not file.isLocal:
             # TODO: RawIngestTask doesn't currently support remote files.
             file = self._download(file)
-        result = self.rawIngestTask.run([file])
+        result = self.rawIngestTask.run([file], run=self._get_raw_run_name(visit))
         # We only ingest one image at a time.
         # TODO: replace this assert with a custom exception, once we've decided
         # how we plan to handle exceptions in this code.

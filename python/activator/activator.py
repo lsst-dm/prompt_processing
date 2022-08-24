@@ -176,7 +176,7 @@ def next_visit_handler() -> Tuple[str, int]:
             )
             if oid:
                 m = re.match(RAW_REGEXP, oid)
-                mwi.ingest_image(oid)
+                mwi.ingest_image(expected_visit, oid)
                 expid_set.add(m.group('expid'))
 
         _log.debug(f"Waiting for snaps from {expected_visit}.")
