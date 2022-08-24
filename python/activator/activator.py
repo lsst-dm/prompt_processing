@@ -227,6 +227,9 @@ def next_visit_handler() -> Tuple[str, int]:
                 _log.warning(f"Processing {len(expid_set)} snaps, expected {expected_visit.snaps}.")
             _log.info(f"Running pipeline on {expected_visit}.")
             mwi.run_pipeline(expected_visit, expid_set)
+            # TODO: broadcast alerts here
+            # TODO: call export_outputs on success or permanent failure in DM-34141
+            mwi.export_outputs(expected_visit, expid_set)
             return "Pipeline executed", 200
         else:
             _log.error(f"Timed out waiting for images for {expected_visit}.")
