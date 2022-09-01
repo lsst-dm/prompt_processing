@@ -54,6 +54,11 @@ class MiddlewareInterface:
     ingest the data when it is available, and run the difference imaging
     pipeline, all in that local butler.
 
+    Each instance may be used for processing more than one group-detector
+    combination, designated by the `Visit` parameter to certain methods. There
+    is no guarantee that a processing run may, or may not, share a group,
+    detector, or both with a previous run handled by the same object.
+
     Parameters
     ----------
     central_butler : `lsst.daf.butler.Butler`
@@ -90,7 +95,9 @@ class MiddlewareInterface:
     # self.instrument, self.camera, and self.skymap do not change after __init__.
     # self.butler defaults to a chained collection named
     #   self.output_collection, which contains zero or more output runs,
-    #   pre-made inputs, and raws, in that order.
+    #   pre-made inputs, and raws, in that order. However, self.butler is not
+    #   guaranteed to contain concrete data, or even the dimensions
+    #   corresponding to self.camera and self.skymap.
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
@@ -233,6 +240,12 @@ class MiddlewareInterface:
 
     def prep_butler(self, visit: Visit) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
+
+        After this method returns, the internal butler is guaranteed to contain
+        all data and all dimensions needed to run the appropriate pipeline on ``visit``,
+        except for ``raw`` and the ``exposure`` and ``visit`` dimensions,
+        respectively. It may contain other data that would not be loaded when
+        processing ``visit``.
 
         Parameters
         ----------
@@ -481,12 +494,19 @@ class MiddlewareInterface:
     def ingest_image(self, oid: str) -> None:
         """Ingest an image into the temporary butler.
 
+        The temporary butler must not already contain a ``raw`` dataset
+        corresponding to ``oid``. After this method returns, the temporary
+        butler contains one ``raw`` dataset corresponding to ``oid``, and the
+        appropriate ``exposure`` dimension.
+
         Parameters
         ----------
         oid : `str`
             Google storage identifier for incoming image, relative to the
             image bucket.
         """
+        # TODO: consider allowing pre-existing raws, as may happen when a
+        # pipeline is rerun (see DM-34141).
         _log.info(f"Ingesting image id '{oid}'")
         file = ResourcePath(f"{self.image_host}/{oid}")
         if not file.isLocal:
@@ -501,6 +521,10 @@ class MiddlewareInterface:
 
     def run_pipeline(self, visit: Visit, exposure_ids: set[int]) -> None:
         """Process the received image(s).
+
+        The internal butler must contain all data and all dimensions needed to
+        run the appropriate pipeline on ``visit`` and ``exposure_ids``, except
+        for the ``visit`` dimension itself.
 
         Parameters
         ----------
