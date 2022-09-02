@@ -114,7 +114,11 @@ class MiddlewareInterface:
             "camera", instrument=self.instrument.getName(),
             collections=self.instrument.makeUnboundedCalibrationRunName()
         )
-        self.skymap = self.central_butler.get("skyMap")
+        # TODO: is central_butler guaranteed to have only one skymap dimension?
+        skymaps = list(self.central_butler.registry.queryDataIds("skymap"))
+        assert len(skymaps) == 1, "Ambiguous or missing skymap in central repo."
+        self.skymap_name = skymaps[0]["skymap"]
+        self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name)
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
@@ -282,6 +286,7 @@ class MiddlewareInterface:
         # subset of the skymap that covers this data.
         skymaps = set(_query_missing_datasets(self.central_butler, self.butler,
                                               "skyMap",
+                                              skymap=self.skymap_name,
                                               collections=self._COLLECTION_SKYMAP,
                                               findFirst=True))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
@@ -304,6 +309,7 @@ class MiddlewareInterface:
         templates = set(_query_missing_datasets(self.central_butler, self.butler,
                                                 "*Coadd",
                                                 collections=self._COLLECTION_TEMPLATE,
+                                                skymap=self.skymap_name,
                                                 where=template_where))
         _log.debug("Found %d new template datasets.", len(templates))
         export.saveDatasets(templates)
