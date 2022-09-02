@@ -6,11 +6,11 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Visit:
     # elements must be hashable and JSON-persistable; built-in types recommended
-    instrument: str
+    instrument: str    # short name
     detector: int
-    group: str
-    snaps: int
-    filter: str
+    group: str         # observatory-specific ID; not the same as visit number
+    snaps: int         # number of snaps expected
+    filter: str        # physical filter
     # all angles are in degrees
     ra: float
     dec: float
