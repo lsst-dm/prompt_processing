@@ -110,10 +110,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         central_repo = os.path.join(data_dir, "central_repo")
         central_butler = Butler(central_repo,
-                                instrument=instname,
-                                skymap="deepCoadd_skyMap",
                                 collections=[f"{instname}/defaults"],
-                                writeable=False)
+                                writeable=False,
+                                inferDefaults=False)
         instrument = "lsst.obs.decam.DarkEnergyCamera"
         instrument_name = "DECam"
         self.input_data = os.path.join(data_dir, "input_data")

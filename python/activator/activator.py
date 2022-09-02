@@ -84,13 +84,9 @@ storage_client = storage.Client()
 # However, we don't want MiddlewareInterface to need to know details like where
 # the central repo is located, either, so perhaps we need a new module.
 central_butler = Butler(calib_repo,
-                        instrument=active_instrument.getName(),
-                        # NOTE: with inferDefaults=True, it's possible we don't need to hardcode this
-                        #     value from the real repository.
-                        # skymap="hsc_rings_v1",
                         collections=[active_instrument.makeCollectionName("defaults")],
                         writeable=False,
-                        inferDefaults=True)
+                        inferDefaults=False)
 repo = f"/tmp/butler-{os.getpid()}"
 butler = Butler(Butler.makeRepo(repo), writeable=True)
 _log.info("Created local Butler repo at %s.", repo)
