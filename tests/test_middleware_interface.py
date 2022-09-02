@@ -170,7 +170,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the right skymap is in the chained output collection.
         self.assertTrue(
             butler.datasetExists("skyMap",
-                                 # TODO: we shouldn't need skymap here?
                                  skymap="deepCoadd_skyMap",
                                  collections=self.interface.output_collection)
         )
@@ -209,7 +208,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         butler.registry.refresh()
         for patch in (464, 465, 509, 510):
             butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
-                                 # TODO: we shouldn't need skymap here?
                                  skymap="deepCoadd_skyMap",
                                  collections=self.interface.output_collection)
 
