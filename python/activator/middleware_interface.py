@@ -216,7 +216,7 @@ class MiddlewareInterface:
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
                 self._export_refcats(export, center, radius)
-                self._export_skymap_and_templates(export, center, detector, wcs)
+                self._export_skymap_and_templates(export, center, detector, wcs, visit.filter)
                 self._export_calibs(export, visit.detector, visit.filter)
 
                 # CHAINED collections
@@ -261,7 +261,7 @@ class MiddlewareInterface:
         _log.debug("Found %d new refcat datasets.", len(refcats))
         export.saveDatasets(refcats)
 
-    def _export_skymap_and_templates(self, export, center, detector, wcs):
+    def _export_skymap_and_templates(self, export, center, detector, wcs, filter):
         """Export the skymap and templates for this visit from the central
         butler.
 
@@ -275,6 +275,8 @@ class MiddlewareInterface:
             Detector we are loading data for.
         wcs : `lsst.afw.geom.SkyWcs`
             Rough WCS for the upcoming visit, to help finding patches.
+        filter : `str`
+            Physical filter for which to export templates.
         """
         # TODO: This exports the whole skymap, but we want to only export the
         # subset of the skymap that covers this data.
@@ -293,7 +295,7 @@ class MiddlewareInterface:
             points.append(wcs.pixelToSky(corner))
         patches = tract.findPatchList(points)
         patches_str = ','.join(str(p.sequential_index) for p in patches)
-        template_where = f"patch in ({patches_str}) and tract={tract.tract_id}"
+        template_where = f"patch in ({patches_str}) and tract={tract.tract_id} and physical_filter='{filter}'"
         # TODO: do we need to have the coadd name used in the pipeline
         # specified as a class kwarg, so that we only load one here?
         # TODO: alternately, we need to extract it from the pipeline? (best?)
