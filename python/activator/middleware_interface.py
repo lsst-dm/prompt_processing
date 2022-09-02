@@ -106,7 +106,6 @@ class MiddlewareInterface:
         define_visits_config = lsst.obs.base.DefineVisitsConfig()
         self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
 
-        # TODO DM-34098: note that we currently need to supply instrument here.
         # HACK: explicit collection gets around the fact that we don't have any
         # timestamp/exposure information in a form we can pass to the Butler.
         # This code will break once cameras start being versioned.
@@ -309,6 +308,7 @@ class MiddlewareInterface:
         templates = set(_query_missing_datasets(self.central_butler, self.butler,
                                                 "*Coadd",
                                                 collections=self._COLLECTION_TEMPLATE,
+                                                instrument=self.instrument.getName(),
                                                 skymap=self.skymap_name,
                                                 where=template_where))
         _log.debug("Found %d new template datasets.", len(templates))
@@ -333,6 +333,7 @@ class MiddlewareInterface:
             self.central_butler, self.butler,
             ...,
             collections=self.instrument.makeCalibrationCollectionName(),
+            instrument=self.instrument.getName(),
             where=calib_where))
         if calibs:
             for dataset_type, n_datasets in self._count_by_type(calibs):
@@ -492,7 +493,8 @@ class MiddlewareInterface:
             raise RuntimeError("No data to process.") from e
 
         # TODO: can we move this from_pipeline call to prep_butler?
-        where = f"detector={visit.detector} and exposure in ({','.join(str(x) for x in exposure_ids)})"
+        where = f"instrument='{visit.instrument}' and detector={visit.detector} " \
+                f"and exposure in ({','.join(str(x) for x in exposure_ids)})"
         executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
         if len(executor.quantum_graph) == 0:
             # TODO: a good place for a custom exception?
