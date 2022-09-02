@@ -244,9 +244,8 @@ class MiddlewareInterface:
             Radius to search for refcat shards in.
         """
         indexer = HtmIndexer(depth=7)
-        shards = indexer.getShardIds(center, radius+self.padding)
-        # getShardIds returns a tuple, the first item is the ids list.
-        htm_where = f"htm7 in ({','.join(str(x) for x in shards[0])})"
+        shard_ids, _ = indexer.getShardIds(center, radius+self.padding)
+        htm_where = f"htm7 in ({','.join(str(x) for x in shard_ids)})"
         # Get shards from all refcats that overlap this detector.
         # TODO: `...` doesn't work for this queryDatasets call
         # currently, and we can't queryDatasetTypes in just the refcats
