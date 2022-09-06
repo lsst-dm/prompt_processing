@@ -524,6 +524,7 @@ def _query_missing_datasets(src_repo: Butler, dest_repo: Butler,
     *args, **kwargs
         Parameters for describing the dataset query. They have the same
         meanings as the parameters of `lsst.daf.butler.Registry.queryDatasets`.
+        The query must be valid for both ``src_repo`` and ``dest_repo``.
 
     Returns
     -------
