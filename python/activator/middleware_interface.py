@@ -292,11 +292,8 @@ class MiddlewareInterface:
         self.butler.registry.registerCollection(input_raws, CollectionType.RUN)
         _prepend_collection(self.butler, self.instrument.makeDefaultRawIngestRunName(), [input_raws])
 
-        # TODO: Until DM-35941, need to create a new butler to update governor
-        # dimensions; refresh isn't enough.
-        self.butler = Butler(butler=self.butler,
-                             collections=[self.output_collection],
-                             )
+        # Update for new collections, dimensions, and datasets.
+        self.butler.registry.refresh()
 
     def _export_refcats(self, export, center, radius):
         """Export the refcats for this visit from the central butler.
