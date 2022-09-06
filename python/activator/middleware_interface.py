@@ -168,9 +168,10 @@ class MiddlewareInterface:
                        ]
         butler.registry.setCollectionChain(self.output_collection, collections)
 
-        # Refresh butler after configuring it, to ensure all required
-        # dimensions and collections are available.
-        butler.registry.refresh()
+        # Internal Butler keeps a reference to the newly prepared collection.
+        # This reference makes visible any inputs for query purposes. Output
+        # runs are execution-specific and must be provided explicitly to the
+        # appropriate calls.
         self.butler = Butler(butler=butler,
                              collections=[self.output_collection],
                              )
@@ -266,9 +267,6 @@ class MiddlewareInterface:
         wcs = self._predict_wcs(detector, visit)
         center, radius = self._detector_bounding_circle(detector, wcs)
 
-        # Need up-to-date census of what's already present.
-        self.butler.registry.refresh()
-
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
                 self._export_refcats(export, center, radius)
@@ -291,9 +289,6 @@ class MiddlewareInterface:
         input_raws = self._get_raw_run_name(visit)
         self.butler.registry.registerCollection(input_raws, CollectionType.RUN)
         _prepend_collection(self.butler, self.instrument.makeDefaultRawIngestRunName(), [input_raws])
-
-        # Update for new collections, dimensions, and datasets.
-        self.butler.registry.refresh()
 
     def _export_refcats(self, export, center, radius):
         """Export the refcats for this visit from the central butler.
