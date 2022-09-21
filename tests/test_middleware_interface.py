@@ -110,11 +110,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         central_repo = os.path.join(data_dir, "central_repo")
         central_butler = Butler(central_repo,
-                                instrument=instname,
-                                skymap="deepCoadd_skyMap",
                                 collections=[f"{instname}/defaults"],
-                                writeable=False)
+                                writeable=False,
+                                inferDefaults=False)
         instrument = "lsst.obs.decam.DarkEnergyCamera"
+        instrument_name = "DECam"
         self.input_data = os.path.join(data_dir, "input_data")
         # Have to preserve the tempdir, so that it doesn't get cleaned up.
         self.repo = tempfile.TemporaryDirectory()
@@ -127,7 +127,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         dec = -4.950050405424033
         # DECam has no rotator; instrument angle is 90 degrees in our system.
         rot = 90.
-        self.next_visit = Visit(instrument,
+        self.next_visit = Visit(instrument_name,
                                 detector=56,
                                 group=1,
                                 snaps=1,
@@ -169,7 +169,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the right skymap is in the chained output collection.
         self.assertTrue(
             butler.datasetExists("skyMap",
-                                 # TODO: we shouldn't need skymap here?
                                  skymap="deepCoadd_skyMap",
                                  collections=self.interface.output_collection)
         )
@@ -208,7 +207,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         butler.registry.refresh()
         for patch in (464, 465, 509, 510):
             butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
-                                 # TODO: we shouldn't need skymap here?
                                  skymap="deepCoadd_skyMap",
                                  collections=self.interface.output_collection)
 
