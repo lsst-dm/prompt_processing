@@ -33,14 +33,12 @@ class GCloudStructuredLogFormatter(logging.Formatter):
 
     Parameters
     ----------
-    fmt : `str`
-        A log output format string compatible with `str.format`.
     labels : `dict` [`str`, `str`]
         Any metadata that should be attached to the log. See ``LogEntry.labels``
         in Google Cloud REST API documentation.
     """
-    def __init__(self, fmt=None, labels=None):
-        super().__init__(fmt=fmt, style="{")
+    def __init__(self, labels=None):
+        super().__init__()
 
         if labels:
             self._labels = labels

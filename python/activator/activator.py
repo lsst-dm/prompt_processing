@@ -53,9 +53,6 @@ timeout = os.environ.get("IMAGE_TIMEOUT", 50)
 # Set up logging for all modules used by this worker.
 log_handler = logging.StreamHandler()
 log_handler.setFormatter(GCloudStructuredLogFormatter(
-    '{{"severity":"{levelname}", "labels":{{"instrument":"'
-    + active_instrument.getName()
-    + '"}}, "message":{message!r}}}',
     labels={"instrument": active_instrument.getName()},
 ))
 logging.basicConfig(handlers=[log_handler])
