@@ -49,6 +49,7 @@ class GoogleFormatterTest(unittest.TestCase):
         log_handler = logging.StreamHandler(self.output)
         log_handler.setFormatter(GCloudStructuredLogFormatter(
             '{{"severity":"{levelname}", "labels":{{"instrument":"NotACam"}}, "message":{message!r}}}',
+            labels={"instrument": "NotACam"},
         ))
         # Unique logger per test
         self.log = logging.getLogger(self.id())

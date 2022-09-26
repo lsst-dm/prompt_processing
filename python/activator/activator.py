@@ -55,7 +55,8 @@ log_handler = logging.StreamHandler()
 log_handler.setFormatter(GCloudStructuredLogFormatter(
     '{{"severity":"{levelname}", "labels":{{"instrument":"'
     + active_instrument.getName()
-    + '"}}, "message":{message!r}}}'
+    + '"}}, "message":{message!r}}}',
+    labels={"instrument": active_instrument.getName()},
 ))
 logging.basicConfig(handlers=[log_handler])
 _log = logging.getLogger("lsst." + __name__)
