@@ -34,6 +34,7 @@ from google.cloud import pubsub_v1, storage
 
 from lsst.daf.butler import Butler
 from lsst.obs.base import Instrument
+from .logger import GCloudStructuredLogFormatter
 from .make_pgpass import make_pgpass
 from .middleware_interface import MiddlewareInterface
 from .raw import RAW_REGEXP
@@ -49,15 +50,14 @@ calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
 timeout = os.environ.get("IMAGE_TIMEOUT", 50)
 
-logging.basicConfig(
-    # Use JSON format compatible with Google Cloud Logging
-    format=(
-        '{{"severity":"{levelname}", "labels":{{"instrument":"'
-        + active_instrument.getName()
-        + '"}}, "message":{message!r}}}'
-    ),
-    style="{",
-)
+# Set up logging for all modules used by this worker.
+log_handler = logging.StreamHandler()
+log_handler.setFormatter(GCloudStructuredLogFormatter(
+    '{{"severity":"{levelname}", "labels":{{"instrument":"'
+    + active_instrument.getName()
+    + '"}}, "message":{message!r}}}'
+))
+logging.basicConfig(handlers=[log_handler])
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
