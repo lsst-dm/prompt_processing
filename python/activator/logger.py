@@ -21,6 +21,7 @@
 
 __all__ = ["GCloudStructuredLogFormatter"]
 
+import json
 import logging
 
 
@@ -45,3 +46,14 @@ class GCloudStructuredLogFormatter(logging.Formatter):
             self._labels = labels
         else:
             self._labels = {}
+
+    def format(self, record):
+        # Call for side effects only; ignore result.
+        super().format(record)
+
+        entry = {
+            "severity": record.levelname,
+            "labels": self._labels,
+            "message": record.getMessage(),
+        }
+        return json.dumps(entry)

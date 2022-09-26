@@ -74,7 +74,7 @@ class GoogleFormatterTest(unittest.TestCase):
             # Make all whitespace optional
             expected = re.compile('{"severity": *"%s", *' % level
                                   + '"labels": *{"instrument": *"NotACam"}, *'
-                                  + '"message": *\'%s\'}' % re.escape(text)
+                                  + '"message": *"%s"}' % re.escape(text)
                                   )
             self.assertRegex(output, expected)
 
@@ -92,3 +92,27 @@ class GoogleFormatterTest(unittest.TestCase):
         args = "rotund bovine"
         self.log.warning(msg, args)
         self._check_log(self.output.getvalue().splitlines(), "WARNING", [msg % args])
+
+    def test_quotes(self):
+        """Test handling of messages containing single or double quotes.
+        """
+        msgs = ["Consider a so-called 'spherical cow'.",
+                'Consider a so-called "spherical cow".',
+                ]
+        for msg in msgs:
+            self.log.info(msg)
+        self._check_log(self.output.getvalue().splitlines(), "INFO",
+                        [msg.replace('"', r'\"') for msg in msgs])
+
+    def test_side_effects(self):
+        """Test that format still modifies exposure records in the same way
+        as Formatter.format.
+        """
+        msg = "Consider a %s..."
+        args = "rotund bovine"
+        factory = logging.getLogRecordFactory()
+        record = factory(self.id(), logging.INFO, "file.py", 42, msg, args, None)
+        formatter = GCloudStructuredLogFormatter()
+        formatter.format(record)
+        # If format has no side effects, record.message does not exist.
+        self.assertEqual(record.message, msg % args)
