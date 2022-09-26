@@ -21,8 +21,8 @@
 
 
 import io
+import json
 import logging
-import re
 import unittest
 
 from activator.logger import GCloudStructuredLogFormatter
@@ -56,7 +56,7 @@ class GoogleFormatterTest(unittest.TestCase):
         self.log.addHandler(log_handler)
         self.log.setLevel(logging.DEBUG)
 
-    def _check_log(self, outputs, level, texts):
+    def _check_log(self, outputs, level, labels, texts):
         """Check that the log output is formatted correctly.
 
         Parameters
@@ -65,24 +65,26 @@ class GoogleFormatterTest(unittest.TestCase):
             A list of the formatted log messages.
         level : `str`
             The emitted log level.
+        labels : `dict` [`str`, `str`]
+            The labels attached to the log message.
         texts : `list` [`str`]
             The expected log messages.
         """
         self.assertEqual(len(outputs), len(texts))
         for output, text in zip(outputs, texts):
-            # Make all whitespace optional
-            expected = re.compile('{"severity": *"%s", *' % level
-                                  + '"labels": *{"instrument": *"NotACam"}, *'
-                                  + '"message": *"%s"}' % re.escape(text)
-                                  )
-            self.assertRegex(output, expected)
+            parsed = json.loads(output)
+            self.assertEqual(parsed["severity"], level)
+            self.assertEqual(parsed["message"], text)
+            self.assertEqual(parsed["labels"], labels)
 
     def test_direct(self):
         """Test the translation of verbatim log messages.
         """
         msg = "Consider a spherical cow..."
         self.log.info(msg)
-        self._check_log(self.output.getvalue().splitlines(), "INFO", [msg])
+        self._check_log(self.output.getvalue().splitlines(),
+                        "INFO", {"instrument": "NotACam"},
+                        [msg])
 
     def test_args(self):
         """Test the translation of arg-based log messages.
@@ -90,7 +92,9 @@ class GoogleFormatterTest(unittest.TestCase):
         msg = "Consider a %s..."
         args = "rotund bovine"
         self.log.warning(msg, args)
-        self._check_log(self.output.getvalue().splitlines(), "WARNING", [msg % args])
+        self._check_log(self.output.getvalue().splitlines(),
+                        "WARNING", {"instrument": "NotACam"},
+                        [msg % args])
 
     def test_quotes(self):
         """Test handling of messages containing single or double quotes.
@@ -100,8 +104,9 @@ class GoogleFormatterTest(unittest.TestCase):
                 ]
         for msg in msgs:
             self.log.info(msg)
-        self._check_log(self.output.getvalue().splitlines(), "INFO",
-                        [msg.replace('"', r'\"') for msg in msgs])
+        self._check_log(self.output.getvalue().splitlines(),
+                        "INFO", {"instrument": "NotACam"},
+                        msgs)
 
     def test_side_effects(self):
         """Test that format still modifies exposure records in the same way
