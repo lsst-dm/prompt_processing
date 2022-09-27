@@ -51,7 +51,7 @@ class GCloudStructuredLogFormatter(logging.Formatter):
 
         entry = {
             "severity": record.levelname,
-            "labels": self._labels,
+            "logging.googleapis.com/labels": self._labels,
             "message": record.getMessage(),
         }
         return json.dumps(entry)

@@ -75,7 +75,7 @@ class GoogleFormatterTest(unittest.TestCase):
             parsed = json.loads(output)
             self.assertEqual(parsed["severity"], level)
             self.assertEqual(parsed["message"], text)
-            self.assertEqual(parsed["labels"], labels)
+            self.assertEqual(parsed["logging.googleapis.com/labels"], labels)
 
     def test_direct(self):
         """Test the translation of verbatim log messages.
