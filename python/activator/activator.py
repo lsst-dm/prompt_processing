@@ -229,7 +229,7 @@ def next_visit_handler() -> Tuple[str, int]:
             mwi.run_pipeline(expected_visit, expid_set)
             return "Pipeline executed", 200
         else:
-            _log.fatal(f"Timed out waiting for images for {expected_visit}.")
+            _log.error(f"Timed out waiting for images for {expected_visit}.")
             return "Timed out waiting for images", 500
     finally:
         subscriber.delete_subscription(subscription=subscription.name)
