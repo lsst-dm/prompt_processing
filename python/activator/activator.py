@@ -58,6 +58,7 @@ log_handler.setFormatter(GCloudStructuredLogFormatter(
 logging.basicConfig(handlers=[log_handler])
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+logging.captureWarnings(True)
 
 
 # Write PostgreSQL credentials.
