@@ -31,13 +31,6 @@ from activator.logger import GCloudStructuredLogFormatter
 class GoogleFormatterTest(unittest.TestCase):
     """Test GCloudStructuredLogFormatter with fake log messages.
     """
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-
-        # Each test has its own handler
-        # logging.basicConfig(handlers=[logging.NullHandler()])
-
     def setUp(self):
         super().setUp()
 
