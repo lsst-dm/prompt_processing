@@ -19,10 +19,36 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["GCloudStructuredLogFormatter"]
+__all__ = ["GCloudStructuredLogFormatter", "setup_google_logger"]
 
 import json
 import logging
+
+
+# TODO: replace with something more extensible, once we know what needs to
+# vary besides the formatter (handler type?).
+def setup_google_logger(labels=None):
+    """Set global logging settings for prompt_prototype.
+
+    Calling this function makes `GCloudStructuredLogFormatter` the root
+    formatter and redirects all warnings to go through it.
+
+    Parameters
+    ----------
+    labels : `dict` [`str`, `str`]
+        Any metadata that should be attached to all logs. See
+        ``LogEntry.labels`` in Google Cloud REST API documentation.
+
+    Returns
+    -------
+    handler : `logging.Handler`
+        The handler used by the root logger.
+    """
+    log_handler = logging.StreamHandler()
+    log_handler.setFormatter(GCloudStructuredLogFormatter(labels))
+    logging.basicConfig(handlers=[log_handler])
+    logging.captureWarnings(True)
+    return log_handler
 
 
 class GCloudStructuredLogFormatter(logging.Formatter):

@@ -34,7 +34,7 @@ from google.cloud import pubsub_v1, storage
 
 from lsst.daf.butler import Butler
 from lsst.obs.base import Instrument
-from .logger import GCloudStructuredLogFormatter
+from .logger import setup_google_logger
 from .make_pgpass import make_pgpass
 from .middleware_interface import MiddlewareInterface
 from .raw import RAW_REGEXP
@@ -50,15 +50,11 @@ calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
 timeout = os.environ.get("IMAGE_TIMEOUT", 50)
 
-# Set up logging for all modules used by this worker.
-log_handler = logging.StreamHandler()
-log_handler.setFormatter(GCloudStructuredLogFormatter(
+setup_google_logger(
     labels={"instrument": active_instrument.getName()},
-))
-logging.basicConfig(handlers=[log_handler])
+)
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
-logging.captureWarnings(True)
 
 
 # Write PostgreSQL credentials.
