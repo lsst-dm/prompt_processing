@@ -217,7 +217,7 @@ On a VM with the Science Pipelines installed, a new APDB schema can be created i
 
 .. code-block:: sh
 
-    make_apdb.py -c isolation_level=READ_UNCOMMITTED -c db_url="postgresql://postgres@localhost/postgres"
+    make_apdb.py -c db_url="postgresql://postgres@localhost:<PORT>/postgres"
 
 
 Middleware Worker VM
