@@ -249,7 +249,7 @@ Built-in support:
 
 * a complete install of the Science Pipelines in ``/software/lsst_stack/``
 * a running instance of ``cloud_sql_proxy`` mapping the ``butler-registry`` database to port 5432
-* global configuration pointing Butler ``s3://`` URIs to Google Storage buckets
+* global configuration pointing Butler ``s3://`` URIs to Google Storage buckets (though ``gs://`` URIs now work as well)
 
 The user is responsible for:
 
@@ -304,8 +304,4 @@ Otherwise, no special configuration is needed to create one.
 
 To create or access a Google Storage repository, give the repository location as a URI, e.g.::
 
-    butler query-collections s3://<bucket name>/<repo location in bucket>
-
-.. important::
-
-   Unlike other uses of the Google Storage API, Butler operations always use the ``s3://`` scheme, not the ``gs://`` scheme.
+    butler query-collections gs://<bucket name>/<repo location in bucket>
