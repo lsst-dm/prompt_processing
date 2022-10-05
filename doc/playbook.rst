@@ -180,6 +180,13 @@ It then uploads a batch of files representing the snaps of the visit to the ``ru
 
 Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
 
+.. note::
+
+   ``upload.py`` uploads from the same small pool of raws every time it is run, while the AP pipeline assumes that every visit has unique visit IDs.
+   This causes collisions in the APDB that crash the pipeline.
+   To prevent this, follow the instructions in `Resetting the APDB`_ before calling ``upload.py`` again.
+
+
 Databases
 =========
 
@@ -218,6 +225,17 @@ On a VM with the Science Pipelines installed, a new APDB schema can be created i
 .. code-block:: sh
 
     make_apdb.py -c db_url="postgresql://postgres@localhost:<PORT>/postgres"
+
+
+Resetting the APDB
+------------------
+
+To restore the APDB to a clean state, run the following (replacing 5433 with the appropriate port on your machine):
+
+.. code-block:: sh
+
+   psql -h localhost -U postgres -p 5433 -c 'drop table "DiaForcedSource", "DiaObject", "DiaObject_To_Object_Match", "DiaSource", "SSObject" cascade;'
+   make_apdb.py -c db_url="postgresql://postgres@localhost:5433/postgres"
 
 
 Middleware Worker VM
