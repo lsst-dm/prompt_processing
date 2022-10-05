@@ -49,6 +49,7 @@ active_instrument = Instrument.from_string(config_instrument)
 calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
 timeout = os.environ.get("IMAGE_TIMEOUT", 50)
+local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
 
 setup_google_logger(
     labels={"instrument": active_instrument.getName()},
@@ -82,7 +83,7 @@ central_butler = Butler(calib_repo,
                         collections=[active_instrument.makeCollectionName("defaults")],
                         writeable=True,
                         inferDefaults=False)
-repo = f"/tmp/butler-{os.getpid()}"
+repo = os.path.join(local_repos, f"butler-{os.getpid()}")
 butler = Butler(Butler.makeRepo(repo), writeable=True)
 _log.info("Created local Butler repo at %s.", repo)
 mwi = MiddlewareInterface(central_butler, image_bucket, config_instrument, butler)
