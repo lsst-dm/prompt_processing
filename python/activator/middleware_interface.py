@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["MiddlewareInterface"]
+__all__ = ["get_central_butler", "MiddlewareInterface"]
 
 import collections.abc
 import itertools
@@ -43,6 +43,32 @@ from .visit import Visit
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+
+
+def get_central_butler(central_repo: str, instrument_class: str):
+    """Provide a Butler that can access the given repository and read and write
+    data for the given instrument.
+
+    Parameters
+    ----------
+    central_repo : `str`
+        The path or URI to the central repository.
+    instrument_class : `str`
+        The fully-qualified class name of the instrument whose data will be
+        retrieved or written.
+
+    Returns
+    -------
+    butler : `lsst.daf.butler.Butler`
+        A Butler for ``central_repo`` pre-configured to load and store
+        ``instrument_name`` data.
+    """
+    instrument = lsst.obs.base.Instrument.from_string(instrument_class)
+    return Butler(central_repo,
+                  collections=[instrument.makeCollectionName("defaults")],
+                  writeable=True,
+                  inferDefaults=False,
+                  )
 
 
 class MiddlewareInterface:

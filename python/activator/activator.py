@@ -32,11 +32,10 @@ from typing import Optional, Tuple
 from flask import Flask, request
 from google.cloud import pubsub_v1, storage
 
-from lsst.daf.butler import Butler
 from lsst.obs.base import Instrument
 from .logger import setup_google_logger
 from .make_pgpass import make_pgpass
-from .middleware_interface import MiddlewareInterface
+from .middleware_interface import get_central_butler, MiddlewareInterface
 from .raw import RAW_REGEXP
 from .visit import Visit
 
@@ -75,15 +74,10 @@ subscription = None
 storage_client = storage.Client()
 
 # Initialize middleware interface.
-# TODO: this should not be done in activator.py, which is supposed to have only
-# framework/messaging support (ideally, it should not contain any LSST imports).
-# However, we don't want MiddlewareInterface to need to know details like where
-# the central repo is located, either, so perhaps we need a new module.
-central_butler = Butler(calib_repo,
-                        collections=[active_instrument.makeCollectionName("defaults")],
-                        writeable=True,
-                        inferDefaults=False)
-mwi = MiddlewareInterface(central_butler, image_bucket, config_instrument, local_repos)
+mwi = MiddlewareInterface(get_central_butler(calib_repo, config_instrument),
+                          image_bucket,
+                          config_instrument,
+                          local_repos)
 
 
 def check_for_snap(

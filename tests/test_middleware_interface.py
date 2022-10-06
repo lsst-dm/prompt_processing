@@ -38,7 +38,8 @@ from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
 from activator.visit import Visit
-from activator.middleware_interface import MiddlewareInterface, _query_missing_datasets, _prepend_collection
+from activator.middleware_interface import get_central_butler, MiddlewareInterface, \
+    _query_missing_datasets, _prepend_collection
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -111,8 +112,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
     def setUp(self):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        central_repo = os.path.join(data_dir, "central_repo")
-        central_butler = Butler(central_repo,
+        self.central_repo = os.path.join(data_dir, "central_repo")
+        central_butler = Butler(self.central_repo,
                                 collections=[f"{instname}/defaults"],
                                 writeable=False,
                                 inferDefaults=False)
@@ -145,6 +146,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # TemporaryDirectory warns on leaks
         self.interface._repo.cleanup()  # TODO: should MiddlewareInterface have a cleanup method?
         self.workspace.cleanup()
+
+    def test_get_butler(self):
+        butler = get_central_butler(self.central_repo, "lsst.obs.decam.DarkEnergyCamera")
+        # TODO: better way to test repo location?
+        self.assertTrue(
+            butler.getURI("camera", instrument=instname, run="foo", predict=True).ospath
+            .startswith(self.central_repo))
+        self.assertEqual(list(butler.collections), [f"{instname}/defaults"])
+        self.assertTrue(butler.isWriteable())
 
     def test_init(self):
         """Basic tests of the initialized interface object.
