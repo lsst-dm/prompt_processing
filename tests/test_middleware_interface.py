@@ -117,7 +117,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 writeable=False,
                                 inferDefaults=False)
         instrument = "lsst.obs.decam.DarkEnergyCamera"
-        instrument_name = "DECam"
         self.input_data = os.path.join(data_dir, "input_data")
         # Have to preserve the tempdir, so that it doesn't get cleaned up.
         self.workspace = tempfile.TemporaryDirectory()
@@ -130,7 +129,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         dec = -4.950050405424033
         # DECam has no rotator; instrument angle is 90 degrees in our system.
         rot = 90.
-        self.next_visit = Visit(instrument_name,
+        self.next_visit = Visit(instname,
                                 detector=56,
                                 group="1",
                                 snaps=1,
