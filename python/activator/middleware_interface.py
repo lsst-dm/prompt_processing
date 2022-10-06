@@ -99,6 +99,7 @@ class MiddlewareInterface:
     # self.image_host is a valid URI with non-empty path and no query or fragment.
     # self._download_store is None if and only if self.image_host is a local URI.
     # self.instrument, self.camera, and self.skymap do not change after __init__.
+    # self._repo is the only reference to its TemporaryDirectory object.
     # self.butler defaults to a chained collection named
     #   self.output_collection, which contains zero or more output runs,
     #   pre-made inputs, and raws, in that order. However, self.butler is not
@@ -152,9 +153,10 @@ class MiddlewareInterface:
         base_path : `str`
             An absolute path to a space where the repo can be created.
         """
-        repo = os.path.join(base_path, f"butler-{os.getpid()}")
-        butler = Butler(Butler.makeRepo(repo), writeable=True)
-        _log.info("Created local Butler repo at %s.", repo)
+        # Directory has same lifetime as this object.
+        self._repo = tempfile.TemporaryDirectory(dir=base_path, prefix="butler-")
+        butler = Butler(Butler.makeRepo(self._repo.name), writeable=True)
+        _log.info("Created local Butler repo at %s.", self._repo.name)
 
         self.instrument.register(butler.registry)
 

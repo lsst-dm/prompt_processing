@@ -144,6 +144,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         # TemporaryDirectory warns on leaks
+        self.interface._repo.cleanup()  # TODO: should MiddlewareInterface have a cleanup method?
         self.workspace.cleanup()
 
     def test_init(self):
@@ -491,6 +492,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # Populate repository.
         self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, workspace.name,
                                              prefix="file://")
+        # TODO: should MiddlewareInterface have a cleanup method?
+        self.addCleanup(tempfile.TemporaryDirectory.cleanup, self.interface._repo)
         self.interface.prep_butler(self.next_visit)
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
