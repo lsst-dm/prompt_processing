@@ -44,14 +44,14 @@ PROJECT_ID = "prompt-proto"
 verification_token = os.environ["PUBSUB_VERIFICATION_TOKEN"]
 # The full instrument class name, including module path.
 config_instrument = os.environ["RUBIN_INSTRUMENT"]
-active_instrument = Instrument.from_string(config_instrument)
+instrument_name = Instrument.from_string(config_instrument).getName()
 calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
 timeout = os.environ.get("IMAGE_TIMEOUT", 50)
 local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
 
 setup_google_logger(
-    labels={"instrument": active_instrument.getName()},
+    labels={"instrument": instrument_name},
 )
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -67,7 +67,7 @@ app = Flask(__name__)
 subscriber = pubsub_v1.SubscriberClient()
 topic_path = subscriber.topic_path(
     PROJECT_ID,
-    f"{active_instrument.getName()}-image",
+    f"{instrument_name}-image",
 )
 subscription = None
 
@@ -147,8 +147,8 @@ def next_visit_handler() -> Tuple[str, int]:
         payload = base64.b64decode(envelope["message"]["data"])
         data = json.loads(payload)
         expected_visit = Visit(**data)
-        assert expected_visit.instrument == active_instrument.getName(), \
-            f"Expected {active_instrument.getName()}, received {expected_visit.instrument}."
+        assert expected_visit.instrument == instrument_name, \
+            f"Expected {instrument_name}, received {expected_visit.instrument}."
         expid_set = set()
 
         # Copy calibrations for this detector/visit
