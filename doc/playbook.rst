@@ -102,7 +102,7 @@ To create or edit the Cloud Run service in the Google Cloud Console:
 * Select the container image URL from "Artifact Registry > prompt-proto-service"
 * In the Variables & Secrets tab, set the following required parameters:
 
-  * RUBIN_INSTRUMENT: full instrument class name, including module path
+  * RUBIN_INSTRUMENT: the "short" instrument name
   * PUBSUB_VERIFICATION_TOKEN: choose an arbitrary string matching the Pub/Sub endpoint URL below
   * IMAGE_BUCKET: bucket containing raw images (``rubin-prompt-proto-main``)
   * CALIB_REPO: repo containing calibrations (and templates)

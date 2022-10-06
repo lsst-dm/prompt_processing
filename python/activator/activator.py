@@ -32,7 +32,6 @@ from typing import Optional, Tuple
 from flask import Flask, request
 from google.cloud import pubsub_v1, storage
 
-from lsst.obs.base import Instrument
 from .logger import setup_google_logger
 from .make_pgpass import make_pgpass
 from .middleware_interface import get_central_butler, MiddlewareInterface
@@ -42,9 +41,8 @@ from .visit import Visit
 PROJECT_ID = "prompt-proto"
 
 verification_token = os.environ["PUBSUB_VERIFICATION_TOKEN"]
-# The full instrument class name, including module path.
-config_instrument = os.environ["RUBIN_INSTRUMENT"]
-instrument_name = Instrument.from_string(config_instrument).getName()
+# The short name for the instrument.
+instrument_name = os.environ["RUBIN_INSTRUMENT"]
 calib_repo = os.environ["CALIB_REPO"]
 image_bucket = os.environ["IMAGE_BUCKET"]
 timeout = os.environ.get("IMAGE_TIMEOUT", 50)
@@ -74,9 +72,9 @@ subscription = None
 storage_client = storage.Client()
 
 # Initialize middleware interface.
-mwi = MiddlewareInterface(get_central_butler(calib_repo, config_instrument),
+mwi = MiddlewareInterface(get_central_butler(calib_repo, instrument_name),
                           image_bucket,
-                          config_instrument,
+                          instrument_name,
                           local_repos)
 
 
