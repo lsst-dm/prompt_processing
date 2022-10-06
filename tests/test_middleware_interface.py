@@ -148,13 +148,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.workspace.cleanup()
 
     def test_get_butler(self):
-        butler = get_central_butler(self.central_repo, "lsst.obs.decam.DarkEnergyCamera")
-        # TODO: better way to test repo location?
-        self.assertTrue(
-            butler.getURI("camera", instrument=instname, run="foo", predict=True).ospath
-            .startswith(self.central_repo))
-        self.assertEqual(list(butler.collections), [f"{instname}/defaults"])
-        self.assertTrue(butler.isWriteable())
+        for butler in [get_central_butler(self.central_repo, "lsst.obs.decam.DarkEnergyCamera"),
+                       get_central_butler(self.central_repo, instname),
+                       ]:
+            # TODO: better way to test repo location?
+            self.assertTrue(
+                butler.getURI("camera", instrument=instname, run="foo", predict=True).ospath
+                .startswith(self.central_repo))
+            self.assertEqual(list(butler.collections), [f"{instname}/defaults"])
+            self.assertTrue(butler.isWriteable())
 
     def test_init(self):
         """Basic tests of the initialized interface object.

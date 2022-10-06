@@ -54,8 +54,8 @@ def get_central_butler(central_repo: str, instrument_class: str):
     central_repo : `str`
         The path or URI to the central repository.
     instrument_class : `str`
-        The fully-qualified class name of the instrument whose data will be
-        retrieved or written.
+        The name of the instrument whose data will be retrieved or written. May
+        be either the fully qualified class name or the short name.
 
     Returns
     -------
@@ -63,7 +63,10 @@ def get_central_butler(central_repo: str, instrument_class: str):
         A Butler for ``central_repo`` pre-configured to load and store
         ``instrument_name`` data.
     """
-    instrument = lsst.obs.base.Instrument.from_string(instrument_class)
+    # TODO: how much overhead do we take on from asking the central repo about
+    # the instrument instead of handling it internally?
+    registry = Butler(central_repo).registry
+    instrument = lsst.obs.base.Instrument.from_string(instrument_class, registry)
     return Butler(central_repo,
                   collections=[instrument.makeCollectionName("defaults")],
                   writeable=True,
@@ -101,8 +104,9 @@ class MiddlewareInterface:
         Storage bucket where images will be written to as they arrive.
         See also ``prefix``.
     instrument : `str`
-        Full class name of the instrument taking the data, for populating
-        butler collections and dataIds. Example: "lsst.obs.lsst.LsstCam"
+        Name of the instrument taking the data, for populating
+        butler collections and dataIds. May be either the fully qualified class
+        name or the short name. Examples: "LsstCam", "lsst.obs.lsst.LsstCam".
         TODO: this arg can probably be removed and replaced with internal
         use of the butler.
     local_storage : `str`
@@ -143,7 +147,8 @@ class MiddlewareInterface:
             self._download_store = tempfile.TemporaryDirectory(prefix="holding-")
         else:
             self._download_store = None
-        self.instrument = lsst.obs.base.Instrument.from_string(instrument)
+        # TODO: how much overhead do we pick up from going through the registry?
+        self.instrument = lsst.obs.base.Instrument.from_string(instrument, central_butler.registry)
 
         self.output_collection = self.instrument.makeCollectionName("prompt")
 
