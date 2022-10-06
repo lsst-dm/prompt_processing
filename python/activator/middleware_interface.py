@@ -79,10 +79,9 @@ class MiddlewareInterface:
         butler collections and dataIds. Example: "lsst.obs.lsst.LsstCam"
         TODO: this arg can probably be removed and replaced with internal
         use of the butler.
-    butler : `lsst.daf.butler.Butler`
-        Local butler to process data in and hold calibrations, etc.; must be
-        writeable. Must not be shared with any other ``MiddlewareInterface``
-        object.
+    local_storage : `str`
+        An absolute path to a space where this object can create a local
+        Butler repo. The repo is guaranteed to be unique to this object.
     prefix : `str`, optional
         URI scheme followed by ``://``; prepended to ``image_bucket`` when
         constructing URIs to retrieve incoming files. The default is
@@ -107,7 +106,7 @@ class MiddlewareInterface:
     #   corresponding to self.camera and self.skymap.
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
-                 butler: Butler,
+                 local_storage: str,
                  prefix: str = "gs://"):
         self.ip_apdb = os.environ["IP_APDB"]
         self.central_butler = central_butler
@@ -121,7 +120,7 @@ class MiddlewareInterface:
 
         self.output_collection = self.instrument.makeCollectionName("prompt")
 
-        self._init_local_butler(butler)
+        self._init_local_butler(local_storage)
         self._init_ingester()
         self._init_visit_definer()
 
@@ -141,18 +140,22 @@ class MiddlewareInterface:
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
 
-    def _init_local_butler(self, butler: Butler):
+    def _init_local_butler(self, base_path: str):
         """Prepare the local butler to ingest into and process from.
 
         ``self.instrument`` must already exist. ``self.butler`` is correctly
-        initialized after this method returns.
+        initialized after this method returns, and is guaranteed to be unique
+        to this object.
 
         Parameters
         ----------
-        butler : `lsst.daf.butler.Butler`
-            Local butler to process data in and hold calibrations, etc.; must
-            be writeable.
+        base_path : `str`
+            An absolute path to a space where the repo can be created.
         """
+        repo = os.path.join(base_path, f"butler-{os.getpid()}")
+        butler = Butler(Butler.makeRepo(repo), writeable=True)
+        _log.info("Created local Butler repo at %s.", repo)
+
         self.instrument.register(butler.registry)
 
         # Will be populated in prep_butler.

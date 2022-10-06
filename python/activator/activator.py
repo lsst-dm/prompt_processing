@@ -83,10 +83,7 @@ central_butler = Butler(calib_repo,
                         collections=[active_instrument.makeCollectionName("defaults")],
                         writeable=True,
                         inferDefaults=False)
-repo = os.path.join(local_repos, f"butler-{os.getpid()}")
-butler = Butler(Butler.makeRepo(repo), writeable=True)
-_log.info("Created local Butler repo at %s.", repo)
-mwi = MiddlewareInterface(central_butler, image_bucket, config_instrument, butler)
+mwi = MiddlewareInterface(central_butler, image_bucket, config_instrument, local_repos)
 
 
 def check_for_snap(

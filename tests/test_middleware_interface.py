@@ -120,9 +120,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         instrument_name = "DECam"
         self.input_data = os.path.join(data_dir, "input_data")
         # Have to preserve the tempdir, so that it doesn't get cleaned up.
-        self.repo = tempfile.TemporaryDirectory()
-        self.butler = Butler(Butler.makeRepo(self.repo.name), writeable=True)
-        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, self.butler,
+        self.workspace = tempfile.TemporaryDirectory()
+        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument,
+                                             self.workspace.name,
                                              prefix="file://")
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
@@ -144,7 +144,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         # TemporaryDirectory warns on leaks
-        self.repo.cleanup()
+        self.workspace.cleanup()
 
     def test_init(self):
         """Basic tests of the initialized interface object.
@@ -467,11 +467,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         instrument = "lsst.obs.decam.DarkEnergyCamera"
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.input_data = os.path.join(data_dir, "input_data")
-        repo = tempfile.TemporaryDirectory()
+        workspace = tempfile.TemporaryDirectory()
         # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
         # getting garbage-collected.
-        self.addCleanup(tempfile.TemporaryDirectory.cleanup, repo)
-        self.butler = Butler(Butler.makeRepo(repo.name), writeable=True)
+        self.addCleanup(tempfile.TemporaryDirectory.cleanup, workspace)
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
         ra = 155.4702849608958
@@ -490,7 +489,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.logger_name = "lsst.activator.middleware_interface"
 
         # Populate repository.
-        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, self.butler,
+        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, workspace.name,
                                              prefix="file://")
         self.interface.prep_butler(self.next_visit)
         filename = "fakeRawImage.fits"
