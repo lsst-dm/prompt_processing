@@ -43,9 +43,13 @@ PROJECT_ID = "prompt-proto"
 verification_token = os.environ["PUBSUB_VERIFICATION_TOKEN"]
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
+# URI to the main repository containing calibs and templates
 calib_repo = os.environ["CALIB_REPO"]
+# Bucket name (not URI) containing raw images
 image_bucket = os.environ["IMAGE_BUCKET"]
+# Time to wait for raw image upload, in seconds
 timeout = os.environ.get("IMAGE_TIMEOUT", 50)
+# Absolute path on this worker's system where local repos may be created
 local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
 
 setup_google_logger(

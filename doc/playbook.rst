@@ -105,7 +105,7 @@ To create or edit the Cloud Run service in the Google Cloud Console:
   * RUBIN_INSTRUMENT: the "short" instrument name
   * PUBSUB_VERIFICATION_TOKEN: choose an arbitrary string matching the Pub/Sub endpoint URL below
   * IMAGE_BUCKET: bucket containing raw images (``rubin-prompt-proto-main``)
-  * CALIB_REPO: repo containing calibrations (and templates)
+  * CALIB_REPO: URI to repo containing calibrations (and templates)
   * IP_APDB: IP address and port of the APDB (see `Databases`_, below)
   * IP_REGISTRY: IP address and port of the registry database (see `Databases`_)
 
