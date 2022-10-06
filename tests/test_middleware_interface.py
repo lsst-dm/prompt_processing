@@ -155,7 +155,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # * On init, is the local butler repo purely in memory?
 
         # Check that the butler instance is properly configured.
-        instruments = list(self.butler.registry.queryDimensionRecords("instrument"))
+        instruments = list(self.interface.butler.registry.queryDimensionRecords("instrument"))
         self.assertEqual(instname, instruments[0].name)
         self.assertEqual(set(self.interface.butler.collections), {self.interface.output_collection})
 
@@ -224,7 +224,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # TODO DM-34112: check these shards again with some plots, once I've
         # determined whether ci_hits2015 actually has enough shards.
         expected_shards = {157394, 157401, 157405}
-        self._check_imports(self.butler, detector=56, expected_shards=expected_shards)
+        self._check_imports(self.interface.butler, detector=56, expected_shards=expected_shards)
 
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
@@ -239,7 +239,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.next_visit = dataclasses.replace(self.next_visit, group=str(int(self.next_visit.group) + 1))
         self.interface.prep_butler(self.next_visit)
         expected_shards = {157394, 157401, 157405}
-        self._check_imports(self.butler, detector=56, expected_shards=expected_shards)
+        self._check_imports(self.interface.butler, detector=56, expected_shards=expected_shards)
 
         # Third visit with different detector and coordinates.
         # Only 5, 10, 56, 60 have valid calibs.
@@ -252,7 +252,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                               )
         self.interface.prep_butler(self.next_visit)
         expected_shards.update({157218, 157229})
-        self._check_imports(self.butler, detector=5, expected_shards=expected_shards)
+        self._check_imports(self.interface.butler, detector=5, expected_shards=expected_shards)
 
     # TODO: regression test for prep_butler having a stale cache for the butler it's updating.
     # This may be impossible to unit test, since it seems to depend on Google-side parallelism.
@@ -262,15 +262,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
-                                            self.butler.dimensions,
+                                            self.interface.butler.dimensions,
                                             self.interface.instrument,
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(self.next_visit, filename)
 
-            datasets = list(self.butler.registry.queryDatasets('raw',
-                                                               collections=[f'{instname}/raw/all']))
+            datasets = list(self.interface.butler.registry.queryDatasets('raw',
+                                                                         collections=[f'{instname}/raw/all']))
             self.assertEqual(datasets[0].dataId, data_id)
             # TODO: After raw ingest, we can define exposure dimension records
             # and check that the visits are defined
@@ -290,7 +290,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "nonexistentImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
-                                            self.butler.dimensions,
+                                            self.interface.butler.dimensions,
                                             self.interface.instrument,
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
@@ -298,8 +298,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             mock.return_value = file_data
             self.interface.ingest_image(self.next_visit, filename)
         # There should not be any raw files in the registry.
-        datasets = list(self.butler.registry.queryDatasets('raw',
-                                                           collections=[f'{instname}/raw/all']))
+        datasets = list(self.interface.butler.registry.queryDatasets('raw',
+                                                                     collections=[f'{instname}/raw/all']))
         self.assertEqual(datasets, [])
 
     def test_run_pipeline(self):
@@ -312,7 +312,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
-                                            self.butler.dimensions,
+                                            self.interface.butler.dimensions,
                                             self.interface.instrument,
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
@@ -336,7 +336,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
-                                            self.butler.dimensions,
+                                            self.interface.butler.dimensions,
                                             self.interface.instrument,
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
@@ -391,20 +391,21 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(result, {data1})
 
     def test_prepend_collection(self):
-        self.butler.registry.registerCollection("_prepend1", CollectionType.TAGGED)
-        self.butler.registry.registerCollection("_prepend2", CollectionType.TAGGED)
-        self.butler.registry.registerCollection("_prepend3", CollectionType.TAGGED)
-        self.butler.registry.registerCollection("_prepend_base", CollectionType.CHAINED)
+        butler = self.interface.butler
+        butler.registry.registerCollection("_prepend1", CollectionType.TAGGED)
+        butler.registry.registerCollection("_prepend2", CollectionType.TAGGED)
+        butler.registry.registerCollection("_prepend3", CollectionType.TAGGED)
+        butler.registry.registerCollection("_prepend_base", CollectionType.CHAINED)
 
         # Empty chain.
-        self.assertEqual(list(self.butler.registry.getCollectionChain("_prepend_base")), [])
-        _prepend_collection(self.butler, "_prepend_base", ["_prepend1"])
-        self.assertEqual(list(self.butler.registry.getCollectionChain("_prepend_base")), ["_prepend1"])
+        self.assertEqual(list(butler.registry.getCollectionChain("_prepend_base")), [])
+        _prepend_collection(butler, "_prepend_base", ["_prepend1"])
+        self.assertEqual(list(butler.registry.getCollectionChain("_prepend_base")), ["_prepend1"])
 
         # Non-empty chain.
-        self.butler.registry.setCollectionChain("_prepend_base", ["_prepend1", "_prepend2"])
-        _prepend_collection(self.butler, "_prepend_base", ["_prepend3"])
-        self.assertEqual(list(self.butler.registry.getCollectionChain("_prepend_base")),
+        butler.registry.setCollectionChain("_prepend_base", ["_prepend1", "_prepend2"])
+        _prepend_collection(butler, "_prepend_base", ["_prepend3"])
+        self.assertEqual(list(butler.registry.getCollectionChain("_prepend_base")),
                          ["_prepend3", "_prepend1", "_prepend2"])
 
 
@@ -495,7 +496,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         self.raw_data_id, file_data = fake_file_data(filepath,
-                                                     self.butler.dimensions,
+                                                     self.interface.butler.dimensions,
                                                      self.interface.instrument,
                                                      self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
