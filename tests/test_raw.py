@@ -23,6 +23,7 @@ import re
 import unittest
 
 from activator.raw import Snap, RAW_REGEXP, get_raw_path
+from activator.visit import Visit
 
 
 class RawTest(unittest.TestCase):
@@ -42,6 +43,17 @@ class RawTest(unittest.TestCase):
         self.kind = "IMAGINARY"
         self.snap = 1
         self.exposure = 404
+
+        self.visit = Visit(instrument=self.instrument,
+                           detector=self.detector,
+                           group=self.group,
+                           snaps=self.snaps,
+                           filter=self.filter,
+                           ra=self.ra,
+                           dec=self.dec,
+                           rot=self.rot,
+                           kind=self.kind,
+                           )
 
     def test_writeread(self):
         """Test that raw module can parse the paths it creates.
@@ -75,3 +87,27 @@ class RawTest(unittest.TestCase):
                             self.snap, self.exposure, self.filter)
         with self.assertRaisesRegex(ValueError, "not .* parsed"):
             Snap.from_oid(path)
+
+    def test_snap_consistent(self):
+        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
+        snap = Snap.from_oid(path)
+        self.assertTrue(snap.is_consistent(self.visit))
+
+        path = get_raw_path("Foo", self.detector, self.group, self.snap, self.exposure, self.filter)
+        snap = Snap.from_oid(path)
+        self.assertFalse(snap.is_consistent(self.visit))
+
+        path = get_raw_path(self.instrument, self.visit.detector+1, self.group, self.snap,
+                            self.exposure, self.filter)
+        snap = Snap.from_oid(path)
+        self.assertFalse(snap.is_consistent(self.visit))
+
+        path = get_raw_path(self.instrument, self.detector, self.group + "b", self.snap,
+                            self.exposure, self.filter)
+        snap = Snap.from_oid(path)
+        self.assertFalse(snap.is_consistent(self.visit))
+
+        path = get_raw_path(self.instrument, self.detector, self.group, self.visit.snaps,
+                            self.exposure, self.filter)
+        snap = Snap.from_oid(path)
+        self.assertFalse(snap.is_consistent(self.visit))

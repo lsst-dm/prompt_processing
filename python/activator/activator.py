@@ -214,12 +214,7 @@ def next_visit_handler() -> Tuple[str, int]:
                 try:
                     raw_info = Snap.from_oid(oid)
                     _log.debug("Received %r", raw_info)
-                    if (
-                        raw_info.instrument == expected_visit.instrument
-                        and raw_info.detector == int(expected_visit.detector)
-                        and raw_info.group == str(expected_visit.group)
-                        and raw_info.snap < int(expected_visit.snaps)
-                    ):
+                    if raw_info.is_consistent(expected_visit):
                         # Ingest the snap
                         mwi.ingest_image(oid)
                         expid_set.add(raw_info.exp_id)

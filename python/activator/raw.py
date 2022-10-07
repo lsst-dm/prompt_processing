@@ -30,6 +30,8 @@ __all__ = ["Snap", "RAW_REGEXP", "get_raw_path"]
 from dataclasses import dataclass
 import re
 
+from .visit import Visit
+
 
 @dataclass(frozen=True)
 class Snap:
@@ -65,6 +67,20 @@ class Snap:
                         )
         else:
             raise ValueError(f"{oid} could not be parsed into a Snap")
+
+    def is_consistent(self, visit: Visit):
+        """Test if this snap could have come from a particular visit.
+
+        Parameters
+        ----------
+        visit : `activator.visit.Visit`
+            The visit from which snaps were expected.
+        """
+        return (self.instrument == visit.instrument
+                and self.detector == visit.detector
+                and self.group == visit.group
+                and self.snap < visit.snaps
+                )
 
 
 # Format for filenames of raws uploaded to image bucket:
