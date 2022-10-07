@@ -139,7 +139,10 @@ class MiddlewareInterface:
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  local_storage: str,
                  prefix: str = "gs://"):
+        # TODO: merge this code with make_pgpass.py
         self.ip_apdb = os.environ["IP_APDB"]
+        self.db_apdb = os.environ["DB_APDB"]
+        self.user_apdb = os.environ.get("USER_APDB", "postgres")
         self.central_butler = central_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
@@ -536,10 +539,9 @@ class MiddlewareInterface:
             pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         except FileNotFoundError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
-        # TODO: Can we write to a configurable apdb schema, rather than
-        # "postgres"?
+        # TODO: Can we write to a configurable apdb schema?
         pipeline.addConfigOverride("diaPipe", "apdb.db_url",
-                                   f"postgresql://postgres@{self.ip_apdb}/postgres")
+                                   f"postgresql://{self.user_apdb}@{self.ip_apdb}/{self.db_apdb}")
         return pipeline
 
     def _download(self, remote):

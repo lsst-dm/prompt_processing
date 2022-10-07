@@ -99,7 +99,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.env_patcher = unittest.mock.patch.dict(os.environ,
-                                                   {"IP_APDB": "localhost"})
+                                                   {"IP_APDB": "localhost",
+                                                    "DB_APDB": "postgres",
+                                                    "USER_APDB": "postgres",
+                                                    })
         cls.env_patcher.start()
 
         super().setUpClass()
@@ -433,7 +436,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         super().setUpClass()
 
         cls.env_patcher = unittest.mock.patch.dict(os.environ,
-                                                   {"IP_APDB": "localhost"})
+                                                   {"IP_APDB": "localhost",
+                                                    "DB_APDB": "postgres",
+                                                    "USER_APDB": "postgres",
+                                                    })
         cls.env_patcher.start()
 
     @classmethod
