@@ -113,6 +113,35 @@ def check_for_snap(
     return blobs[0].name
 
 
+def parse_next_visit(http_request):
+    """Parse a next_visit event and extract its data.
+
+    Parameters
+    ----------
+    http_request : `flask.Request`
+        The request to be parsed.
+
+    Returns
+    -------
+    next_visit : `activator.visit.Visit`
+        The next_visit message contained in the request.
+
+    Raises
+    ------
+    ValueError
+        Raised if ``http_request`` is not a valid message.
+    """
+    envelope = http_request.get_json()
+    if not envelope:
+        raise ValueError("no Pub/Sub message received")
+    if not isinstance(envelope, dict) or "message" not in envelope:
+        raise ValueError("invalid Pub/Sub message format")
+
+    payload = base64.b64decode(envelope["message"]["data"])
+    data = json.loads(payload)
+    return Visit(**data)
+
+
 @app.route("/next-visit", methods=["POST"])
 def next_visit_handler() -> Tuple[str, int]:
     """A Flask view function for handling next-visit events.
@@ -135,20 +164,11 @@ def next_visit_handler() -> Tuple[str, int]:
     )
     _log.debug(f"Created subscription '{subscription.name}'")
     try:
-        envelope = request.get_json()
-        if not envelope:
-            msg = "no Pub/Sub message received"
+        try:
+            expected_visit = parse_next_visit(request)
+        except ValueError as msg:
             _log.warn(f"error: '{msg}'")
             return f"Bad Request: {msg}", 400
-
-        if not isinstance(envelope, dict) or "message" not in envelope:
-            msg = "invalid Pub/Sub message format"
-            _log.warn(f"error: '{msg}'")
-            return f"Bad Request: {msg}", 400
-
-        payload = base64.b64decode(envelope["message"]["data"])
-        data = json.loads(payload)
-        expected_visit = Visit(**data)
         assert expected_visit.instrument == instrument_name, \
             f"Expected {instrument_name}, received {expected_visit.instrument}."
         expid_set = set()
