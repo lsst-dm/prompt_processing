@@ -25,7 +25,6 @@ import base64
 import json
 import logging
 import os
-import re
 import time
 from typing import Optional, Tuple
 
@@ -35,7 +34,7 @@ from google.cloud import pubsub_v1, storage
 from .logger import setup_google_logger
 from .make_pgpass import make_pgpass
 from .middleware_interface import get_central_butler, MiddlewareInterface
-from .raw import RAW_REGEXP
+from .raw import Snap
 from .visit import Visit
 
 PROJECT_ID = "prompt-proto"
@@ -185,9 +184,9 @@ def next_visit_handler() -> Tuple[str, int]:
                 expected_visit.detector,
             )
             if oid:
-                m = re.match(RAW_REGEXP, oid)
+                raw_info = Snap.from_oid(oid)
                 mwi.ingest_image(expected_visit, oid)
-                expid_set.add(m.group('expid'))
+                expid_set.add(raw_info.exp_id)
 
         _log.debug(f"Waiting for snaps from {expected_visit}.")
         start = time.time()
@@ -212,20 +211,19 @@ def next_visit_handler() -> Tuple[str, int]:
             for received in response.received_messages:
                 ack_list.append(received.ack_id)
                 oid = received.message.attributes["objectId"]
-                m = re.match(RAW_REGEXP, oid)
-                if m:
-                    instrument, detector, group, snap, expid = m.groups()
-                    _log.debug("instrument, detector, group, snap, expid = %s", m.groups())
+                try:
+                    raw_info = Snap.from_oid(oid)
+                    _log.debug("Received %r", raw_info)
                     if (
-                        instrument == expected_visit.instrument
-                        and int(detector) == int(expected_visit.detector)
-                        and group == str(expected_visit.group)
-                        and int(snap) < int(expected_visit.snaps)
+                        raw_info.instrument == expected_visit.instrument
+                        and raw_info.detector == int(expected_visit.detector)
+                        and raw_info.group == str(expected_visit.group)
+                        and raw_info.snap < int(expected_visit.snaps)
                     ):
                         # Ingest the snap
                         mwi.ingest_image(oid)
-                        expid_set.add(expid)
-                else:
+                        expid_set.add(raw_info.exp_id)
+                except ValueError:
                     _log.error(f"Failed to match object id '{oid}'")
             subscriber.acknowledge(subscription=subscription.name, ack_ids=ack_list)
 

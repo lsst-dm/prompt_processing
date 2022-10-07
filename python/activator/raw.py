@@ -25,9 +25,47 @@ This module provides tools to convert raw paths into exposure metadata and
 vice versa.
 """
 
-__all__ = ["RAW_REGEXP", "get_raw_path"]
+__all__ = ["Snap", "RAW_REGEXP", "get_raw_path"]
 
+from dataclasses import dataclass
 import re
+
+
+@dataclass(frozen=True)
+class Snap:
+    instrument: str    # short name
+    detector: int
+    group: str         # observatory-specific ID; not the same as visit number
+    snap: int          # exposure number within a group
+    exp_id: int        # Butler-compatible unique exposure ID
+    filter: str        # physical filter
+
+    def __str__(self):
+        """Return a short string that disambiguates the image.
+        """
+        return f"(exposure {self.exp_id}, group {self.group}/{self.snap})"
+
+    @classmethod
+    def from_oid(cls, oid: str):
+        """Construct a Snap from an image bucket's filename.
+
+        Parameters
+        ----------
+        oid : `str`
+            A pathname from which to extract snap information.
+        """
+        m = re.match(RAW_REGEXP, oid)
+        if m:
+            return Snap(instrument=m["instrument"],
+                        detector=int(m["detector"]),
+                        group=m["group"],
+                        snap=int(m["snap"]),
+                        exp_id=int(m["expid"]),
+                        filter=m["filter"],
+                        )
+        else:
+            raise ValueError(f"{oid} could not be parsed into a Snap")
+
 
 # Format for filenames of raws uploaded to image bucket:
 # instrument/detector/group/snap/expid/filter/*.(fits, fz, fits.gz)

@@ -22,7 +22,7 @@
 import re
 import unittest
 
-from activator.raw import RAW_REGEXP, get_raw_path
+from activator.raw import Snap, RAW_REGEXP, get_raw_path
 
 
 class RawTest(unittest.TestCase):
@@ -55,3 +55,23 @@ class RawTest(unittest.TestCase):
         self.assertEqual(parsed['snap'], str(self.snap))
         self.assertEqual(parsed['expid'], str(self.exposure))
         self.assertEqual(parsed['filter'], str(self.filter))
+
+    def test_snap(self):
+        """Test that Snap objects can be constructed from parseable paths.
+        """
+        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
+        parsed = Snap.from_oid(path)
+        self.assertIsNotNone(parsed)
+        # These tests automatically include type-checking.
+        self.assertEqual(parsed.instrument, self.instrument)
+        self.assertEqual(parsed.detector, self.detector)
+        self.assertEqual(parsed.group, self.group)
+        self.assertEqual(parsed.snap, self.snap)
+        self.assertEqual(parsed.exp_id, self.exposure)
+        self.assertEqual(parsed.filter, self.filter)
+
+    def test_bad_snap(self):
+        path = get_raw_path(self.instrument, f"{self.detector}b", self.group,
+                            self.snap, self.exposure, self.filter)
+        with self.assertRaisesRegex(ValueError, "not .* parsed"):
+            Snap.from_oid(path)
