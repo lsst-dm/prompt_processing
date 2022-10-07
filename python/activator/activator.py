@@ -185,6 +185,7 @@ def next_visit_handler() -> Tuple[str, int]:
             )
             if oid:
                 raw_info = Snap.from_oid(oid)
+                _log.debug("Found %r already present", raw_info)
                 mwi.ingest_image(expected_visit, oid)
                 expid_set.add(raw_info.exp_id)
 
