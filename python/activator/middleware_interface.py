@@ -126,6 +126,7 @@ class MiddlewareInterface:
     """
 
     # Class invariants:
+    # self._apdb_uri is a valid URI that unambiguously identifies the APDB
     # self.image_host is a valid URI with non-empty path and no query or fragment.
     # self._download_store is None if and only if self.image_host is a local URI.
     # self.instrument, self.camera, and self.skymap do not change after __init__.
@@ -139,10 +140,7 @@ class MiddlewareInterface:
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  local_storage: str,
                  prefix: str = "gs://"):
-        # TODO: merge this code with make_pgpass.py
-        self.ip_apdb = os.environ["IP_APDB"]
-        self.db_apdb = os.environ["DB_APDB"]
-        self.user_apdb = os.environ.get("USER_APDB", "postgres")
+        self._apdb_uri = self._make_apdb_uri()
         self.central_butler = central_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
@@ -174,6 +172,15 @@ class MiddlewareInterface:
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
+
+    def _make_apdb_uri(self):
+        """Generate a URI for accessing the APDB.
+        """
+        # TODO: merge this code with make_pgpass.py
+        ip_apdb = os.environ["IP_APDB"]  # Also includes port
+        db_apdb = os.environ["DB_APDB"]
+        user_apdb = os.environ.get("USER_APDB", "postgres")
+        return f"postgresql://{user_apdb}@{ip_apdb}/{db_apdb}"
 
     def _init_local_butler(self, base_path: str):
         """Prepare the local butler to ingest into and process from.
@@ -539,9 +546,8 @@ class MiddlewareInterface:
             pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         except FileNotFoundError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
-        # TODO: Can we write to a configurable apdb schema?
-        pipeline.addConfigOverride("diaPipe", "apdb.db_url",
-                                   f"postgresql://{self.user_apdb}@{self.ip_apdb}/{self.db_apdb}")
+        # TODO: Can we write to a configurable apdb schema (see DM-36497)?
+        pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
         return pipeline
 
     def _download(self, remote):
