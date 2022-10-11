@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+import dataclasses
 from google.cloud import pubsub_v1, storage
 from google.oauth2 import service_account
 import itertools
@@ -12,7 +12,7 @@ from activator.raw import RAW_REGEXP, get_raw_path
 from activator.visit import Visit
 
 
-@dataclass
+@dataclasses.dataclass
 class Instrument:
     n_snaps: int
     n_detectors: int
@@ -213,7 +213,7 @@ def make_random_visits(instrument, group):
     ----------
     instrument : `str`
         The short name of the instrument carrying out the observation.
-    group : `int`
+    group : `str`
         The group number being observed.
 
     Returns
@@ -344,7 +344,7 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
                          "unobserved raws are available.")
 
     for i, true_group in enumerate(itertools.islice(raw_pool, n_groups)):
-        group = group_base + i
+        group = str(group_base + i)
         _log.debug(f"Processing group {group} from unobserved {true_group}...")
         # snap_dict maps snap_id to {visit: blob}
         snap_dict = {}
@@ -352,7 +352,7 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
         # replacing the (immutable) Visit objects to point to group
         # instead of true_group.
         for snap_id, old_visits in raw_pool[true_group].items():
-            snap_dict[snap_id] = {splice_group(true_visit, group): blob
+            snap_dict[snap_id] = {dataclasses.replace(true_visit, group=group): blob
                                   for true_visit, blob in old_visits.items()}
         # Gather all the Visit objects found in snap_dict, merging
         # duplicates for different snaps of the same detector.
@@ -390,7 +390,7 @@ def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base)
         The base number from which to offset new group numbers.
     """
     for i in range(n_groups):
-        group = group_base + i
+        group = str(group_base + i)
         visit_infos = make_random_visits(instrument, group)
 
         # TODO: may be cleaner to use a functor object than to depend on
@@ -403,33 +403,6 @@ def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base)
         process_group(publisher, visit_infos, upload_dummy)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
-
-
-def splice_group(visit, group):
-    """Replace the group ID in a Visit object.
-
-    Parameters
-    ----------
-    visit : `activator.Visit`
-        The object to update.
-    group : `str`
-        The new group ID to use.
-
-    Returns
-    -------
-    new_visit : `activator.Visit`
-        A visit with group ``group``, but otherwise identical to ``visit``.
-    """
-    return Visit(instrument=visit.instrument,
-                 detector=visit.detector,
-                 group=group,
-                 snaps=visit.snaps,
-                 filter=visit.filter,
-                 ra=visit.ra,
-                 dec=visit.dec,
-                 rot=visit.rot,
-                 kind=visit.kind,
-                 )
 
 
 if __name__ == "__main__":

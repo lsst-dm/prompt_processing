@@ -84,7 +84,7 @@ storage_client = storage.Client()
 # the central repo is located, either, so perhaps we need a new module.
 central_butler = Butler(calib_repo,
                         collections=[active_instrument.makeCollectionName("defaults")],
-                        writeable=False,
+                        writeable=True,
                         inferDefaults=False)
 repo = f"/tmp/butler-{os.getpid()}"
 butler = Butler(Butler.makeRepo(repo), writeable=True)
@@ -176,7 +176,7 @@ def next_visit_handler() -> Tuple[str, int]:
             )
             if oid:
                 m = re.match(RAW_REGEXP, oid)
-                mwi.ingest_image(oid)
+                mwi.ingest_image(expected_visit, oid)
                 expid_set.add(m.group('expid'))
 
         _log.debug(f"Waiting for snaps from {expected_visit}.")
@@ -227,6 +227,9 @@ def next_visit_handler() -> Tuple[str, int]:
                 _log.warning(f"Processing {len(expid_set)} snaps, expected {expected_visit.snaps}.")
             _log.info(f"Running pipeline on {expected_visit}.")
             mwi.run_pipeline(expected_visit, expid_set)
+            # TODO: broadcast alerts here
+            # TODO: call export_outputs on success or permanent failure in DM-34141
+            mwi.export_outputs(expected_visit, expid_set)
             return "Pipeline executed", 200
         else:
             _log.error(f"Timed out waiting for images for {expected_visit}.")

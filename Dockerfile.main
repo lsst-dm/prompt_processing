@@ -1,4 +1,4 @@
-FROM lsstsqre/centos:w_latest
+FROM lsstsqre/centos:d_latest
 ENV PYTHONUNBUFFERED True
 RUN source /opt/lsst/software/stack/loadLSST.bash \
     && mamba install -y \

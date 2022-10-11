@@ -27,6 +27,7 @@ import logging
 import os
 import os.path
 import tempfile
+import typing
 
 from lsst.utils import getPackageDir
 from lsst.resources import ResourcePath
@@ -54,6 +55,16 @@ class MiddlewareInterface:
     ingest the data when it is available, and run the difference imaging
     pipeline, all in that local butler.
 
+    Each instance may be used for processing more than one group-detector
+    combination, designated by the `Visit` parameter to certain methods. There
+    is no guarantee that a processing run may, or may not, share a group,
+    detector, or both with a previous run handled by the same object.
+
+    ``MiddlewareInterface`` objects are not thread- or process-safe, and must
+    not share any state with other instances (see ``butler`` in the parameter
+    list). They may, however, share a ``central_butler``, and concurrent
+    operations on this butler are guaranteed to be appropriately synchronized.
+
     Parameters
     ----------
     central_butler : `lsst.daf.butler.Butler`
@@ -70,9 +81,10 @@ class MiddlewareInterface:
         use of the butler.
     butler : `lsst.daf.butler.Butler`
         Local butler to process data in and hold calibrations, etc.; must be
-        writeable.
+        writeable. Must not be shared with any other ``MiddlewareInterface``
+        object.
     prefix : `str`, optional
-        URI identification prefix; prepended to ``image_bucket`` when
+        URI scheme followed by ``://``; prepended to ``image_bucket`` when
         constructing URIs to retrieve incoming files. The default is
         appropriate for use in the Google Cloud environment; typically only
         change this when running local tests.
@@ -84,15 +96,24 @@ class MiddlewareInterface:
     """The collection used for skymaps.
     """
 
+    # Class invariants:
+    # self.image_host is a valid URI with non-empty path and no query or fragment.
+    # self._download_store is None if and only if self.image_host is a local URI.
+    # self.instrument, self.camera, and self.skymap do not change after __init__.
+    # self.butler defaults to a chained collection named
+    #   self.output_collection, which contains zero or more output runs,
+    #   pre-made inputs, and raws, in that order. However, self.butler is not
+    #   guaranteed to contain concrete data, or even the dimensions
+    #   corresponding to self.camera and self.skymap.
+
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  butler: Butler,
                  prefix: str = "gs://"):
         self.ip_apdb = os.environ["IP_APDB"]
-        self.prefix = prefix
         self.central_butler = central_butler
-        self.image_bucket = image_bucket
+        self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
-        if not prefix.startswith("file"):
+        if not self.image_host.startswith("file"):
             self._download_store = tempfile.TemporaryDirectory(prefix="holding-")
         else:
             self._download_store = None
@@ -102,9 +123,7 @@ class MiddlewareInterface:
 
         self._init_local_butler(butler)
         self._init_ingester()
-
-        define_visits_config = lsst.obs.base.DefineVisitsConfig()
-        self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
+        self._init_visit_definer()
 
         # HACK: explicit collection gets around the fact that we don't have any
         # timestamp/exposure information in a form we can pass to the Butler.
@@ -125,6 +144,9 @@ class MiddlewareInterface:
     def _init_local_butler(self, butler: Butler):
         """Prepare the local butler to ingest into and process from.
 
+        ``self.instrument`` must already exist. ``self.butler`` is correctly
+        initialized after this method returns.
+
         Parameters
         ----------
         butler : `lsst.daf.butler.Butler`
@@ -133,13 +155,31 @@ class MiddlewareInterface:
         """
         self.instrument.register(butler.registry)
 
-        # Refresh butler after configuring it, to ensure all required
-        # dimensions and collections are available.
-        butler.registry.refresh()
-        self.butler = butler
+        # Will be populated in prep_butler.
+        butler.registry.registerCollection(self.instrument.makeUmbrellaCollectionName(),
+                                           CollectionType.CHAINED)
+        # Will be populated on ingest.
+        butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
+                                           CollectionType.CHAINED)
+        # Will be populated on pipeline execution.
+        butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
+        collections = [self.instrument.makeUmbrellaCollectionName(),
+                       self.instrument.makeDefaultRawIngestRunName(),
+                       ]
+        butler.registry.setCollectionChain(self.output_collection, collections)
+
+        # Internal Butler keeps a reference to the newly prepared collection.
+        # This reference makes visible any inputs for query purposes. Output
+        # runs are execution-specific and must be provided explicitly to the
+        # appropriate calls.
+        self.butler = Butler(butler=butler,
+                             collections=[self.output_collection],
+                             )
 
     def _init_ingester(self):
         """Prepare the raw file ingester to receive images into this butler.
+
+        ``self._init_local_butler`` must have already been run.
         """
         config = lsst.obs.base.RawIngestConfig()
         config.transfer = "copy"  # Copy files into the local butler.
@@ -148,6 +188,14 @@ class MiddlewareInterface:
         config.failFast = True  # We want failed ingests to fail immediately.
         self.rawIngestTask = lsst.obs.base.RawIngestTask(config=config,
                                                          butler=self.butler)
+
+    def _init_visit_definer(self):
+        """Prepare the visit definer to define visits for this butler.
+
+        ``self._init_local_butler`` must have already been run.
+        """
+        define_visits_config = lsst.obs.base.DefineVisitsConfig()
+        self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
 
     def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector, visit: Visit) -> lsst.afw.geom.SkyWcs:
         """Calculate the expected detector WCS for an incoming observation.
@@ -202,6 +250,12 @@ class MiddlewareInterface:
     def prep_butler(self, visit: Visit) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
 
+        After this method returns, the internal butler is guaranteed to contain
+        all data and all dimensions needed to run the appropriate pipeline on ``visit``,
+        except for ``raw`` and the ``exposure`` and ``visit`` dimensions,
+        respectively. It may contain other data that would not be loaded when
+        processing ``visit``.
+
         Parameters
         ----------
         visit : `Visit`
@@ -212,9 +266,6 @@ class MiddlewareInterface:
         detector = self.camera[visit.detector]
         wcs = self._predict_wcs(detector, visit)
         center, radius = self._detector_bounding_circle(detector, wcs)
-
-        # Need up-to-date census of what's already present.
-        self.butler.registry.refresh()
 
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
@@ -231,8 +282,13 @@ class MiddlewareInterface:
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
 
-        self._prep_collections()
-        self._prep_pipeline(visit)
+        # Create unique run to store this visit's raws. This makes it easier to
+        # clean up the central repo later.
+        # TODO: not needed after DM-36051, or if we find a way to give all test
+        # raws unique exposure IDs.
+        input_raws = self._get_raw_run_name(visit)
+        self.butler.registry.registerCollection(input_raws, CollectionType.RUN)
+        _prepend_collection(self.butler, self.instrument.makeDefaultRawIngestRunName(), [input_raws])
 
     def _export_refcats(self, export, center, radius):
         """Export the refcats for this visit from the central butler.
@@ -371,8 +427,29 @@ class MiddlewareInterface:
         for k, g in itertools.groupby(ordered, key=get_key):
             yield k, len(list(g))
 
+    def _get_raw_run_name(self, visit):
+        """Define a run collection specific to a particular visit.
+
+        Parameters
+        ----------
+        visit : Visit
+            The visit whose raws will be stored in this run.
+
+        Returns
+        -------
+        run : `str`
+            The name of a run collection to use for raws.
+        """
+        return self.instrument.makeCollectionName("raw", visit.group)
+
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
+
+        Returns
+        -------
+        run : `str`
+            The name of a new run collection to use for outputs. The run name
+            is prefixed by ``self.output_collection``.
         """
         # NOTE: Because we receive a butler on init, we can't use this
         # prep_butler() because it takes a repo path.
@@ -383,23 +460,16 @@ class MiddlewareInterface:
         #             'refcats'],
         #     output=self.output_collection)
         # The below is taken from SimplePipelineExecutor.prep_butler.
-        # TODO DM-34202: save run collection in self for now, but we won't need
-        # it when we no longer need to work around DM-34202.
-        self.output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
-        self.butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
-                                                CollectionType.RUN)
-        self.butler.registry.registerCollection(self.output_run, CollectionType.RUN)
-        self.butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
-        collections = [self.instrument.makeUmbrellaCollectionName(),
-                       self.instrument.makeDefaultRawIngestRunName(),
-                       self.output_run]
-        self.butler.registry.setCollectionChain(self.output_collection, collections)
-
-        # Need to create a new butler with all the output collections.
-        self.butler = Butler(butler=self.butler,
-                             collections=[self.output_collection],
-                             # TODO DM-34202: hack around a middleware bug.
-                             run=None)
+        # TODO: currently the run **must** be unique for each unit of
+        # processing. It must be unique per group because in the prototype the
+        # same exposures may be rerun under different group IDs, and they must
+        # be unique per detector because the same worker may be tasked with
+        # different detectors from the same group. Replace with a single
+        # universal run on DM-36586.
+        output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
+        self.butler.registry.registerCollection(output_run, CollectionType.RUN)
+        _prepend_collection(self.butler, self.output_collection, [output_run])
+        return output_run
 
     def _prep_pipeline(self, visit: Visit) -> None:
         """Setup the pipeline to be run, based on the configured instrument and
@@ -409,6 +479,11 @@ class MiddlewareInterface:
         ----------
         visit : Visit
             Group of snaps from one detector to prepare the pipeline for.
+
+        Returns
+        -------
+        pipeline : `lsst.pipe.base.Pipeline`
+            The pipeline to run for ``visit``.
 
         Raises
         ------
@@ -422,13 +497,14 @@ class MiddlewareInterface:
         ap_pipeline_file = os.path.join(getPackageDir("prompt_prototype"),
                                         "pipelines", self.instrument.getName(), "ApPipe.yaml")
         try:
-            self.pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
+            pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         except FileNotFoundError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
         # TODO: Can we write to a configurable apdb schema, rather than
         # "postgres"?
-        self.pipeline.addConfigOverride("diaPipe", "apdb.db_url",
-                                        f"postgresql://postgres@{self.ip_apdb}/postgres")
+        pipeline.addConfigOverride("diaPipe", "apdb.db_url",
+                                   f"postgresql://postgres@{self.ip_apdb}/postgres")
+        return pipeline
 
     def _download(self, remote):
         """Download an image located on a remote store.
@@ -451,35 +527,48 @@ class MiddlewareInterface:
         local.transfer_from(remote, "copy")
         return local
 
-    def ingest_image(self, oid: str) -> None:
+    def ingest_image(self, visit: Visit, oid: str) -> None:
         """Ingest an image into the temporary butler.
+
+        The temporary butler must not already contain a ``raw`` dataset
+        corresponding to ``oid``. After this method returns, the temporary
+        butler contains one ``raw`` dataset corresponding to ``oid``, and the
+        appropriate ``exposure`` dimension.
 
         Parameters
         ----------
+        visit : Visit
+            The visit for which the image was taken.
         oid : `str`
             Google storage identifier for incoming image, relative to the
             image bucket.
         """
+        # TODO: consider allowing pre-existing raws, as may happen when a
+        # pipeline is rerun (see DM-34141).
         _log.info(f"Ingesting image id '{oid}'")
-        file = ResourcePath(f"{self.prefix}{self.image_bucket}/{oid}")
+        file = ResourcePath(f"{self.image_host}/{oid}")
         if not file.isLocal:
             # TODO: RawIngestTask doesn't currently support remote files.
             file = self._download(file)
-        result = self.rawIngestTask.run([file])
+        result = self.rawIngestTask.run([file], run=self._get_raw_run_name(visit))
         # We only ingest one image at a time.
         # TODO: replace this assert with a custom exception, once we've decided
         # how we plan to handle exceptions in this code.
         assert len(result) == 1, "Should have ingested exactly one image."
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
 
-    def run_pipeline(self, visit: Visit, exposure_ids: set) -> None:
+    def run_pipeline(self, visit: Visit, exposure_ids: set[int]) -> None:
         """Process the received image(s).
+
+        The internal butler must contain all data and all dimensions needed to
+        run the appropriate pipeline on ``visit`` and ``exposure_ids``, except
+        for the ``visit`` dimension itself.
 
         Parameters
         ----------
         visit : Visit
             Group of snaps from one detector to be processed.
-        exposure_ids : `set`
+        exposure_ids : `set` [`int`]
             Identifiers of the exposures that were received.
         """
         # TODO: we want to define visits earlier, but we have to ingest a
@@ -492,23 +581,130 @@ class MiddlewareInterface:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.") from e
 
-        # TODO: can we move this from_pipeline call to prep_butler?
+        output_run = self._prep_collections()
+
         where = f"instrument='{visit.instrument}' and detector={visit.detector} " \
                 f"and exposure in ({','.join(str(x) for x in exposure_ids)})"
-        executor = SimplePipelineExecutor.from_pipeline(self.pipeline, where=where, butler=self.butler)
+        pipeline = self._prep_pipeline(visit)
+        executor = SimplePipelineExecutor.from_pipeline(pipeline,
+                                                        where=where,
+                                                        butler=Butler(butler=self.butler,
+                                                                      collections=self.butler.collections,
+                                                                      run=output_run))
         if len(executor.quantum_graph) == 0:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.")
-        # TODO DM-34202: hack around a middleware bug.
-        executor.butler = Butler(butler=self.butler,
-                                 collections=[self.output_collection],
-                                 run=self.output_run)
-        _log.info(f"Running '{self.pipeline._pipelineIR.description}' on {where}")
+        _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
         result = executor.run(register_dataset_types=True)
         _log.info(f"Pipeline successfully run on {len(result)} quanta for "
                   f"detector {visit.detector} of {exposure_ids}.")
+
+    def export_outputs(self, visit: Visit, exposure_ids: set[int]) -> None:
+        """Copy raws and pipeline outputs from processing a set of images back
+        to the central Butler.
+
+        The copied raws can be found in the collection ``<instrument>/raw/all``,
+        while the outputs can be found in ``"<instrument>/prompt-results"``.
+
+        Parameters
+        ----------
+        visit : Visit
+            The visit whose outputs need to be exported.
+        exposure_ids : `set` [`int`]
+            Identifiers of the exposures that were processed.
+        """
+        # TODO: this method will not be responsible for raws after DM-36051.
+        self._export_subset(visit, exposure_ids, "raw",
+                            in_collections=self._get_raw_run_name(visit),
+                            out_collection=self.instrument.makeDefaultRawIngestRunName())
+        umbrella = self.instrument.makeCollectionName("prompt-results")
+        self._export_subset(visit, exposure_ids,
+                            # TODO: find a way to merge datasets like *_config
+                            # or *_schema that are duplicated across multiple
+                            # workers.
+                            self._get_safe_dataset_types(self.butler),
+                            self.output_collection + "/*",  # exclude inputs
+                            umbrella)
+        _log.info(f"Pipeline products saved to collection '{umbrella}' for "
+                  f"detector {visit.detector} of {exposure_ids}.")
+
+    @staticmethod
+    def _get_safe_dataset_types(butler):
+        """Return the set of dataset types that can be safely merged from a worker.
+
+        Parameters
+        ----------
+        butler : `lsst.daf.butler.Butler`
+            The butler in which to search for dataset types.
+
+        Returns
+        -------
+        types : iterable [`str`]
+            The dataset types to return.
+        """
+        return [dstype for dstype in butler.registry.queryDatasetTypes(...)
+                if "detector" in dstype.dimensions]
+
+    def _export_subset(self, visit: Visit, exposure_ids: set[int],
+                       dataset_types: typing.Any, in_collections: typing.Any, out_collection: str) -> None:
+        """Copy datasets associated with a processing run back to the
+        central Butler.
+
+        Parameters
+        ----------
+        visit : Visit
+            The visit whose outputs need to be exported.
+        exposure_ids : `set` [`int`]
+            Identifiers of the exposures that were processed.
+        dataset_types
+            The dataset type(s) to transfer; can be any expression described in
+            :ref:`daf_butler_dataset_type_expressions`.
+        in_collections
+            The collections to transfer from; can be any expression described
+            in :ref:`daf_butler_collection_expressions`.
+        out_collection : `str`
+            The chained collection in which to include the datasets. Need not
+            exist before the call.
+        """
+        try:
+            # Need to iterate over datasets at least twice, so list.
+            datasets = list(self.butler.registry.queryDatasets(
+                dataset_types,
+                collections=in_collections,
+                # in_collections may include other runs, so need to filter.
+                # Since AP processing is strictly visit-detector, these three
+                # dimensions should suffice.
+                # DO NOT assume that visit == exposure!
+                where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
+                instrument=self.instrument.getName(),
+                detector=visit.detector,
+            ))
+        except lsst.daf.butler.registry.DataIdError as e:
+            raise ValueError("Invalid visit or exposures.") from e
+        if not datasets:
+            raise ValueError(f"No datasets match visit={visit} and exposures={exposure_ids}.")
+
+        with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
+            # MUST NOT export governor dimensions, as this causes deadlocks in
+            # central registry. Can omit most other dimensions (all dimensions,
+            # after DM-36051) to avoid locks or redundant work.
+            # TODO: saveDatasets(elements={"exposure", "visit"}) doesn't work.
+            # Use import(skip_dimensions) until DM-36062 is fixed.
+            with self.butler.export(filename=export_file.name) as export:
+                export.saveDatasets(datasets)
+            self.central_butler.import_(filename=export_file.name,
+                                        directory=self.butler.datastore.root,
+                                        skip_dimensions={"instrument", "detector",
+                                                         "skymap", "tract", "patch"},
+                                        transfer="copy")
+        # No-op if collection already exists.
+        self.central_butler.registry.registerCollection(out_collection, CollectionType.CHAINED)
+        runs = {ref.run for ref in datasets}
+        # Don't unlink any previous runs.
+        # TODO: need to secure this against concurrent modification
+        _prepend_collection(self.central_butler, out_collection, runs)
 
 
 def _query_missing_datasets(src_repo: Butler, dest_repo: Butler,
@@ -545,3 +741,23 @@ def _query_missing_datasets(src_repo: Butler, dest_repo: Butler,
     # this operation.
     return itertools.filterfalse(lambda ref: ref in known_datasets,
                                  src_repo.registry.queryDatasets(*args, **kwargs))
+
+
+def _prepend_collection(butler: Butler, chain: str, new_collections: collections.abc.Iterable[str]) -> None:
+    """Add a specific collection to the front of an existing chain.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The butler in which the collections exist.
+    chain : `str`
+        The chained collection to prepend to.
+    new_collections : iterable [`str`]
+        The collections to prepend to ``chain``.
+
+    Notes
+    -----
+    This function is not safe against concurrent modifications to ``chain``.
+    """
+    old_chain = butler.registry.getCollectionChain(chain)  # May be empty
+    butler.registry.setCollectionChain(chain, list(new_collections) + list(old_chain), flatten=False)

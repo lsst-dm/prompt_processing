@@ -19,6 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import dataclasses
 import itertools
 import tempfile
 import os.path
@@ -29,13 +30,15 @@ import astropy.coordinates
 import astropy.units as u
 
 import astro_metadata_translator
-from lsst.daf.butler import Butler, DataCoordinate
+import lsst.afw.image
+from lsst.daf.butler import Butler, CollectionType, DataCoordinate
+import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
 from activator.visit import Visit
-from activator.middleware_interface import MiddlewareInterface, _query_missing_datasets
+from activator.middleware_interface import MiddlewareInterface, _query_missing_datasets, _prepend_collection
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -129,7 +132,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         rot = 90.
         self.next_visit = Visit(instrument_name,
                                 detector=56,
-                                group=1,
+                                group="1",
                                 snaps=1,
                                 filter=filter,
                                 ra=ra,
@@ -154,6 +157,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the butler instance is properly configured.
         instruments = list(self.butler.registry.queryDimensionRecords("instrument"))
         self.assertEqual(instname, instruments[0].name)
+        self.assertEqual(set(self.interface.butler.collections), {self.interface.output_collection})
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
@@ -222,10 +226,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected_shards = {157394, 157401, 157405}
         self._check_imports(self.butler, detector=56, expected_shards=expected_shards)
 
-        # Check that we configured the right pipeline.
-        self.assertEqual(self.interface.pipeline._pipelineIR.description,
-                         "End to end Alert Production pipeline specialized for HiTS-2015")
-
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
         exception!) on a second run with the same, or a different detector.
@@ -236,31 +236,20 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface.prep_butler(self.next_visit)
 
         # Second visit with everything same except group.
-        self.next_visit = Visit(instrument=self.next_visit.instrument,
-                                detector=self.next_visit.detector,
-                                group=self.next_visit.group + 1,
-                                snaps=self.next_visit.snaps,
-                                filter=self.next_visit.filter,
-                                ra=self.next_visit.ra,
-                                dec=self.next_visit.dec,
-                                rot=self.next_visit.rot,
-                                kind=self.next_visit.kind)
+        self.next_visit = dataclasses.replace(self.next_visit, group=str(int(self.next_visit.group) + 1))
         self.interface.prep_butler(self.next_visit)
         expected_shards = {157394, 157401, 157405}
         self._check_imports(self.butler, detector=56, expected_shards=expected_shards)
 
         # Third visit with different detector and coordinates.
         # Only 5, 10, 56, 60 have valid calibs.
-        self.next_visit = Visit(instrument=self.next_visit.instrument,
-                                detector=5,
-                                group=self.next_visit.group + 1,
-                                snaps=self.next_visit.snaps,
-                                filter=self.next_visit.filter,
-                                # Offset by a bit over 1 patch.
-                                ra=self.next_visit.ra + 0.4,
-                                dec=self.next_visit.dec - 0.4,
-                                rot=self.next_visit.rot,
-                                kind=self.next_visit.kind)
+        self.next_visit = dataclasses.replace(self.next_visit,
+                                              detector=5,
+                                              group=str(int(self.next_visit.group) + 1),
+                                              # Offset by a bit over 1 patch.
+                                              ra=self.next_visit.ra + 0.4,
+                                              dec=self.next_visit.dec - 0.4,
+                                              )
         self.interface.prep_butler(self.next_visit)
         expected_shards.update({157218, 157229})
         self._check_imports(self.butler, detector=5, expected_shards=expected_shards)
@@ -269,6 +258,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     # This may be impossible to unit test, since it seems to depend on Google-side parallelism.
 
     def test_ingest_image(self):
+        self.interface.prep_butler(self.next_visit)  # Ensure raw collections exist.
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
@@ -277,7 +267,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(filename)
+            self.interface.ingest_image(self.next_visit, filename)
 
             datasets = list(self.butler.registry.queryDatasets('raw',
                                                                collections=[f'{instname}/raw/all']))
@@ -296,6 +286,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         through ingest_image(), we'll want to have a test of "missing file
         ingestion", and this can serve as a starting point.
         """
+        self.interface.prep_butler(self.next_visit)  # Ensure raw collections exist.
         filename = "nonexistentImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
@@ -305,7 +296,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
                 self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"):
             mock.return_value = file_data
-            self.interface.ingest_image(filename)
+            self.interface.ingest_image(self.next_visit, filename)
         # There should not be any raw files in the registry.
         datasets = list(self.butler.registry.queryDatasets('raw',
                                                            collections=[f'{instname}/raw/all']))
@@ -326,11 +317,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(filename)
+            self.interface.ingest_image(self.next_visit, filename)
 
         with unittest.mock.patch("activator.middleware_interface.SimplePipelineExecutor.run") as mock_run:
-            self.interface.run_pipeline(self.next_visit, {1})
+            with self.assertLogs(self.logger_name, level="INFO") as logs:
+                self.interface.run_pipeline(self.next_visit, {1})
         mock_run.assert_called_once_with(register_dataset_types=True)
+        # Check that we configured the right pipeline.
+        self.assertIn("End to end Alert Production pipeline specialized for HiTS-2015",
+                      "\n".join(logs.output))
 
     def test_run_pipeline_empty_quantum_graph(self):
         """Test that running a pipeline that results in an empty quantum graph
@@ -346,7 +341,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(filename)
+            self.interface.ingest_image(self.next_visit, filename)
 
         with self.assertRaisesRegex(RuntimeError, "No data to process"):
             self.interface.run_pipeline(self.next_visit, {2})
@@ -394,3 +389,161 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         result = set(_query_missing_datasets(src_butler, existing_butler, "skyMap", ..., skymap="mymap"))
         src_butler.registry.queryDatasets.assert_called_once_with("skyMap", ..., skymap="mymap")
         self.assertEqual(result, {data1})
+
+    def test_prepend_collection(self):
+        self.butler.registry.registerCollection("_prepend1", CollectionType.TAGGED)
+        self.butler.registry.registerCollection("_prepend2", CollectionType.TAGGED)
+        self.butler.registry.registerCollection("_prepend3", CollectionType.TAGGED)
+        self.butler.registry.registerCollection("_prepend_base", CollectionType.CHAINED)
+
+        # Empty chain.
+        self.assertEqual(list(self.butler.registry.getCollectionChain("_prepend_base")), [])
+        _prepend_collection(self.butler, "_prepend_base", ["_prepend1"])
+        self.assertEqual(list(self.butler.registry.getCollectionChain("_prepend_base")), ["_prepend1"])
+
+        # Non-empty chain.
+        self.butler.registry.setCollectionChain("_prepend_base", ["_prepend1", "_prepend2"])
+        _prepend_collection(self.butler, "_prepend_base", ["_prepend3"])
+        self.assertEqual(list(self.butler.registry.getCollectionChain("_prepend_base")),
+                         ["_prepend3", "_prepend1", "_prepend2"])
+
+
+class MiddlewareInterfaceWriteableTest(unittest.TestCase):
+    """Test the MiddlewareInterface class with faked data.
+
+    This class creates a fresh test repository for writing to. This means test
+    setup takes longer than for MiddlewareInterfaceTest, so it should be
+    used sparingly.
+    """
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+
+        cls.env_patcher = unittest.mock.patch.dict(os.environ,
+                                                   {"IP_APDB": "localhost"})
+        cls.env_patcher.start()
+
+    @classmethod
+    def tearDownClass(cls):
+        super().tearDownClass()
+
+        cls.env_patcher.stop()
+
+    def _create_copied_repo(self):
+        """Create a fresh repository that's a copy of the test data.
+
+        This method sets self.central_repo and arranges cleanup; cleanup would
+        be awkward if this method returned a Butler instead.
+        """
+        # Copy test data to fresh Butler to allow write tests.
+        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+        data_repo = os.path.join(data_dir, "central_repo")
+        data_butler = Butler(data_repo, writeable=False)
+        self.central_repo = tempfile.TemporaryDirectory()
+        # TemporaryDirectory warns on leaks
+        self.addCleanup(tempfile.TemporaryDirectory.cleanup, self.central_repo)
+
+        # Butler.transfer_from can't easily copy collections, so use
+        # export/import instead.
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as export_file:
+            with data_butler.export(filename=export_file.name) as export:
+                export.saveDatasets(data_butler.registry.queryDatasets(..., collections=...))
+                for collection in data_butler.registry.queryCollections():
+                    export.saveCollection(collection)
+            central_butler = Butler(Butler.makeRepo(self.central_repo.name), writeable=True)
+            central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
+
+    def setUp(self):
+        # TODO: test two parallel repos once DM-36051 fixed; can't do it
+        # earlier because the test data has only one raw.
+
+        self._create_copied_repo()
+        central_butler = Butler(self.central_repo.name,
+                                instrument=instname,
+                                skymap="deepCoadd_skyMap",
+                                collections=[f"{instname}/defaults"],
+                                writeable=True)
+        instrument = "lsst.obs.decam.DarkEnergyCamera"
+        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+        self.input_data = os.path.join(data_dir, "input_data")
+        repo = tempfile.TemporaryDirectory()
+        # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
+        # getting garbage-collected.
+        self.addCleanup(tempfile.TemporaryDirectory.cleanup, repo)
+        self.butler = Butler(Butler.makeRepo(repo.name), writeable=True)
+
+        # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
+        ra = 155.4702849608958
+        dec = -4.950050405424033
+        # DECam has no rotator; instrument angle is 90 degrees in our system.
+        rot = 90.
+        self.next_visit = Visit(instrument,
+                                detector=56,
+                                group="1",
+                                snaps=1,
+                                filter=filter,
+                                ra=ra,
+                                dec=dec,
+                                rot=rot,
+                                kind="SURVEY")
+        self.logger_name = "lsst.activator.middleware_interface"
+
+        # Populate repository.
+        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, self.butler,
+                                             prefix="file://")
+        self.interface.prep_butler(self.next_visit)
+        filename = "fakeRawImage.fits"
+        filepath = os.path.join(self.input_data, filename)
+        self.raw_data_id, file_data = fake_file_data(filepath,
+                                                     self.butler.dimensions,
+                                                     self.interface.instrument,
+                                                     self.next_visit)
+        with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
+            mock.return_value = file_data
+            self.interface.ingest_image(self.next_visit, filename)
+        self.interface.define_visits.run([self.raw_data_id])
+
+        # Simulate pipeline execution.
+        exp = lsst.afw.image.ExposureF(20, 20)
+        run = self.interface._prep_collections()
+        self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
+        # Dataset types defined for local Butler on pipeline run, but no
+        # guarantee this happens in central Butler.
+        butler_tests.addDatasetType(self.interface.butler, "calexp", {"instrument", "visit", "detector"},
+                                    "ExposureF")
+        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run)
+
+    def _check_datasets(self, butler, types, collections, count, data_id):
+        datasets = list(butler.registry.queryDatasets(types, collections=collections))
+        self.assertEqual(len(datasets), count)
+        for dataset in datasets:
+            self.assertEqual(dataset.dataId, data_id)
+
+    def test_export_outputs(self):
+        self.interface.export_outputs(self.next_visit, {self.raw_data_id["exposure"]})
+
+        central_butler = Butler(self.central_repo.name, writeable=False)
+        raw_collection = f"{instname}/raw/all"
+        export_collection = f"{instname}/prompt-results"
+        self._check_datasets(central_butler,
+                             "raw", raw_collection, 1, self.raw_data_id)
+        # Did not export raws directly to raw/all.
+        self.assertNotEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.RUN)
+        self._check_datasets(central_butler,
+                             "calexp", export_collection, 1, self.processed_data_id)
+        # Did not export calibs or other inputs.
+        self._check_datasets(central_butler,
+                             ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection,
+                             0, {"error": "dnc"})
+        # Nothing placed in "input" collections.
+        self._check_datasets(central_butler,
+                             ["raw", "calexp"], f"{instname}/defaults", 0, {"error": "dnc"})
+
+    def test_export_outputs_bad_visit(self):
+        bad_visit = dataclasses.replace(self.next_visit, detector=88)
+        with self.assertRaises(ValueError):
+            self.interface.export_outputs(bad_visit, {self.raw_data_id["exposure"]})
+
+    def test_export_outputs_bad_exposure(self):
+        with self.assertRaises(ValueError):
+            self.interface.export_outputs(self.next_visit, {88})
