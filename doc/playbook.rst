@@ -152,7 +152,7 @@ It accepts messages and gateways them to Cloud Run.
 tester
 ======
 
-``tester/upload.py`` is a script that simulates the CCS image writer.
+``python/tester/upload.py`` is a script that simulates the CCS image writer.
 On a local machine, it requires a JSON token in ``./prompt-proto-upload.json``.
 To obtain a token, see the GCP documentation on `service account keys`_; the relevant service account is ``prompt-image-upload@prompt-proto.iam.gserviceaccount.com``.
 
@@ -167,20 +167,25 @@ In Cloud Shell, install the prototype code and the GCP PubSub client:
     git clone https://github.com/lsst-dm/prompt_prototype.git
     pip3 install google-cloud-pubsub
 
-Command line arguments are the instrument name (LSSTCam, LSSTComCam, LATISS, DECam) and the number of groups of images to send.
+Command line arguments are the instrument name (currently HSC only; other values will upload dummy raws that the pipeline can't process) and the number of groups of images to send.
 
 Sample command line:
 
 .. code-block:: sh
 
-   python upload.py LSSTComCam 3
+   python upload.py HSC 3
 
 It sends ``next_visit`` events for each detector via Google Pub/Sub on the ``nextVisit`` topic.
 It then uploads a batch of files representing the snaps of the visit to the ``rubin-prompt-proto-main`` GCS bucket.
-LSSTCam and LSSTComCam are currently hard-coded at two snaps per group.
-The current data uploaded is just a tiny string.
 
 Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
+
+.. note::
+
+   ``upload.py`` uploads from the same small pool of raws every time it is run, while the AP pipeline assumes that every visit has unique visit IDs.
+   This causes collisions in the APDB that crash the pipeline.
+   To prevent this, follow the instructions in `Resetting the APDB`_ before calling ``upload.py`` again.
+
 
 Databases
 =========
@@ -219,7 +224,18 @@ On a VM with the Science Pipelines installed, a new APDB schema can be created i
 
 .. code-block:: sh
 
-    make_apdb.py -c isolation_level=READ_UNCOMMITTED -c db_url="postgresql://postgres@localhost/postgres"
+    make_apdb.py -c db_url="postgresql://postgres@localhost:<PORT>/postgres"
+
+
+Resetting the APDB
+------------------
+
+To restore the APDB to a clean state, run the following (replacing 5433 with the appropriate port on your machine):
+
+.. code-block:: sh
+
+   psql -h localhost -U postgres -p 5433 -c 'drop table "DiaForcedSource", "DiaObject", "DiaObject_To_Object_Match", "DiaSource", "SSObject" cascade;'
+   make_apdb.py -c db_url="postgresql://postgres@localhost:5433/postgres"
 
 
 Middleware Worker VM
@@ -233,7 +249,7 @@ Built-in support:
 
 * a complete install of the Science Pipelines in ``/software/lsst_stack/``
 * a running instance of ``cloud_sql_proxy`` mapping the ``butler-registry`` database to port 5432
-* global configuration pointing Butler ``s3://`` URIs to Google Storage buckets
+* global configuration pointing Butler ``s3://`` URIs to Google Storage buckets (though ``gs://`` URIs now work as well)
 
 The user is responsible for:
 
@@ -288,8 +304,4 @@ Otherwise, no special configuration is needed to create one.
 
 To create or access a Google Storage repository, give the repository location as a URI, e.g.::
 
-    butler query-collections s3://<bucket name>/<repo location in bucket>
-
-.. important::
-
-   Unlike other uses of the Google Storage API, Butler operations always use the ``s3://`` scheme, not the ``gs://`` scheme.
+    butler query-collections gs://<bucket name>/<repo location in bucket>
