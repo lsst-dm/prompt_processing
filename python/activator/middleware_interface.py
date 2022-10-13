@@ -141,6 +141,7 @@ class MiddlewareInterface:
                  local_storage: str,
                  prefix: str = "gs://"):
         self._apdb_uri = self._make_apdb_uri()
+        self._apdb_namespace = os.environ.get("NAMESPACE_APDB", None)
         self.central_butler = central_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
@@ -546,8 +547,8 @@ class MiddlewareInterface:
             pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         except FileNotFoundError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
-        # TODO: Can we write to a configurable apdb schema (see DM-36497)?
         pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
+        pipeline.addConfigOverride("diaPipe", "apdb.namespace", self._apdb_namespace)
         return pipeline
 
     def _download(self, remote):

@@ -117,6 +117,7 @@ To create or edit the Cloud Run service in the Google Cloud Console:
   * LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
   * USER_APDB: database user for the APDB, default "postgres"
   * USER_REGISTRY: database user for the registry database, default "postgres"
+  * NAMESPACE_APDB: the database namespace for the APDB, defaults to the DB's default namespace
 
 * One variable is set by Cloud Run and should not be overridden:
 
