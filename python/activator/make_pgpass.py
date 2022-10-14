@@ -27,7 +27,6 @@ import os
 import stat
 
 
-PSQL_DB = "postgres"
 PSQL_USER = "postgres"
 
 
@@ -44,15 +43,19 @@ def make_pgpass():
     """
     try:
         ip_apdb = os.environ["IP_APDB"]
+        db_apdb = os.environ["DB_APDB"]
+        user_apdb = os.environ.get("USER_APDB", PSQL_USER)
         pass_apdb = os.environ["PSQL_APDB_PASS"]
         ip_registry = os.environ["IP_REGISTRY"]
+        db_registry = os.environ["DB_REGISTRY"]
+        user_registry = os.environ.get("USER_REGISTRY", PSQL_USER)
         pass_registry = os.environ["PSQL_REGISTRY_PASS"]
     except KeyError as e:
         raise RuntimeError("Addresses and passwords have not been configured") from e
 
     filename = os.path.join(os.environ["HOME"], ".pgpass")
     with open(filename, mode="wt") as file:
-        file.write(f"{ip_apdb}:{PSQL_DB}:{PSQL_USER}:{pass_apdb}\n")
-        file.write(f"{ip_registry}:{PSQL_DB}:{PSQL_USER}:{pass_registry}\n")
+        file.write(f"{ip_apdb}:{db_apdb}:{user_apdb}:{pass_apdb}\n")
+        file.write(f"{ip_registry}:{db_registry}:{user_registry}:{pass_registry}\n")
     # Only user may access the file
     os.chmod(filename, stat.S_IRUSR)

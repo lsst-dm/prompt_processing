@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["MiddlewareInterface"]
+__all__ = ["get_central_butler", "MiddlewareInterface"]
 
 import collections.abc
 import itertools
@@ -43,6 +43,35 @@ from .visit import Visit
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+
+
+def get_central_butler(central_repo: str, instrument_class: str):
+    """Provide a Butler that can access the given repository and read and write
+    data for the given instrument.
+
+    Parameters
+    ----------
+    central_repo : `str`
+        The path or URI to the central repository.
+    instrument_class : `str`
+        The name of the instrument whose data will be retrieved or written. May
+        be either the fully qualified class name or the short name.
+
+    Returns
+    -------
+    butler : `lsst.daf.butler.Butler`
+        A Butler for ``central_repo`` pre-configured to load and store
+        ``instrument_name`` data.
+    """
+    # TODO: how much overhead do we take on from asking the central repo about
+    # the instrument instead of handling it internally?
+    registry = Butler(central_repo).registry
+    instrument = lsst.obs.base.Instrument.from_string(instrument_class, registry)
+    return Butler(central_repo,
+                  collections=[instrument.makeCollectionName("defaults")],
+                  writeable=True,
+                  inferDefaults=False,
+                  )
 
 
 class MiddlewareInterface:
@@ -75,14 +104,14 @@ class MiddlewareInterface:
         Storage bucket where images will be written to as they arrive.
         See also ``prefix``.
     instrument : `str`
-        Full class name of the instrument taking the data, for populating
-        butler collections and dataIds. Example: "lsst.obs.lsst.LsstCam"
+        Name of the instrument taking the data, for populating
+        butler collections and dataIds. May be either the fully qualified class
+        name or the short name. Examples: "LsstCam", "lsst.obs.lsst.LsstCam".
         TODO: this arg can probably be removed and replaced with internal
         use of the butler.
-    butler : `lsst.daf.butler.Butler`
-        Local butler to process data in and hold calibrations, etc.; must be
-        writeable. Must not be shared with any other ``MiddlewareInterface``
-        object.
+    local_storage : `str`
+        An absolute path to a space where this object can create a local
+        Butler repo. The repo is guaranteed to be unique to this object.
     prefix : `str`, optional
         URI scheme followed by ``://``; prepended to ``image_bucket`` when
         constructing URIs to retrieve incoming files. The default is
@@ -97,9 +126,11 @@ class MiddlewareInterface:
     """
 
     # Class invariants:
+    # self._apdb_uri is a valid URI that unambiguously identifies the APDB
     # self.image_host is a valid URI with non-empty path and no query or fragment.
     # self._download_store is None if and only if self.image_host is a local URI.
     # self.instrument, self.camera, and self.skymap do not change after __init__.
+    # self._repo is the only reference to its TemporaryDirectory object.
     # self.butler defaults to a chained collection named
     #   self.output_collection, which contains zero or more output runs,
     #   pre-made inputs, and raws, in that order. However, self.butler is not
@@ -107,9 +138,10 @@ class MiddlewareInterface:
     #   corresponding to self.camera and self.skymap.
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
-                 butler: Butler,
+                 local_storage: str,
                  prefix: str = "gs://"):
-        self.ip_apdb = os.environ["IP_APDB"]
+        self._apdb_uri = self._make_apdb_uri()
+        self._apdb_namespace = os.environ.get("NAMESPACE_APDB", None)
         self.central_butler = central_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
@@ -117,11 +149,12 @@ class MiddlewareInterface:
             self._download_store = tempfile.TemporaryDirectory(prefix="holding-")
         else:
             self._download_store = None
-        self.instrument = lsst.obs.base.Instrument.from_string(instrument)
+        # TODO: how much overhead do we pick up from going through the registry?
+        self.instrument = lsst.obs.base.Instrument.from_string(instrument, central_butler.registry)
 
         self.output_collection = self.instrument.makeCollectionName("prompt")
 
-        self._init_local_butler(butler)
+        self._init_local_butler(local_storage)
         self._init_ingester()
         self._init_visit_definer()
 
@@ -141,18 +174,32 @@ class MiddlewareInterface:
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
 
-    def _init_local_butler(self, butler: Butler):
+    def _make_apdb_uri(self):
+        """Generate a URI for accessing the APDB.
+        """
+        # TODO: merge this code with make_pgpass.py
+        ip_apdb = os.environ["IP_APDB"]  # Also includes port
+        db_apdb = os.environ["DB_APDB"]
+        user_apdb = os.environ.get("USER_APDB", "postgres")
+        return f"postgresql://{user_apdb}@{ip_apdb}/{db_apdb}"
+
+    def _init_local_butler(self, base_path: str):
         """Prepare the local butler to ingest into and process from.
 
         ``self.instrument`` must already exist. ``self.butler`` is correctly
-        initialized after this method returns.
+        initialized after this method returns, and is guaranteed to be unique
+        to this object.
 
         Parameters
         ----------
-        butler : `lsst.daf.butler.Butler`
-            Local butler to process data in and hold calibrations, etc.; must
-            be writeable.
+        base_path : `str`
+            An absolute path to a space where the repo can be created.
         """
+        # Directory has same lifetime as this object.
+        self._repo = tempfile.TemporaryDirectory(dir=base_path, prefix="butler-")
+        butler = Butler(Butler.makeRepo(self._repo.name), writeable=True)
+        _log.info("Created local Butler repo at %s.", self._repo.name)
+
         self.instrument.register(butler.registry)
 
         # Will be populated in prep_butler.
@@ -500,10 +547,8 @@ class MiddlewareInterface:
             pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         except FileNotFoundError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
-        # TODO: Can we write to a configurable apdb schema, rather than
-        # "postgres"?
-        pipeline.addConfigOverride("diaPipe", "apdb.db_url",
-                                   f"postgresql://postgres@{self.ip_apdb}/postgres")
+        pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
+        pipeline.addConfigOverride("diaPipe", "apdb.namespace", self._apdb_namespace)
         return pipeline
 
     def _download(self, remote):

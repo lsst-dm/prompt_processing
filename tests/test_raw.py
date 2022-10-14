@@ -22,7 +22,8 @@
 import re
 import unittest
 
-from activator.raw import RAW_REGEXP, get_raw_path
+from activator.raw import Snap, RAW_REGEXP, get_raw_path
+from activator.visit import Visit
 
 
 class RawTest(unittest.TestCase):
@@ -43,6 +44,17 @@ class RawTest(unittest.TestCase):
         self.snap = 1
         self.exposure = 404
 
+        self.visit = Visit(instrument=self.instrument,
+                           detector=self.detector,
+                           group=self.group,
+                           snaps=self.snaps,
+                           filter=self.filter,
+                           ra=self.ra,
+                           dec=self.dec,
+                           rot=self.rot,
+                           kind=self.kind,
+                           )
+
     def test_writeread(self):
         """Test that raw module can parse the paths it creates.
         """
@@ -55,3 +67,47 @@ class RawTest(unittest.TestCase):
         self.assertEqual(parsed['snap'], str(self.snap))
         self.assertEqual(parsed['expid'], str(self.exposure))
         self.assertEqual(parsed['filter'], str(self.filter))
+
+    def test_snap(self):
+        """Test that Snap objects can be constructed from parseable paths.
+        """
+        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
+        parsed = Snap.from_oid(path)
+        self.assertIsNotNone(parsed)
+        # These tests automatically include type-checking.
+        self.assertEqual(parsed.instrument, self.instrument)
+        self.assertEqual(parsed.detector, self.detector)
+        self.assertEqual(parsed.group, self.group)
+        self.assertEqual(parsed.snap, self.snap)
+        self.assertEqual(parsed.exp_id, self.exposure)
+        self.assertEqual(parsed.filter, self.filter)
+
+    def test_bad_snap(self):
+        path = get_raw_path(self.instrument, f"{self.detector}b", self.group,
+                            self.snap, self.exposure, self.filter)
+        with self.assertRaisesRegex(ValueError, "not .* parsed"):
+            Snap.from_oid(path)
+
+    def test_snap_consistent(self):
+        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
+        snap = Snap.from_oid(path)
+        self.assertTrue(snap.is_consistent(self.visit))
+
+        path = get_raw_path("Foo", self.detector, self.group, self.snap, self.exposure, self.filter)
+        snap = Snap.from_oid(path)
+        self.assertFalse(snap.is_consistent(self.visit))
+
+        path = get_raw_path(self.instrument, self.visit.detector+1, self.group, self.snap,
+                            self.exposure, self.filter)
+        snap = Snap.from_oid(path)
+        self.assertFalse(snap.is_consistent(self.visit))
+
+        path = get_raw_path(self.instrument, self.detector, self.group + "b", self.snap,
+                            self.exposure, self.filter)
+        snap = Snap.from_oid(path)
+        self.assertFalse(snap.is_consistent(self.visit))
+
+        path = get_raw_path(self.instrument, self.detector, self.group, self.visit.snaps,
+                            self.exposure, self.filter)
+        snap = Snap.from_oid(path)
+        self.assertFalse(snap.is_consistent(self.visit))

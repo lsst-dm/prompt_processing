@@ -102,16 +102,22 @@ To create or edit the Cloud Run service in the Google Cloud Console:
 * Select the container image URL from "Artifact Registry > prompt-proto-service"
 * In the Variables & Secrets tab, set the following required parameters:
 
-  * RUBIN_INSTRUMENT: full instrument class name, including module path
+  * RUBIN_INSTRUMENT: the "short" instrument name
   * PUBSUB_VERIFICATION_TOKEN: choose an arbitrary string matching the Pub/Sub endpoint URL below
   * IMAGE_BUCKET: bucket containing raw images (``rubin-prompt-proto-main``)
-  * CALIB_REPO: repo containing calibrations (and templates)
+  * CALIB_REPO: URI to repo containing calibrations (and templates)
   * IP_APDB: IP address and port of the APDB (see `Databases`_, below)
   * IP_REGISTRY: IP address and port of the registry database (see `Databases`_)
+  * DB_APDB: PostgreSQL database name for the APDB
+  * DB_REGISTRY: PostgreSQL database name for the registry database
 
-* There is also one optional parameter:
+* There are also four optional parameters:
 
   * IMAGE_TIMEOUT: timeout in seconds to wait for raw image, default 50 sec.
+  * LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
+  * USER_APDB: database user for the APDB, default "postgres"
+  * USER_REGISTRY: database user for the registry database, default "postgres"
+  * NAMESPACE_APDB: the database namespace for the APDB, defaults to the DB's default namespace
 
 * One variable is set by Cloud Run and should not be overridden:
 
