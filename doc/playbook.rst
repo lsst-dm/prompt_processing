@@ -106,12 +106,12 @@ To create or edit the Cloud Run service in the Google Cloud Console:
   * PUBSUB_VERIFICATION_TOKEN: choose an arbitrary string matching the Pub/Sub endpoint URL below
   * IMAGE_BUCKET: bucket containing raw images (``rubin-prompt-proto-main``)
   * CALIB_REPO: URI to repo containing calibrations (and templates)
-  * IP_APDB: IP address and port of the APDB (see `Databases`_, below)
-  * IP_REGISTRY: IP address and port of the registry database (see `Databases`_)
+  * IP_APDB: IP address or hostname and port of the APDB (see `Databases`_, below)
+  * IP_REGISTRY: IP address or hostname and port of the registry database (see `Databases`_)
   * DB_APDB: PostgreSQL database name for the APDB
   * DB_REGISTRY: PostgreSQL database name for the registry database
 
-* There are also four optional parameters:
+* There are also five optional parameters:
 
   * IMAGE_TIMEOUT: timeout in seconds to wait for raw image, default 50 sec.
   * LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
