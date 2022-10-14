@@ -190,11 +190,14 @@ Eventually a set of parallel processes running on multiple nodes will be needed 
 
    ``upload.py`` uploads from the same small pool of raws every time it is run, while the AP pipeline assumes that every visit has unique visit IDs.
    This causes collisions in the APDB that crash the pipeline.
-   To prevent this, follow the instructions in `Resetting the APDB`_ before calling ``upload.py`` again.
+   To prevent this, follow the reset instructions under `Databases`_ before calling ``upload.py`` again.
 
 
 Databases
 =========
+
+Google Cloud
+------------
 
 Two PostgreSQL databases have been created on Cloud SQL: ``butler-registry`` and ``apdb``.
 
@@ -232,9 +235,8 @@ On a VM with the Science Pipelines installed, a new APDB schema can be created i
 
     make_apdb.py -c db_url="postgresql://postgres@localhost:<PORT>/postgres"
 
-
 Resetting the APDB
-------------------
+^^^^^^^^^^^^^^^^^^
 
 To restore the APDB to a clean state, run the following (replacing 5433 with the appropriate port on your machine):
 
@@ -242,6 +244,53 @@ To restore the APDB to a clean state, run the following (replacing 5433 with the
 
    psql -h localhost -U postgres -p 5433 -c 'drop table "DiaForcedSource", "DiaObject", "DiaObject_To_Object_Match", "DiaSource", "SSObject" cascade;'
    make_apdb.py -c db_url="postgresql://postgres@localhost:5433/postgres"
+
+
+USDF
+----
+
+A database server is running at ``postgresql:://usdf-prompt-processing-dev.slac.stanford.edu``.
+The server runs two databases: ``ppcentralbutler`` (for the Butler registry) and ``lsst-devl`` (for the APDB).
+
+The ``psql`` client is available from ``rubin-env-developer`` 5.0 and later.
+The server is visible from ``rubin-devl``, and can be accessed through, e.g.,
+
+.. code-block:: sh
+
+   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin
+
+.. TODO: remove this block after DM-36604.
+.. note::
+
+   If you are using an environment older than 5.0, you will have to install psql yourself.
+   This can be done on ``rubin-devl`` with ``conda create -n psql postgresql``; thereafter type ``conda activate psql`` to enable it.
+
+For passwordless login, create a ``~/.pgpass`` file with contents:
+
+.. code-block::
+
+   usdf-prompt-processing-dev.slac.stanford.edu:5432:lsst-devl:rubin:PASSWORD
+   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:pp:PASSWORD
+
+and execute ``chmod 0600 ~/.pgpass``.
+
+From ``rubin-devl``, a new APDB schema can be created in the usual way:
+
+.. code-block:: sh
+
+   make_apdb.py -c namespace="pp_apdb" \
+       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+
+Resetting the APDB
+^^^^^^^^^^^^^^^^^^
+
+To restore the APDB to a clean state, run the following:
+
+.. code-block:: sh
+
+   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb" cascade;'
+   make_apdb.py -c namespace="pp_apdb" \
+       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
 
 
 Middleware Worker VM
