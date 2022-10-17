@@ -24,12 +24,12 @@ jobs:
       IMAGE_NAME: prompt-proto-base
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Build image
         # Context-frree build
         run: docker build - --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}" < Dockerfile.main
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v1
+        uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -45,7 +45,7 @@ jobs:
           docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
           docker push $IMAGE_ID:$VERSION
       - name: Login to Google Artifact Registry
-        uses: docker/login-action@v1
+        uses: docker/login-action@v2
         with:
           registry: us-central1-docker.pkg.dev
           username: _json_key_base64
