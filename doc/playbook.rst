@@ -67,6 +67,9 @@ On the other hand, using multiple topics is also simple to do.
 Buckets
 =======
 
+Google Cloud
+------------
+
 A single bucket named ``rubin-prompt-proto-main`` has been created to hold the central repository described in `DMTN-219`_, as well as incoming raw images.
 
 The bucket ``rubin-prompt-proto-support-data-template`` contains a pristine copy of the calibration datasets and templates.
@@ -88,6 +91,38 @@ To configure these notifications, in a shell:
 
 This creates a notification on the given topic using JSON format when an object has been finalized (transfer of it has completed).
 Notifications are only sent on this topic for objects with the instrument name as a prefix.
+
+USDF
+----
+
+The bucket ``rubin-pp`` holds incoming raw images.
+
+The bucket ``rubin-pp-users`` holds the central repository described in `DMTN-219`_.
+The central repository currently contains:
+
+* HSC: a copy of `ap_verify_ci_cosmos_pdr2/preloaded@u/kfindeisen/DM-35052-expansion <https://github.com/lsst/ap_verify_ci_cosmos_pdr2/tree/u/kfindeisen/DM-35052-expansion/preloaded>`_.
+
+``rubin-pp`` has had notifications configured for it; these publish to a Kafka topic.
+
+The default Rubin users' setup changes how S3 credentials are handled on ``rubin-devl``.
+The best way to set up credentials for either Butler or S3 commands is to run:
+
+.. code-block:: sh
+
+   singularity exec /sdf/sw/s3/aws-cli_latest.sif aws configure
+
+and follow the prompts.
+
+The buckets can be inspected by calling the following from ``rubin-devl``:
+
+.. code-block:: sh
+
+   alias s3="singularity exec /sdf/sw/s3/aws-cli_latest.sif aws --endpoint-url https://s3dfrgw.slac.stanford.edu s3"
+   s3 [ls|cp|rm] s3://rubin-pp-users/<path>
+
+.. note::
+
+   You must pass the ``--endpoint-url`` argument even if you have ``S3_ENDPOINT_URL`` defined.
 
 Prototype Service
 =================
