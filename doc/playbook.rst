@@ -109,16 +109,17 @@ The best way to set up credentials for either Butler or S3 commands is to run:
 
 .. code-block:: sh
 
-   singularity exec /sdf/sw/s3/aws-cli_latest.sif aws configure
+   singularity exec /sdf/sw/s3/aws-cli_latest.sif aws configure --profile rubin-prompt-processing
 
 and follow the prompts.
+To use the new credentials with the Butler, set the environment variable ``AWS_PROFILE=rubin-prompt-processing``.
 
 The buckets can be inspected by calling the following from ``rubin-devl``:
 
 .. code-block:: sh
 
    alias s3="singularity exec /sdf/sw/s3/aws-cli_latest.sif aws --endpoint-url https://s3dfrgw.slac.stanford.edu s3"
-   s3 [ls|cp|rm] s3://rubin-pp-users/<path>
+   s3 --profile rubin-prompt-processing [ls|cp|rm] s3://rubin-pp-users/<path>
 
 .. note::
 
