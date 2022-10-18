@@ -1,3 +1,5 @@
+# Seed config for generating Prompt Prototype central repo.
+# This is the test repo to be used with upload.py, not the repo for processing AuxTel data.
 registry:
-  db: postgresql://postgres@localhost:5432/
-  namespace: support_data_template
+  db: postgresql://pp@usdf-prompt-processing-dev.slac.stanford.edu/ppcentralbutler
+  namespace: pp_central_repo
