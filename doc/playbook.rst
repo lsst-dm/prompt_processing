@@ -97,10 +97,12 @@ USDF
 
 The bucket ``rubin-pp`` holds incoming raw images.
 
-The bucket ``rubin-pp-users`` holds the central repository described in `DMTN-219`_.
-The central repository currently contains:
+The bucket ``rubin-pp-users`` holds:
 
-* HSC: a copy of `ap_verify_ci_cosmos_pdr2/preloaded@u/kfindeisen/DM-35052-expansion <https://github.com/lsst/ap_verify_ci_cosmos_pdr2/tree/u/kfindeisen/DM-35052-expansion/preloaded>`_.
+* The central repository described in `DMTN-219`_.
+  This repository currently contains a copy of HSC data `ap_verify_ci_cosmos_pdr2/preloaded@u/kfindeisen/DM-35052-expansion <https://github.com/lsst/ap_verify_ci_cosmos_pdr2/tree/u/kfindeisen/DM-35052-expansion/preloaded>`_.
+
+* ``rubin-pp-users/unobserved/`` contains raw files that the upload script(s) can draw from to create incoming raws.
 
 ``rubin-pp`` has had notifications configured for it; these publish to a Kafka topic.
 
