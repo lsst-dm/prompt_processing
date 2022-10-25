@@ -6,4 +6,6 @@ RUN source /opt/lsst/software/stack/loadLSST.bash \
         gunicorn \
         google-cloud-pubsub \
         google-cloud-sdk \
-        google-cloud-storage
+        google-cloud-storage \
+    && pip install --no-input \
+        cloudevents

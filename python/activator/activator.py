@@ -21,7 +21,6 @@
 
 __all__ = ["check_for_snap", "next_visit_handler"]
 
-import base64
 import json
 import logging
 import os
@@ -29,6 +28,7 @@ import time
 from typing import Optional, Tuple
 
 import boto3
+import cloudevents.http
 from flask import Flask, request
 from google.cloud import pubsub_v1
 
@@ -130,14 +130,14 @@ def parse_next_visit(http_request):
     ValueError
         Raised if ``http_request`` is not a valid message.
     """
-    envelope = http_request.get_json()
-    if not envelope:
-        raise ValueError("no Pub/Sub message received")
-    if not isinstance(envelope, dict) or "message" not in envelope:
-        raise ValueError("invalid Pub/Sub message format")
+    event = cloudevents.http.from_http(http_request.headers, http_request.get_data())
+    if not event:
+        raise ValueError("no CloudEvent received")
+    if not event.data:
+        raise ValueError("empty CloudEvent received")
 
-    payload = base64.b64decode(envelope["message"]["data"])
-    data = json.loads(payload)
+    # TODO: may need to sync this with upload.py implementation
+    data = json.loads(event.data)
     return Visit(**data)
 
 
