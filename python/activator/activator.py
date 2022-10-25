@@ -28,8 +28,9 @@ import os
 import time
 from typing import Optional, Tuple
 
+import boto3
 from flask import Flask, request
-from google.cloud import pubsub_v1, storage
+from google.cloud import pubsub_v1
 
 from .logger import setup_usdf_logger
 from .make_pgpass import make_pgpass
@@ -72,7 +73,7 @@ topic_path = subscriber.topic_path(
 )
 subscription = None
 
-storage_client = storage.Client()
+storage_client = boto3.client('s3')
 
 # Initialize middleware interface.
 mwi = MiddlewareInterface(get_central_butler(calib_repo, instrument_name),
@@ -102,14 +103,14 @@ def check_for_snap(
     """
     prefix = f"{instrument}/{detector}/{group}/{snap}/"
     _log.debug(f"Checking for '{prefix}'")
-    blobs = list(storage_client.list_blobs(image_bucket, prefix=prefix))
+    blobs = storage_client.list_objects_v2(Bucket=image_bucket, Prefix=prefix)['Contents']
     if not blobs:
         return None
     elif len(blobs) > 1:
         _log.error(
             f"Multiple files detected for a single detector/group/snap: '{prefix}'"
         )
-    return blobs[0].name
+    return blobs[0]['Key']
 
 
 def parse_next_visit(http_request):
