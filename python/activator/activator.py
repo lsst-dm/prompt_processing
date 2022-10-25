@@ -31,7 +31,7 @@ from typing import Optional, Tuple
 from flask import Flask, request
 from google.cloud import pubsub_v1, storage
 
-from .logger import setup_google_logger
+from .logger import setup_usdf_logger
 from .make_pgpass import make_pgpass
 from .middleware_interface import get_central_butler, MiddlewareInterface
 from .raw import Snap
@@ -51,7 +51,7 @@ timeout = os.environ.get("IMAGE_TIMEOUT", 50)
 # Absolute path on this worker's system where local repos may be created
 local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
 
-setup_google_logger(
+setup_usdf_logger(
     labels={"instrument": instrument_name},
 )
 _log = logging.getLogger("lsst." + __name__)
