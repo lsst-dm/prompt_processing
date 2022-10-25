@@ -40,7 +40,6 @@ from .visit import Visit
 
 PROJECT_ID = "prompt-proto"
 
-verification_token = os.environ["PUBSUB_VERIFICATION_TOKEN"]
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
 # URI to the main repository containing calibs and templates
@@ -156,8 +155,6 @@ def next_visit_handler() -> Tuple[str, int]:
     status : `int`
         The HTTP response status code to return to the client.
     """
-    if request.args.get("token", "") != verification_token:
-        return "Invalid request", 400
     subscription = subscriber.create_subscription(
         topic=topic_path,
         ack_deadline_seconds=60,
