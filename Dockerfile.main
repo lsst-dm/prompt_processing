@@ -5,8 +5,5 @@ RUN source /opt/lsst/software/stack/loadLSST.bash \
         flask \
         gunicorn \
         python-confluent-kafka \
-        google-cloud-pubsub \
-        google-cloud-sdk \
-        google-cloud-storage \
     && pip install --no-input \
         cloudevents
