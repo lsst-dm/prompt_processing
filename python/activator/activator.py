@@ -26,11 +26,12 @@ import logging
 import os
 import time
 from typing import Optional, Tuple
+import uuid
 
 import boto3
 import cloudevents.http
+import confluent_kafka as kafka
 from flask import Flask, request
-from google.cloud import pubsub_v1
 
 from .logger import setup_usdf_logger
 from .make_pgpass import make_pgpass
@@ -50,6 +51,13 @@ image_bucket = os.environ["IMAGE_BUCKET"]
 timeout = os.environ.get("IMAGE_TIMEOUT", 50)
 # Absolute path on this worker's system where local repos may be created
 local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
+# Kafka server
+kafka_cluster = os.environ["KAFKA_CLUSTER"]
+# Kafka group; must be worker-unique to keep workers from "stealing" messages for others.
+kafka_group_id = str(uuid.uuid4())
+# The topic on which to listen to updates to image_bucket
+# bucket_topic = f"{instrument_name}-image"
+bucket_topic = "pp-bucket-notify-topic"
 
 setup_usdf_logger(
     labels={"instrument": instrument_name},
@@ -65,12 +73,10 @@ make_pgpass()
 
 app = Flask(__name__)
 
-subscriber = pubsub_v1.SubscriberClient()
-topic_path = subscriber.topic_path(
-    PROJECT_ID,
-    f"{instrument_name}-image",
-)
-subscription = None
+consumer = kafka.Consumer({
+    "bootstrap.servers": kafka_cluster,
+    "group.id": kafka_group_id,
+})
 
 storage_client = boto3.client('s3')
 
@@ -141,6 +147,58 @@ def parse_next_visit(http_request):
     return Visit(**data)
 
 
+def _filter_messages(messages):
+    """Split Kafka output into proper messages and errors.
+
+    This function returns the proper messages, and logs the errors.
+
+    Parameters
+    ----------
+    messages : `list` [`confluent_kafka.Message`]
+        The messages to filter.
+
+    Returns
+    -------
+    cleaned_messages : `list` [`confluent_kafka.Message`]
+        The received messages from within ``messages``.
+    """
+    cleaned = []
+    for msg in messages:
+        if msg.error():
+            # TODO: not all error() are actually *errors*
+            _log.warning("Consumer event: %s", msg.error())
+        else:
+            cleaned.append(msg)
+    return cleaned
+
+
+def _parse_bucket_notifications(payload):
+    """Extract object IDs from an S3 notification.
+
+    If one record is invalid, an error is logged but the function tries to
+    process the remaining records.
+
+    Parameters
+    ----------
+    payload : `str` or `bytes`
+        A message payload containing S3 notifications.
+
+    Yields
+    ------
+    oid : `str`
+        The filename referred to by each message.
+    """
+    msg = json.loads(payload)
+    for record in msg["Records"]:
+        if not record["eventName"].startswith("ObjectCreated"):
+            _log.warning("Unexpected non-creation notification in topic: %s", record)
+            continue
+        try:
+            yield record["s3"]["object"]["key"]
+        except KeyError as e:
+            _log.error("Invalid S3 bucket notification: %s", e)
+
+
 @app.route("/next-visit", methods=["POST"])
 def next_visit_handler() -> Tuple[str, int]:
     """A Flask view function for handling next-visit events.
@@ -155,11 +213,8 @@ def next_visit_handler() -> Tuple[str, int]:
     status : `int`
         The HTTP response status code to return to the client.
     """
-    subscription = subscriber.create_subscription(
-        topic=topic_path,
-        ack_deadline_seconds=60,
-    )
-    _log.debug(f"Created subscription '{subscription.name}'")
+    consumer.subscribe([bucket_topic])
+    _log.debug(f"Created subscription to '{bucket_topic}'")
     try:
         try:
             expected_visit = parse_next_visit(request)
@@ -190,15 +245,15 @@ def next_visit_handler() -> Tuple[str, int]:
         _log.debug(f"Waiting for snaps from {expected_visit}.")
         start = time.time()
         while len(expid_set) < expected_visit.snaps:
-            response = subscriber.pull(
-                subscription=subscription.name,
-                max_messages=189 + 8 + 8,
+            response = consumer.consume(
+                num_messages=189 + 8 + 8,
                 timeout=timeout,
             )
             end = time.time()
-            if len(response.received_messages) == 0:
+            messages = _filter_messages(response)
+            if len(messages) == 0:
                 if end - start < timeout:
-                    _log.debug(f"Empty pull after {end - start}s for {expected_visit}.")
+                    _log.debug(f"Empty consume after {end - start}s for {expected_visit}.")
                     continue
                 _log.warning(
                     f"Timed out waiting for image in {expected_visit} "
@@ -206,20 +261,22 @@ def next_visit_handler() -> Tuple[str, int]:
                 )
                 break
 
-            ack_list = []
-            for received in response.received_messages:
-                ack_list.append(received.ack_id)
-                oid = received.message.attributes["objectId"]
-                try:
-                    raw_info = Snap.from_oid(oid)
-                    _log.debug("Received %r", raw_info)
-                    if raw_info.is_consistent(expected_visit):
-                        # Ingest the snap
-                        mwi.ingest_image(oid)
-                        expid_set.add(raw_info.exp_id)
-                except ValueError:
-                    _log.error(f"Failed to match object id '{oid}'")
-            subscriber.acknowledge(subscription=subscription.name, ack_ids=ack_list)
+            for received in messages:
+                for oid in _parse_bucket_notifications(received.value()):
+                    try:
+                        raw_info = Snap.from_oid(oid)
+                        _log.debug("Received %r", raw_info)
+                        if raw_info.is_consistent(expected_visit):
+                            # Ingest the snap
+                            mwi.ingest_image(oid)
+                            expid_set.add(raw_info.exp_id)
+                    except ValueError:
+                        _log.error(f"Failed to match object id '{oid}'")
+                # Commits are per-group, so this can't interfere with other
+                # workers. This may wipe messages associated with a next_visit
+                # that will later be assigned to this worker, but those cases
+                # should be caught by the "already arrived" check.
+                consumer.commit(message=received)
 
         if expid_set:
             # Got at least some snaps; run the pipeline.
@@ -237,7 +294,7 @@ def next_visit_handler() -> Tuple[str, int]:
             _log.error(f"Timed out waiting for images for {expected_visit}.")
             return "Timed out waiting for images", 500
     finally:
-        subscriber.delete_subscription(subscription=subscription.name)
+        consumer.unsubscribe()
 
 
 @app.errorhandler(500)
@@ -253,8 +310,7 @@ def server_error(e) -> Tuple[str, int]:
 
 
 def main():
-    with subscriber:
-        app.run(host="127.0.0.1", port=8080, debug=True)
+    app.run(host="127.0.0.1", port=8080, debug=True)
 
 
 if __name__ == "__main__":
