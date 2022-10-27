@@ -130,6 +130,9 @@ The buckets can be inspected by calling the following from ``rubin-devl``:
 Prototype Service
 =================
 
+Google Cloud
+------------
+
 The service can be controlled by Google Cloud Run, which will automatically trigger instances based on ``nextVisit`` messages and can autoscale the number of them depending on load.
 Each time the service container is updated, a new revision of the service should be edited and deployed.
 (Continuous deployment has not yet been set up.)
@@ -192,6 +195,56 @@ It accepts messages and gateways them to Cloud Run.
 * Set the acknowledgement deadline to 600 seconds
 * Set the "Retry policy" to "Retry immediately"
 
+USDF
+----
+
+The service can be controlled with ``kubectl`` from ``rubin-devl``.
+You must first `get credentials for the development cluster <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev>`_ on the web; ignore the installation instructions and copy the commands from the second box.
+Credentials are good for roughly one work day.
+
+Each time the service container is updated, a new revision of the service should be edited and deployed.
+(Continuous deployment has not yet been set up.)
+To create the service, clone the `slaclab/rubin-usdf-prompt-processing`_ repo and navigate to the ``kubernetes/overlays/dev/prompt-proto-service`` directory.
+Edit ``prompt-proto-service.yaml`` to point to the new service container (likely a ticket branch instead of ``latest``), then run ``make apply`` *from the same directory*.
+See the readme in that directory for more details.
+
+.. _slaclab/rubin-usdf-prompt-processing: https://github.com/slaclab/rubin-usdf-prompt-processing/
+
+All service configuration is in ``prompt-proto-service.yaml``.
+It includes the following required environment variables:
+
+* RUBIN_INSTRUMENT: the "short" instrument name
+* PUBSUB_VERIFICATION_TOKEN: choose an arbitrary string matching the Pub/Sub endpoint URL below.
+  This variable is currently unused and may be removed in the future.
+* IMAGE_BUCKET: bucket containing raw images
+* CALIB_REPO: URI to repo containing calibrations (and templates)
+* IP_APDB: IP address or hostname and port of the APDB (see `Databases`_, below)
+* IP_REGISTRY: IP address or hostname and port of the registry database (see `Databases`_)
+* DB_APDB: PostgreSQL database name for the APDB
+* PSQL_APDB_PASS: secret containing the password for ``USER_APDB`` (see below)
+* DB_REGISTRY: PostgreSQL database name for the registry database
+* PSQL_REGISTRY_PASS: secret containing the password for ``USER_REGISTRY`` (see below)
+* KAFKA_CLUSTER: hostname and port of the Kafka provider
+
+The following environment variables are optional:
+
+* IMAGE_TIMEOUT: timeout in seconds to wait for raw image, default 50 sec.
+* LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
+* USER_APDB: database user for the APDB, default "postgres"
+* USER_REGISTRY: database user for the registry database, default "postgres"
+* NAMESPACE_APDB: the database namespace for the APDB, defaults to the DB's default namespace
+
+Secrets are configured through the makefile and ``kustomization.yaml``.
+
+A few useful commands for managing the service:
+
+* ``kubectl config set-context usdf-prompt-processing-dev --namespace=prompt-proto-service`` sets the default namespace for the following ``kubectl`` commands to ``prompt-proto-service``.
+  Note that many of the workflows in `slaclab/rubin-usdf-prompt-processing`_ run in the ``knative-serving`` or ``knative-eventing`` namespaces; to examine the resources of these workflows, add e.g. ``-n knative-eventing`` to the examples below.
+* ``kubectl get serving`` summarizes the state of the service, including which revision(s) are currently handling messages.
+  A revision with 0 replicas is inactive.
+* ``kubectl get pods`` lists the Kubernetes pods that are currently running, how long they have been active, and how recently they crashed.
+* ``kubectl logs <pod>`` outputs the entire log associated with a particular pod.
+  This can be a long file, so consider piping to ``less`` or ``grep``.
 
 tester
 ======
