@@ -4,6 +4,6 @@ RUN source /opt/lsst/software/stack/loadLSST.bash \
     && mamba install -y \
         flask \
         gunicorn \
-        google-cloud-pubsub \
-        google-cloud-sdk \
-        google-cloud-storage
+        python-confluent-kafka \
+    && pip install --no-input \
+        cloudevents

@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["GCloudStructuredLogFormatter", "setup_google_logger"]
+__all__ = ["GCloudStructuredLogFormatter", "setup_google_logger", "setup_usdf_logger"]
 
 import json
 import logging
@@ -46,6 +46,27 @@ def setup_google_logger(labels=None):
     """
     log_handler = logging.StreamHandler()
     log_handler.setFormatter(GCloudStructuredLogFormatter(labels))
+    logging.basicConfig(handlers=[log_handler])
+    logging.captureWarnings(True)
+    return log_handler
+
+
+def setup_usdf_logger(labels=None):
+    """Set global logging settings for prompt_prototype.
+
+    Calling this function redirects all warnings to go through the logger.
+
+    Parameters
+    ----------
+    labels : `dict` [`str`, `str`]
+        Any metadata that should be attached to all logs.
+
+    Returns
+    -------
+    handler : `logging.Handler`
+        The handler used by the root logger.
+    """
+    log_handler = logging.StreamHandler()
     logging.basicConfig(handlers=[log_handler])
     logging.captureWarnings(True)
     return log_handler
