@@ -221,7 +221,7 @@ def make_random_visits(instrument, group):
     visits : `set` [`activator.Visit`]
         Visits generated for ``group`` for all ``instrument``'s detectors.
     """
-    kind = KINDS[group % len(KINDS)]
+    kind = KINDS[int(group) % len(KINDS)]
     filter = FILTER_LIST[random.randrange(0, len(FILTER_LIST))]
     ra = random.uniform(0.0, 360.0)
     dec = random.uniform(-90.0, 90.0)
@@ -396,7 +396,7 @@ def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base)
         # TODO: may be cleaner to use a functor object than to depend on
         # closures for the bucket and data.
         def upload_dummy(visit, snap_id):
-            exposure_id = make_exposure_id(visit.instrument, visit.group, snap_id)
+            exposure_id = make_exposure_id(visit.instrument, int(visit.group), snap_id)
             filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
                                     exposure_id, visit.filter)
             dest_bucket.blob(filename).upload_from_string("Test")
