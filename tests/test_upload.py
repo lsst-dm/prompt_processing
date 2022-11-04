@@ -65,14 +65,12 @@ class UploadTest(unittest.TestCase):
         # Stop the S3 mock.
         self.mock_s3.stop()
 
-    @unittest.mock.patch("random.randrange")
-    def test_upload(self, random_call):
+    def test_upload(self):
         s3 = boto3.resource("s3")
         bucket = s3.Bucket(self.bucket_name)
 
-        random_call.return_value = 4
         last_group = get_last_group(bucket, "TestCam", "20221102")
-        self.assertEqual(last_group, 2022110200002 + random_call.return_value)
+        self.assertEqual(last_group, 2022110200002)
 
         # Test the case of no match
         last_group = get_last_group(bucket, "TestCam", "20110101")

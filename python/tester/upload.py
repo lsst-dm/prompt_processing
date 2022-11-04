@@ -153,16 +153,20 @@ def main():
     src_bucket = s3.Bucket("rubin-pp-users")
     raw_pool = get_samples(src_bucket, instrument)
 
+    new_group_base = last_group + random.randrange(10, 19)
     if raw_pool:
         _log.info(f"Observing real raw files from {instrument}.")
-        upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_groups, last_group + 1)
+        upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_groups, new_group_base)
     else:
         _log.info(f"No raw files found for {instrument}, generating dummy files instead.")
-        upload_from_random(producer, instrument, dest_bucket, n_groups, last_group + 1)
+        upload_from_random(producer, instrument, dest_bucket, n_groups, new_group_base)
 
 
 def get_last_group(bucket, instrument, date):
-    """Identify a group number that will not collide with any previous groups.
+    """Identify the largest group number or a new group number.
+
+    This number helps decide the next group number so it will not
+    collide with any previous groups.
 
     Parameters
     ----------
@@ -191,7 +195,7 @@ def get_last_group(bucket, instrument, date):
     if len(prefixes) == 0:
         return int(date) * 100_000
     else:
-        return max(prefixes) + random.randrange(10, 19)
+        return max(prefixes)
 
 
 def make_random_visits(instrument, group):
