@@ -8,11 +8,10 @@ import json
 import logging
 import os
 import random
-import re
 import socket
 import sys
 import time
-from activator.raw import RAW_REGEXP, get_raw_path
+from activator.raw import Snap, get_raw_path
 from activator.visit import Visit
 
 
@@ -262,37 +261,30 @@ def get_samples(bucket, instrument):
     for blob in blobs:
         # Assume that the unobserved bucket uses the same filename scheme as
         # the observed bucket.
-        parsed = re.match(RAW_REGEXP, blob.key)
-        if not parsed:
-            _log.warning(f"Could not parse {blob.key}; ignoring file.")
-            continue
-
-        group = parsed.group('group')
-        snap_id = int(parsed.group('snap'))
-        exposure_id = int(parsed.group('expid'))
+        snap = Snap.from_oid(blob.key)
         visit = Visit(instrument=instrument,
-                      detector=int(parsed.group('detector')),
-                      group=group,
+                      detector=snap.detector,
+                      group=snap.group,
                       snaps=INSTRUMENTS[instrument].n_snaps,
-                      filter=parsed.group('filter'),
-                      ra=hsc_metadata[exposure_id]["ra"],
-                      dec=hsc_metadata[exposure_id]["dec"],
-                      rot=hsc_metadata[exposure_id]["rot"],
+                      filter=snap.filter,
+                      ra=hsc_metadata[snap.exp_id]["ra"],
+                      dec=hsc_metadata[snap.exp_id]["dec"],
+                      rot=hsc_metadata[snap.exp_id]["rot"],
                       kind="SURVEY",
                       )
-        _log.debug(f"File {blob.key} parsed as snap {snap_id} of visit {visit}.")
-        if group in result:
-            snap_dict = result[group]
-            if snap_id in snap_dict:
-                _log.debug(f"New detector {visit.detector} added to snap {snap_id} of group {group}.")
-                detector_dict = snap_dict[snap_id]
+        _log.debug(f"File {blob.key} parsed as snap {snap.snap} of visit {visit}.")
+        if snap.group in result:
+            snap_dict = result[snap.group]
+            if snap.snap in snap_dict:
+                _log.debug(f"New detector {visit.detector} added to snap {snap.snap} of group {snap.group}.")
+                detector_dict = snap_dict[snap.snap]
                 detector_dict[visit] = blob
             else:
-                _log.debug(f"New snap {snap_id} added to group {group}.")
-                snap_dict[snap_id] = {visit: blob}
+                _log.debug(f"New snap {snap.snap} added to group {snap.group}.")
+                snap_dict[snap.snap] = {visit: blob}
         else:
-            _log.debug(f"New group {group} registered.")
-            result[group] = {snap_id: {visit: blob}}
+            _log.debug(f"New group {snap.group} registered.")
+            result[snap.group] = {snap.snap: {visit: blob}}
 
     return result
 
@@ -352,7 +344,7 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
             src_blob = snap_dict[snap_id][visit]
             # TODO: converting raw_pool from a nested mapping to an indexable
             # custom class would make it easier to include such metadata as expId.
-            exposure_id = int(re.match(RAW_REGEXP, src_blob.key).group('expid'))
+            exposure_id = Snap.from_oid(src_blob.key).exp_id
             filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
                                     exposure_id, visit.filter)
             src = {'Bucket': src_bucket.name, 'Key': src_blob.key}
