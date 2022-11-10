@@ -96,7 +96,7 @@ def send_next_visit(producer, group, visit_infos):
         represent multiple snaps.
     """
     _log.info(f"Sending next_visit for group: {group}")
-    topic = "nextVisit"
+    topic = "next-visit-topic"
     for info in visit_infos:
         _log.debug(f"Sending next_visit for group: {info.group} detector: {info.detector} "
                    f"filter: {info.filter} ra: {info.ra} dec: {info.dec} kind: {info.kind}")
