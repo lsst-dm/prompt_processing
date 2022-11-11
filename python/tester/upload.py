@@ -45,12 +45,12 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
-def process_group(publisher, visit_infos, uploader):
+def process_group(producer, visit_infos, uploader):
     """Simulate the observation of a single on-sky pointing.
 
     Parameters
     ----------
-    publisher : `confluent_kafka.Producer`
+    producer : `confluent_kafka.Producer`
         The client that posts ``next_visit`` messages.
     visit_infos : `set` [`activator.Visit`]
         The visit-detector combinations to be observed; each object may
@@ -69,7 +69,7 @@ def process_group(publisher, visit_infos, uploader):
         _log.info("No observations to make; aborting.")
         return
 
-    send_next_visit(publisher, group, visit_infos)
+    send_next_visit(producer, group, visit_infos)
     # TODO: need asynchronous code to handle next_visit delay correctly
     for snap in range(n_snaps):
         _log.info(f"Taking group: {group} snap: {snap}")
@@ -82,11 +82,13 @@ def process_group(publisher, visit_infos, uploader):
                       f"detector: {info.detector}")
 
 
-def send_next_visit(publisher, group, visit_infos):
+def send_next_visit(producer, group, visit_infos):
     """Simulate the transmission of a ``next_visit`` message.
 
     Parameters
     ----------
+    producer : `confluent_kafka.Producer`
+        The client that posts ``next_visit`` messages.
     group : `str`
         The group ID for the message to send.
     visit_infos : `set` [`activator.Visit`]
@@ -99,7 +101,7 @@ def send_next_visit(publisher, group, visit_infos):
         _log.debug(f"Sending next_visit for group: {info.group} detector: {info.detector} "
                    f"filter: {info.filter} ra: {info.ra} dec: {info.dec} kind: {info.kind}")
         data = json.dumps(info.__dict__).encode("utf-8")
-        publisher.produce(topic, data)
+        producer.produce(topic, data)
 
 
 def make_exposure_id(instrument, group, snap):
@@ -141,7 +143,7 @@ def main():
     endpoint_url = "https://s3dfrgw.slac.stanford.edu"
     s3 = boto3.resource("s3", endpoint_url=endpoint_url)
     dest_bucket = s3.Bucket("rubin-pp")
-    publisher = Producer(
+    producer = Producer(
         {"bootstrap.servers": kafka_cluster, "client.id": socket.gethostname()}
     )
 
@@ -153,10 +155,10 @@ def main():
 
     if raw_pool:
         _log.info(f"Observing real raw files from {instrument}.")
-        upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n_groups, last_group + 1)
+        upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_groups, last_group + 1)
     else:
         _log.info(f"No raw files found for {instrument}, generating dummy files instead.")
-        upload_from_random(publisher, instrument, dest_bucket, n_groups, last_group + 1)
+        upload_from_random(producer, instrument, dest_bucket, n_groups, last_group + 1)
 
 
 def get_last_group(bucket, instrument, date):
@@ -289,12 +291,12 @@ def get_samples(bucket, instrument):
     return result
 
 
-def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n_groups, group_base):
+def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_groups, group_base):
     """Upload visits and files using real raws.
 
     Parameters
     ----------
-    publisher : `confluent_kafka.Producer`
+    producer : `confluent_kafka.Producer`
         The client that posts ``next_visit`` messages.
     instrument : `str`
         The short name of the instrument carrying out the observation.
@@ -349,17 +351,17 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
                                     exposure_id, visit.filter)
             src = {'Bucket': src_bucket.name, 'Key': src_blob.key}
             dest_bucket.copy(src, filename)
-        process_group(publisher, visit_infos, upload_from_pool)
+        process_group(producer, visit_infos, upload_from_pool)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
 
 
-def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base):
+def upload_from_random(producer, instrument, dest_bucket, n_groups, group_base):
     """Upload visits and files using randomly generated visits.
 
     Parameters
     ----------
-    publisher : `confluent_kafka.Producer`
+    producer : `confluent_kafka.Producer`
         The client that posts ``next_visit`` messages.
     instrument : `str`
         The short name of the instrument carrying out the observation.
@@ -381,7 +383,7 @@ def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base)
             filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
                                     exposure_id, visit.filter)
             dest_bucket.put_object(Body=b"Test", Key=filename)
-        process_group(publisher, visit_infos, upload_dummy)
+        process_group(producer, visit_infos, upload_dummy)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
 
