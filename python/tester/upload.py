@@ -1,14 +1,15 @@
 __all__ = ["get_last_group", ]
 
 import boto3
+from confluent_kafka import Producer
 import dataclasses
-from google.cloud import pubsub_v1
-from google.oauth2 import service_account
 import itertools
 import json
 import logging
+import os
 import random
 import re
+import socket
 import sys
 import time
 from activator.raw import RAW_REGEXP, get_raw_path
@@ -31,10 +32,10 @@ INSTRUMENTS = {
 EXPOSURE_INTERVAL = 18
 SLEW_INTERVAL = 2
 FILTER_LIST = "ugrizy"
-PUBSUB_TOKEN = "abc123"
 KINDS = ("BIAS", "DARK", "FLAT")
 
-PROJECT_ID = "prompt-proto"
+# Kafka server
+kafka_cluster = os.environ["KAFKA_CLUSTER"]
 
 
 logging.basicConfig(
@@ -50,7 +51,7 @@ def process_group(publisher, visit_infos, uploader):
 
     Parameters
     ----------
-    publisher : `google.cloud.pubsub_v1.PublisherClient`
+    publisher : `confluent_kafka.Producer`
         The client that posts ``next_visit`` messages.
     visit_infos : `set` [`activator.Visit`]
         The visit-detector combinations to be observed; each object may
@@ -94,12 +95,12 @@ def send_next_visit(publisher, group, visit_infos):
         represent multiple snaps.
     """
     _log.info(f"Sending next_visit for group: {group}")
-    topic_path = publisher.topic_path(PROJECT_ID, "nextVisit")
+    topic = "nextVisit"
     for info in visit_infos:
         _log.debug(f"Sending next_visit for group: {info.group} detector: {info.detector} "
                    f"filter: {info.filter} ra: {info.ra} dec: {info.dec} kind: {info.kind}")
         data = json.dumps(info.__dict__).encode("utf-8")
-        publisher.publish(topic_path, data=data)
+        publisher.produce(topic, data)
 
 
 def make_exposure_id(instrument, group, snap):
@@ -138,17 +139,12 @@ def main():
 
     date = time.strftime("%Y%m%d")
 
-    credentials = service_account.Credentials.from_service_account_file(
-        "./prompt-proto-upload.json"
-    )
     endpoint_url = "https://s3dfrgw.slac.stanford.edu"
     s3 = boto3.resource("s3", endpoint_url=endpoint_url)
     dest_bucket = s3.Bucket("rubin-pp")
-    batch_settings = pubsub_v1.types.BatchSettings(
-        max_messages=INSTRUMENTS[instrument].n_detectors,
+    publisher = Producer(
+        {"bootstrap.servers": kafka_cluster, "client.id": socket.gethostname()}
     )
-    publisher = pubsub_v1.PublisherClient(credentials=credentials,
-                                          batch_settings=batch_settings)
 
     last_group = get_last_group(dest_bucket, instrument, date)
     _log.info(f"Last group {last_group}")
@@ -306,7 +302,7 @@ def upload_from_raws(publisher, instrument, raw_pool, src_bucket, dest_bucket, n
 
     Parameters
     ----------
-    publisher : `google.cloud.pubsub_v1.PublisherClient`
+    publisher : `confluent_kafka.Producer`
         The client that posts ``next_visit`` messages.
     instrument : `str`
         The short name of the instrument carrying out the observation.
@@ -371,7 +367,7 @@ def upload_from_random(publisher, instrument, dest_bucket, n_groups, group_base)
 
     Parameters
     ----------
-    publisher : `google.cloud.pubsub_v1.PublisherClient`
+    publisher : `confluent_kafka.Producer`
         The client that posts ``next_visit`` messages.
     instrument : `str`
         The short name of the instrument carrying out the observation.
