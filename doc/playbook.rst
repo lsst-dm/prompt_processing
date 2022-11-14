@@ -250,19 +250,23 @@ tester
 ======
 
 ``python/tester/upload.py`` is a script that simulates the CCS image writer.
-On a local machine, it requires a JSON token in ``./prompt-proto-upload.json``.
-To obtain a token, see the GCP documentation on `service account keys`_; the relevant service account is ``prompt-image-upload@prompt-proto.iam.gserviceaccount.com``.
+It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
 
-.. _service account keys: https://cloud.google.com/iam/docs/creating-managing-service-account-keys
-
-Run the tester either on a local machine, or in Cloud Shell.  
-In Cloud Shell, install the prototype code and the GCP PubSub client:
+You must have a profile set up for the ``rubin-pp`` bucket (see `Buckets`_, above), and must set the ``KAFKA_CLUSTER`` environment variable.
+Run:
 
 .. code-block:: sh
 
-    gcloud config set project prompt-proto
-    git clone https://github.com/lsst-dm/prompt_prototype.git
-    pip3 install google-cloud-pubsub
+   kubectl get service -n kafka prompt-processing-kafka-external-bootstrap
+
+and look up the ``EXTERNAL-IP``; set ``KAFKA_CLUSTER=<ip>:9094``.
+The IP address is fixed, so you should only need to look it up once.
+
+Install the prototype code:
+
+.. code-block:: sh
+
+    git clone https://github.com/lsst-dm/prompt_prototype
 
 Command line arguments are the instrument name (currently HSC only; other values will upload dummy raws that the pipeline can't process) and the number of groups of images to send.
 
@@ -272,8 +276,8 @@ Sample command line:
 
    python upload.py HSC 3
 
-It sends ``next_visit`` events for each detector via Google Pub/Sub on the ``nextVisit`` topic.
-It then uploads a batch of files representing the snaps of the visit to the ``rubin-prompt-proto-main`` GCS bucket.
+It sends ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
+It then uploads a batch of files representing the snaps of the visit to the ``rubin-pp`` S3 bucket.
 
 Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
 
