@@ -45,6 +45,8 @@ PROJECT_ID = "prompt-proto"
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
 # URI to the main repository containing calibs and templates
 calib_repo = os.environ["CALIB_REPO"]
+# S3 Endpoint for Buckets; needed for direct Boto access but not Butler
+s3_endpoint = os.environ["S3_ENDPOINT_URL"]
 # Bucket name (not URI) containing raw images
 image_bucket = os.environ["IMAGE_BUCKET"]
 # Time to wait for raw image upload, in seconds
@@ -78,7 +80,7 @@ consumer = kafka.Consumer({
     "group.id": kafka_group_id,
 })
 
-storage_client = boto3.client('s3')
+storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
 
 # Initialize middleware interface.
 mwi = MiddlewareInterface(get_central_butler(calib_repo, instrument_name),
