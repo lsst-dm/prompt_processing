@@ -245,6 +245,7 @@ A few useful commands for managing the service:
 * ``kubectl get pods`` lists the Kubernetes pods that are currently running, how long they have been active, and how recently they crashed.
 * ``kubectl logs <pod>`` outputs the entire log associated with a particular pod.
   This can be a long file, so consider piping to ``less`` or ``grep``.
+  ``kubectl logs`` also offers the ``-f`` flag for streaming output.
 
 tester
 ======
