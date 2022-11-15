@@ -110,14 +110,15 @@ def check_for_snap(
     """
     prefix = f"{instrument}/{detector}/{group}/{snap}/"
     _log.debug(f"Checking for '{prefix}'")
-    blobs = storage_client.list_objects_v2(Bucket=image_bucket, Prefix=prefix)['Contents']
-    if not blobs:
+    response = storage_client.list_objects_v2(Bucket=image_bucket, Prefix=prefix)
+    if response["KeyCount"] == 0:
         return None
-    elif len(blobs) > 1:
+    elif response["KeyCount"] > 1:
         _log.error(
             f"Multiple files detected for a single detector/group/snap: '{prefix}'"
         )
-    return blobs[0]['Key']
+    # Contents only exists if >0 objects found.
+    return response["Contents"][0]['Key']
 
 
 def parse_next_visit(http_request):
