@@ -22,6 +22,7 @@
 import dataclasses
 import itertools
 import tempfile
+import time
 import os.path
 import unittest
 import unittest.mock
@@ -504,6 +505,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                 dec=dec,
                                 rot=rot,
                                 kind="SURVEY")
+        self.second_visit = dataclasses.replace(self.next_visit, group="2")
         self.logger_name = "lsst.activator.middleware_interface"
 
         # Populate repository.
@@ -521,9 +523,19 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(self.next_visit, filename)
+            self.interface.ingest_image(self.second_visit, filename)
         self.interface.define_visits.run([self.raw_data_id])
 
-        # Simulate pipeline execution.
+        self._simulate_run()
+
+    def _simulate_run(self):
+        """Create a mock pipeline execution that stores a calexp for self.raw_data_id.
+
+        Returns
+        -------
+        run : `str`
+            The output run containing the output.
+        """
         exp = lsst.afw.image.ExposureF(20, 20)
         run = self.interface._prep_collections()
         self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
@@ -532,6 +544,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.interface.butler, "calexp", {"instrument", "visit", "detector"},
                                     "ExposureF")
         self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run)
+        return run
 
     def _check_datasets(self, butler, types, collections, count, data_id):
         datasets = list(butler.registry.queryDatasets(types, collections=collections))
@@ -567,3 +580,27 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
     def test_export_outputs_bad_exposure(self):
         with self.assertRaises(ValueError):
             self.interface.export_outputs(self.next_visit, {88})
+
+    def test_export_outputs_retry(self):
+        self.interface.export_outputs(self.next_visit, {self.raw_data_id["exposure"]})
+
+        time.sleep(1.0)  # Force _simulate_run() to create a new timestamped run
+        self._simulate_run()
+        self.interface.export_outputs(self.second_visit, {self.raw_data_id["exposure"]})
+
+        central_butler = Butler(self.central_repo.name, writeable=False)
+        raw_collection = f"{instname}/raw/all"
+        export_collection = f"{instname}/prompt-results"
+        self._check_datasets(central_butler,
+                             "raw", raw_collection, 2, self.raw_data_id)
+        # Did not export raws directly to raw/all.
+        self.assertEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.CHAINED)
+        self._check_datasets(central_butler,
+                             "calexp", export_collection, 2, self.processed_data_id)
+        # Did not export calibs or other inputs.
+        self._check_datasets(central_butler,
+                             ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection,
+                             0, {"error": "dnc"})
+        # Nothing placed in "input" collections.
+        self._check_datasets(central_butler,
+                             ["raw", "calexp"], f"{instname}/defaults", 0, {"error": "dnc"})

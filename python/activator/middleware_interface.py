@@ -136,6 +136,8 @@ class MiddlewareInterface:
     #   pre-made inputs, and raws, in that order. However, self.butler is not
     #   guaranteed to contain concrete data, or even the dimensions
     #   corresponding to self.camera and self.skymap.
+    # if it exists, the latest run in self.output_collection is always the first
+    # in the chain.
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  local_storage: str,
@@ -663,16 +665,21 @@ class MiddlewareInterface:
         self._export_subset(visit, exposure_ids, "raw",
                             in_collections=self._get_raw_run_name(visit),
                             out_collection=self.instrument.makeDefaultRawIngestRunName())
+
         umbrella = self.instrument.makeCollectionName("prompt-results")
-        self._export_subset(visit, exposure_ids,
-                            # TODO: find a way to merge datasets like *_config
-                            # or *_schema that are duplicated across multiple
-                            # workers.
-                            self._get_safe_dataset_types(self.butler),
-                            self.output_collection + "/*",  # exclude inputs
-                            umbrella)
-        _log.info(f"Pipeline products saved to collection '{umbrella}' for "
-                  f"detector {visit.detector} of {exposure_ids}.")
+        latest_run = self.butler.registry.getCollectionChain(self.output_collection)[0]
+        if latest_run.startswith(self.output_collection + "/"):
+            self._export_subset(visit, exposure_ids,
+                                # TODO: find a way to merge datasets like *_config
+                                # or *_schema that are duplicated across multiple
+                                # workers.
+                                self._get_safe_dataset_types(self.butler),
+                                in_collections=latest_run,
+                                out_collection=umbrella)
+            _log.info(f"Pipeline products saved to collection '{umbrella}' for "
+                      f"detector {visit.detector} of {exposure_ids}.")
+        else:
+            _log.warning(f"No output runs to save! Called for {visit.detector} of {exposure_ids}.")
 
     @staticmethod
     def _get_safe_dataset_types(butler):
