@@ -271,7 +271,7 @@ def next_visit_handler() -> Tuple[str, int]:
                         _log.debug("Received %r", raw_info)
                         if raw_info.is_consistent(expected_visit):
                             # Ingest the snap
-                            mwi.ingest_image(oid)
+                            mwi.ingest_image(expected_visit, oid)
                             expid_set.add(raw_info.exp_id)
                     except ValueError:
                         _log.error(f"Failed to match object id '{oid}'")
