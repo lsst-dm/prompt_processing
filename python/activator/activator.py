@@ -59,7 +59,7 @@ kafka_cluster = os.environ["KAFKA_CLUSTER"]
 kafka_group_id = str(uuid.uuid4())
 # The topic on which to listen to updates to image_bucket
 # bucket_topic = f"{instrument_name}-image"
-bucket_topic = "pp-bucket-notify-topic"
+bucket_topic = "rubin-prompt-processing"
 
 setup_usdf_logger(
     labels={"instrument": instrument_name},
