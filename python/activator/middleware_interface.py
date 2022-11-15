@@ -115,7 +115,7 @@ class MiddlewareInterface:
     prefix : `str`, optional
         URI scheme followed by ``://``; prepended to ``image_bucket`` when
         constructing URIs to retrieve incoming files. The default is
-        appropriate for use in the Google Cloud environment; typically only
+        appropriate for use in the USDF environment; typically only
         change this when running local tests.
     """
     _COLLECTION_TEMPLATE = "templates"
@@ -139,7 +139,7 @@ class MiddlewareInterface:
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  local_storage: str,
-                 prefix: str = "gs://"):
+                 prefix: str = "s3://"):
         self._apdb_uri = self._make_apdb_uri()
         self._apdb_namespace = os.environ.get("NAMESPACE_APDB", None)
         self.central_butler = central_butler
@@ -585,8 +585,7 @@ class MiddlewareInterface:
         visit : Visit
             The visit for which the image was taken.
         oid : `str`
-            Google storage identifier for incoming image, relative to the
-            image bucket.
+            Identifier for incoming image, relative to the image bucket.
         """
         # TODO: consider allowing pre-existing raws, as may happen when a
         # pipeline is rerun (see DM-34141).
