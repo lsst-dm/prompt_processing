@@ -147,19 +147,23 @@ def main():
         {"bootstrap.servers": kafka_cluster, "client.id": socket.gethostname()}
     )
 
-    last_group = get_last_group(dest_bucket, instrument, date)
-    _log.info(f"Last group {last_group}")
+    try:
+        last_group = get_last_group(dest_bucket, instrument, date)
+        _log.info(f"Last group {last_group}")
 
-    src_bucket = s3.Bucket("rubin-pp-users")
-    raw_pool = get_samples(src_bucket, instrument)
+        src_bucket = s3.Bucket("rubin-pp-users")
+        raw_pool = get_samples(src_bucket, instrument)
 
-    new_group_base = last_group + random.randrange(10, 19)
-    if raw_pool:
-        _log.info(f"Observing real raw files from {instrument}.")
-        upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_groups, new_group_base)
-    else:
-        _log.info(f"No raw files found for {instrument}, generating dummy files instead.")
-        upload_from_random(producer, instrument, dest_bucket, n_groups, new_group_base)
+        new_group_base = last_group + random.randrange(10, 19)
+        if raw_pool:
+            _log.info(f"Observing real raw files from {instrument}.")
+            upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket,
+                             n_groups, new_group_base)
+        else:
+            _log.info(f"No raw files found for {instrument}, generating dummy files instead.")
+            upload_from_random(producer, instrument, dest_bucket, n_groups, new_group_base)
+    finally:
+        producer.flush(30.0)
 
 
 def get_last_group(bucket, instrument, date):
