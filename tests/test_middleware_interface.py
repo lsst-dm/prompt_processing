@@ -548,7 +548,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self._check_datasets(central_butler,
                              "raw", raw_collection, 1, self.raw_data_id)
         # Did not export raws directly to raw/all.
-        self.assertNotEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.RUN)
+        self.assertEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.CHAINED)
         self._check_datasets(central_butler,
                              "calexp", export_collection, 1, self.processed_data_id)
         # Did not export calibs or other inputs.
