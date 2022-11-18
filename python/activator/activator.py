@@ -45,6 +45,8 @@ PROJECT_ID = "prompt-proto"
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
 # URI to the main repository containing calibs and templates
 calib_repo = os.environ["CALIB_REPO"]
+# S3 Endpoint for Buckets; needed for direct Boto access but not Butler
+s3_endpoint = os.environ["S3_ENDPOINT_URL"]
 # Bucket name (not URI) containing raw images
 image_bucket = os.environ["IMAGE_BUCKET"]
 # Time to wait for raw image upload, in seconds
@@ -57,7 +59,7 @@ kafka_cluster = os.environ["KAFKA_CLUSTER"]
 kafka_group_id = str(uuid.uuid4())
 # The topic on which to listen to updates to image_bucket
 # bucket_topic = f"{instrument_name}-image"
-bucket_topic = "pp-bucket-notify-topic"
+bucket_topic = "rubin-prompt-processing"
 
 setup_usdf_logger(
     labels={"instrument": instrument_name},
@@ -78,7 +80,7 @@ consumer = kafka.Consumer({
     "group.id": kafka_group_id,
 })
 
-storage_client = boto3.client('s3')
+storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
 
 # Initialize middleware interface.
 mwi = MiddlewareInterface(get_central_butler(calib_repo, instrument_name),
@@ -108,14 +110,15 @@ def check_for_snap(
     """
     prefix = f"{instrument}/{detector}/{group}/{snap}/"
     _log.debug(f"Checking for '{prefix}'")
-    blobs = storage_client.list_objects_v2(Bucket=image_bucket, Prefix=prefix)['Contents']
-    if not blobs:
+    response = storage_client.list_objects_v2(Bucket=image_bucket, Prefix=prefix)
+    if response["KeyCount"] == 0:
         return None
-    elif len(blobs) > 1:
+    elif response["KeyCount"] > 1:
         _log.error(
             f"Multiple files detected for a single detector/group/snap: '{prefix}'"
         )
-    return blobs[0]['Key']
+    # Contents only exists if >0 objects found.
+    return response["Contents"][0]['Key']
 
 
 def parse_next_visit(http_request):
@@ -268,7 +271,7 @@ def next_visit_handler() -> Tuple[str, int]:
                         _log.debug("Received %r", raw_info)
                         if raw_info.is_consistent(expected_visit):
                             # Ingest the snap
-                            mwi.ingest_image(oid)
+                            mwi.ingest_image(expected_visit, oid)
                             expid_set.add(raw_info.exp_id)
                     except ValueError:
                         _log.error(f"Failed to match object id '{oid}'")
