@@ -102,7 +102,7 @@ def send_next_visit(producer, group, visit_infos):
         producer.produce(topic, data)
 
 
-def make_exposure_id(instrument, group, snap):
+def make_exposure_id(instrument, group_num, snap):
     """Generate an exposure ID from an exposure's other metadata.
 
     The exposure ID is purely a placeholder, and does not conform to any
@@ -112,8 +112,8 @@ def make_exposure_id(instrument, group, snap):
     ----------
     instrument : `str`
         The short name of the instrument.
-    group : `int`
-        A group ID.
+    group_num : `int`
+        The integer used to generate a group ID.
     snap : `int`
         A snap ID.
 
@@ -121,10 +121,10 @@ def make_exposure_id(instrument, group, snap):
     -------
     exposure : `int`
         An exposure ID that is likely to be unique for each combination of
-        ``group`` and ``snap``, for a given ``instrument``.
+        ``group_num`` and ``snap``, for a given ``instrument``.
     """
-    exposure_id = (group // 100_000) * 100_000
-    exposure_id += (group % 100_000) * INSTRUMENTS[instrument].n_snaps
+    exposure_id = (group_num // 100_000) * 100_000
+    exposure_id += (group_num % 100_000) * INSTRUMENTS[instrument].n_snaps
     exposure_id += snap
     return exposure_id
 
