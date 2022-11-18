@@ -114,18 +114,23 @@ def make_hsc_id(group_num, snap):
 
     Returns
     -------
-    exposure : `int`
+    exposure_header : `str`
         An exposure ID that is likely to be unique for each combination of
-        ``group`` and ``snap``.
+        ``group`` and ``snap``, in the form it appears in HSC headers.
+    exposure_num : `int`
+        The exposure ID genereated by Middleware from ``exposure_header``.
     """
     exposure_id = (group_num // 100_000) * 100_000
     exposure_id += (group_num % 100_000) * INSTRUMENTS['HSC'].n_snaps
     exposure_id += snap
-    return exposure_id
+    return str(exposure_id), exposure_id
 
 
 def make_exposure_id(instrument, group_num, snap):
     """Generate an exposure ID from an exposure's other metadata.
+
+    The exposure ID is designed for insertion into an image header, and is
+    therefore a string in the instrument's native format.
 
     Parameters
     ----------
@@ -138,13 +143,19 @@ def make_exposure_id(instrument, group_num, snap):
 
     Returns
     -------
-    exposure : `int`
+    exposure_key : `str`
+        The header key under which ``instrument`` stores the exposure ID.
+    exposure_header : `str`
         An exposure ID that is likely to be unique for each combination of
-        ``group_num`` and ``snap``, for a given ``instrument``.
+        ``group_num`` and ``snap``, for a given ``instrument``, in the format
+        for ``instrument``'s header.
+    exposure_num : `int`
+        An exposure ID equivalent to ``exposure_header`` in the format expected
+        by Gen 3 Middleware.
     """
     match instrument:
         case "HSC":
-            return make_hsc_id(group_num, snap)
+            return "EXP-ID", *make_hsc_id(group_num, snap)
         case _:
             raise NotImplementedError(f"Exposure ID generation not supported for {instrument}.")
 
