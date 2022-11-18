@@ -105,6 +105,9 @@ def send_next_visit(producer, group, visit_infos):
 def make_hsc_id(group_num, snap):
     """Generate an exposure ID that the Butler can parse as a valid HSC ID.
 
+    This function returns a value in the "HSCE########" format (introduced June
+    2016) for all exposures, even if the source image is older.
+
     Parameters
     ----------
     group_num : `int`
@@ -119,11 +122,18 @@ def make_hsc_id(group_num, snap):
         ``group`` and ``snap``, in the form it appears in HSC headers.
     exposure_num : `int`
         The exposure ID genereated by Middleware from ``exposure_header``.
+
+    Notes
+    -----
+    The current implementation may overflow if more than ~60 calls to upload.py
+    are done on the same day.
     """
-    exposure_id = (group_num // 100_000) * 100_000
-    exposure_id += (group_num % 100_000) * INSTRUMENTS['HSC'].n_snaps
-    exposure_id += snap
-    return str(exposure_id), exposure_id
+    # This is a bit too dependent on how group_num is generated, but I want the
+    # group number to be discernible even after compressing to 8 digits.
+    night_id = (group_num // 100_000) % 2020_00_00     # Always 5 digits
+    run_id = group_num % 100_000                       # Up to 5 digits, but usually 2-3
+    exposure_id = (night_id * 1000) + (run_id % 1000)  # Always 8 digits
+    return f"HSCE{exposure_id:08d}", exposure_id
 
 
 def make_exposure_id(instrument, group_num, snap):
