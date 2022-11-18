@@ -269,7 +269,7 @@ Install the prototype code:
 
     git clone https://github.com/lsst-dm/prompt_prototype
 
-Command line arguments are the instrument name (currently HSC only; other values will upload dummy raws that the pipeline can't process) and the number of groups of images to send.
+Command line arguments are the instrument name (currently HSC only) and the number of groups of images to send.
 
 Sample command line:
 

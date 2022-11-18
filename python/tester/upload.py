@@ -30,8 +30,6 @@ INSTRUMENTS = {
 }
 EXPOSURE_INTERVAL = 18
 SLEW_INTERVAL = 2
-FILTER_LIST = "ugrizy"
-KINDS = ("BIAS", "DARK", "FLAT")
 
 # Kafka server
 kafka_cluster = os.environ["KAFKA_CLUSTER"]
@@ -160,8 +158,7 @@ def main():
             upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket,
                              n_groups, new_group_base)
         else:
-            _log.info(f"No raw files found for {instrument}, generating dummy files instead.")
-            upload_from_random(producer, instrument, dest_bucket, n_groups, new_group_base)
+            _log.error(f"No raw files found for {instrument}, aborting.")
     finally:
         producer.flush(30.0)
 
@@ -200,33 +197,6 @@ def get_last_group(bucket, instrument, date):
         return int(date) * 100_000
     else:
         return max(prefixes)
-
-
-def make_random_visits(instrument, group):
-    """Create placeholder visits without reference to any data.
-
-    Parameters
-    ----------
-    instrument : `str`
-        The short name of the instrument carrying out the observation.
-    group : `str`
-        The group number being observed.
-
-    Returns
-    -------
-    visits : `set` [`activator.Visit`]
-        Visits generated for ``group`` for all ``instrument``'s detectors.
-    """
-    kind = KINDS[int(group) % len(KINDS)]
-    filter = FILTER_LIST[random.randrange(0, len(FILTER_LIST))]
-    ra = random.uniform(0.0, 360.0)
-    dec = random.uniform(-90.0, 90.0)
-    rot = random.uniform(0.0, 360.0)
-    return {
-        Visit(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter,
-              ra, dec, rot, kind)
-        for detector in range(INSTRUMENTS[instrument].n_detectors)
-    }
 
 
 def get_samples(bucket, instrument):
@@ -360,38 +330,6 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
             src = {'Bucket': src_bucket.name, 'Key': src_blob.key}
             dest_bucket.copy(src, filename)
         process_group(producer, visit_infos, upload_from_pool)
-        _log.info("Slewing to next group")
-        time.sleep(SLEW_INTERVAL)
-
-
-def upload_from_random(producer, instrument, dest_bucket, n_groups, group_base):
-    """Upload visits and files using randomly generated visits.
-
-    Parameters
-    ----------
-    producer : `confluent_kafka.Producer`
-        The client that posts ``next_visit`` messages.
-    instrument : `str`
-        The short name of the instrument carrying out the observation.
-    dest_bucket : `S3.Bucket`
-        The bucket to which to upload the new images.
-    n_groups : `int`
-        The number of observation groups to simulate.
-    group_base : `int`
-        The base number from which to offset new group numbers.
-    """
-    for i in range(n_groups):
-        group = str(group_base + i)
-        visit_infos = make_random_visits(instrument, group)
-
-        # TODO: may be cleaner to use a functor object than to depend on
-        # closures for the bucket and data.
-        def upload_dummy(visit, snap_id):
-            exposure_id = make_exposure_id(visit.instrument, int(visit.group), snap_id)
-            filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                    exposure_id, visit.filter)
-            dest_bucket.put_object(Body=b"Test", Key=filename)
-        process_group(producer, visit_infos, upload_dummy)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
 
