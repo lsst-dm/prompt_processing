@@ -284,7 +284,7 @@ Eventually a set of parallel processes running on multiple nodes will be needed 
 
 .. note::
 
-   ``upload.py`` uploads from the same small pool of raws every time it is run, while the AP pipeline assumes that every visit has unique visit IDs.
+   ``upload.py`` uploads from the same small pool of raws every time it is run, while the APDB assumes that every visit has unique timestamps.
    This causes collisions in the APDB that crash the pipeline.
    To prevent this, follow the reset instructions under `Databases`_ before calling ``upload.py`` again.
 

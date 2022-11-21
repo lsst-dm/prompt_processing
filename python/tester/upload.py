@@ -1,7 +1,5 @@
 __all__ = ["get_last_group", ]
 
-import boto3
-from confluent_kafka import Producer
 import dataclasses
 import itertools
 import json
@@ -10,7 +8,13 @@ import os
 import random
 import socket
 import sys
+import tempfile
 import time
+
+import boto3
+from confluent_kafka import Producer
+from astropy.io import fits
+
 from activator.raw import Snap, get_raw_path
 from activator.visit import Visit
 
@@ -360,19 +364,51 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
         visit_infos = {info for det_dict in snap_dict.values() for info in det_dict}
 
         # TODO: may be cleaner to use a functor object than to depend on
-        # closures for the bucket and data.
+        # closures for the buckets and data.
         def upload_from_pool(visit, snap_id):
             src_blob = snap_dict[snap_id][visit]
-            # TODO: converting raw_pool from a nested mapping to an indexable
-            # custom class would make it easier to include such metadata as expId.
-            exposure_id = Snap.from_oid(src_blob.key).exp_id
+            exposure_key, exposure_header, exposure_num = \
+                make_exposure_id(visit.instrument, int(visit.group), snap_id)
             filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                    exposure_id, visit.filter)
-            src = {'Bucket': src_bucket.name, 'Key': src_blob.key}
-            dest_bucket.copy(src, filename)
+                                    exposure_num, visit.filter)
+            # r+b required by _replace_header_key.
+            with tempfile.TemporaryFile(mode="r+b") as buffer:
+                src_bucket.download_fileobj(src_blob.key, buffer)
+                _replace_header_key(buffer, exposure_key, exposure_header)
+                buffer.seek(0)  # Assumed by upload_fileobj.
+                dest_bucket.upload_fileobj(buffer, filename)
+
         process_group(producer, visit_infos, upload_from_pool)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
+
+
+def _replace_header_key(file, key, value):
+    """Replace a header key in a FITS file with a new key-value pair.
+
+    The file is updated in place, and left open when the function returns,
+    making this function safe to use with temporary files.
+
+    Parameters
+    ----------
+    file : file-like object
+        The file to update. Must already be open in "rb+" mode.
+    key : `str`
+        The header key to update.
+    value : `str`
+        The value to assign to ``key``.
+    """
+    # Can't use astropy.io.fits.update, because that closes the underlying file.
+    hdus = fits.open(file, mode="update")
+    try:
+        # Don't know which header is supposed to contain the key.
+        for header in (hdu.header for hdu in hdus):
+            if key in header:
+                _log.debug("Setting %s to %s.", key, value)
+                header[key] = value
+    finally:
+        # Clean up HDUList object *without* closing ``file``.
+        hdus.close(closed=False)
 
 
 if __name__ == "__main__":
