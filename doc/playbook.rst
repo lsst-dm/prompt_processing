@@ -269,7 +269,7 @@ Install the prototype code:
 
     git clone https://github.com/lsst-dm/prompt_prototype
 
-Command line arguments are the instrument name (currently HSC only; other values will upload dummy raws that the pipeline can't process) and the number of groups of images to send.
+Command line arguments are the instrument name (currently HSC only) and the number of groups of images to send.
 
 Sample command line:
 
@@ -284,7 +284,7 @@ Eventually a set of parallel processes running on multiple nodes will be needed 
 
 .. note::
 
-   ``upload.py`` uploads from the same small pool of raws every time it is run, while the AP pipeline assumes that every visit has unique visit IDs.
+   ``upload.py`` uploads from the same small pool of raws every time it is run, while the APDB assumes that every visit has unique timestamps.
    This causes collisions in the APDB that crash the pipeline.
    To prevent this, follow the reset instructions under `Databases`_ before calling ``upload.py`` again.
 

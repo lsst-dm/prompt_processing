@@ -1,7 +1,5 @@
 __all__ = ["get_last_group", ]
 
-import boto3
-from confluent_kafka import Producer
 import dataclasses
 import itertools
 import json
@@ -10,7 +8,13 @@ import os
 import random
 import socket
 import sys
+import tempfile
 import time
+
+import boto3
+from confluent_kafka import Producer
+from astropy.io import fits
+
 from activator.raw import Snap, get_raw_path
 from activator.visit import Visit
 
@@ -30,8 +34,6 @@ INSTRUMENTS = {
 }
 EXPOSURE_INTERVAL = 18
 SLEW_INTERVAL = 2
-FILTER_LIST = "ugrizy"
-KINDS = ("BIAS", "DARK", "FLAT")
 
 # Kafka server
 kafka_cluster = os.environ["KAFKA_CLUSTER"]
@@ -104,31 +106,72 @@ def send_next_visit(producer, group, visit_infos):
         producer.produce(topic, data)
 
 
-def make_exposure_id(instrument, group, snap):
-    """Generate an exposure ID from an exposure's other metadata.
+def make_hsc_id(group_num, snap):
+    """Generate an exposure ID that the Butler can parse as a valid HSC ID.
 
-    The exposure ID is purely a placeholder, and does not conform to any
-    instrument's rules for how exposure IDs should be generated.
+    This function returns a value in the "HSCE########" format (introduced June
+    2016) for all exposures, even if the source image is older.
 
     Parameters
     ----------
-    instrument : `str`
-        The short name of the instrument.
-    group : `int`
-        A group ID.
+    group_num : `int`
+        The integer used to generate a group ID.
     snap : `int`
         A snap ID.
 
     Returns
     -------
-    exposure : `int`
+    exposure_header : `str`
         An exposure ID that is likely to be unique for each combination of
-        ``group`` and ``snap``, for a given ``instrument``.
+        ``group`` and ``snap``, in the form it appears in HSC headers.
+    exposure_num : `int`
+        The exposure ID genereated by Middleware from ``exposure_header``.
+
+    Notes
+    -----
+    The current implementation may overflow if more than ~60 calls to upload.py
+    are done on the same day.
     """
-    exposure_id = (group // 100_000) * 100_000
-    exposure_id += (group % 100_000) * INSTRUMENTS[instrument].n_snaps
-    exposure_id += snap
-    return exposure_id
+    # This is a bit too dependent on how group_num is generated, but I want the
+    # group number to be discernible even after compressing to 8 digits.
+    night_id = (group_num // 100_000) % 2020_00_00     # Always 5 digits
+    run_id = group_num % 100_000                       # Up to 5 digits, but usually 2-3
+    exposure_id = (night_id * 1000) + (run_id % 1000)  # Always 8 digits
+    return f"HSCE{exposure_id:08d}", exposure_id
+
+
+def make_exposure_id(instrument, group_num, snap):
+    """Generate an exposure ID from an exposure's other metadata.
+
+    The exposure ID is designed for insertion into an image header, and is
+    therefore a string in the instrument's native format.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The short name of the instrument.
+    group_num : `int`
+        The integer used to generate a group ID.
+    snap : `int`
+        A snap ID.
+
+    Returns
+    -------
+    exposure_key : `str`
+        The header key under which ``instrument`` stores the exposure ID.
+    exposure_header : `str`
+        An exposure ID that is likely to be unique for each combination of
+        ``group_num`` and ``snap``, for a given ``instrument``, in the format
+        for ``instrument``'s header.
+    exposure_num : `int`
+        An exposure ID equivalent to ``exposure_header`` in the format expected
+        by Gen 3 Middleware.
+    """
+    match instrument:
+        case "HSC":
+            return "EXP-ID", *make_hsc_id(group_num, snap)
+        case _:
+            raise NotImplementedError(f"Exposure ID generation not supported for {instrument}.")
 
 
 def main():
@@ -160,8 +203,7 @@ def main():
             upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket,
                              n_groups, new_group_base)
         else:
-            _log.info(f"No raw files found for {instrument}, generating dummy files instead.")
-            upload_from_random(producer, instrument, dest_bucket, n_groups, new_group_base)
+            _log.error(f"No raw files found for {instrument}, aborting.")
     finally:
         producer.flush(30.0)
 
@@ -200,33 +242,6 @@ def get_last_group(bucket, instrument, date):
         return int(date) * 100_000
     else:
         return max(prefixes)
-
-
-def make_random_visits(instrument, group):
-    """Create placeholder visits without reference to any data.
-
-    Parameters
-    ----------
-    instrument : `str`
-        The short name of the instrument carrying out the observation.
-    group : `str`
-        The group number being observed.
-
-    Returns
-    -------
-    visits : `set` [`activator.Visit`]
-        Visits generated for ``group`` for all ``instrument``'s detectors.
-    """
-    kind = KINDS[int(group) % len(KINDS)]
-    filter = FILTER_LIST[random.randrange(0, len(FILTER_LIST))]
-    ra = random.uniform(0.0, 360.0)
-    dec = random.uniform(-90.0, 90.0)
-    rot = random.uniform(0.0, 360.0)
-    return {
-        Visit(instrument, detector, group, INSTRUMENTS[instrument].n_snaps, filter,
-              ra, dec, rot, kind)
-        for detector in range(INSTRUMENTS[instrument].n_detectors)
-    }
 
 
 def get_samples(bucket, instrument):
@@ -349,51 +364,51 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
         visit_infos = {info for det_dict in snap_dict.values() for info in det_dict}
 
         # TODO: may be cleaner to use a functor object than to depend on
-        # closures for the bucket and data.
+        # closures for the buckets and data.
         def upload_from_pool(visit, snap_id):
             src_blob = snap_dict[snap_id][visit]
-            # TODO: converting raw_pool from a nested mapping to an indexable
-            # custom class would make it easier to include such metadata as expId.
-            exposure_id = Snap.from_oid(src_blob.key).exp_id
+            exposure_key, exposure_header, exposure_num = \
+                make_exposure_id(visit.instrument, int(visit.group), snap_id)
             filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                    exposure_id, visit.filter)
-            src = {'Bucket': src_bucket.name, 'Key': src_blob.key}
-            dest_bucket.copy(src, filename)
+                                    exposure_num, visit.filter)
+            # r+b required by _replace_header_key.
+            with tempfile.TemporaryFile(mode="r+b") as buffer:
+                src_bucket.download_fileobj(src_blob.key, buffer)
+                _replace_header_key(buffer, exposure_key, exposure_header)
+                buffer.seek(0)  # Assumed by upload_fileobj.
+                dest_bucket.upload_fileobj(buffer, filename)
+
         process_group(producer, visit_infos, upload_from_pool)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
 
 
-def upload_from_random(producer, instrument, dest_bucket, n_groups, group_base):
-    """Upload visits and files using randomly generated visits.
+def _replace_header_key(file, key, value):
+    """Replace a header key in a FITS file with a new key-value pair.
+
+    The file is updated in place, and left open when the function returns,
+    making this function safe to use with temporary files.
 
     Parameters
     ----------
-    producer : `confluent_kafka.Producer`
-        The client that posts ``next_visit`` messages.
-    instrument : `str`
-        The short name of the instrument carrying out the observation.
-    dest_bucket : `S3.Bucket`
-        The bucket to which to upload the new images.
-    n_groups : `int`
-        The number of observation groups to simulate.
-    group_base : `int`
-        The base number from which to offset new group numbers.
+    file : file-like object
+        The file to update. Must already be open in "rb+" mode.
+    key : `str`
+        The header key to update.
+    value : `str`
+        The value to assign to ``key``.
     """
-    for i in range(n_groups):
-        group = str(group_base + i)
-        visit_infos = make_random_visits(instrument, group)
-
-        # TODO: may be cleaner to use a functor object than to depend on
-        # closures for the bucket and data.
-        def upload_dummy(visit, snap_id):
-            exposure_id = make_exposure_id(visit.instrument, int(visit.group), snap_id)
-            filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                    exposure_id, visit.filter)
-            dest_bucket.put_object(Body=b"Test", Key=filename)
-        process_group(producer, visit_infos, upload_dummy)
-        _log.info("Slewing to next group")
-        time.sleep(SLEW_INTERVAL)
+    # Can't use astropy.io.fits.update, because that closes the underlying file.
+    hdus = fits.open(file, mode="update")
+    try:
+        # Don't know which header is supposed to contain the key.
+        for header in (hdu.header for hdu in hdus):
+            if key in header:
+                _log.debug("Setting %s to %s.", key, value)
+                header[key] = value
+    finally:
+        # Clean up HDUList object *without* closing ``file``.
+        hdus.close(closed=False)
 
 
 if __name__ == "__main__":
