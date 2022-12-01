@@ -270,9 +270,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected_shards.update({157218, 157229})
         self._check_imports(self.interface.butler, detector=5, expected_shards=expected_shards)
 
-    # TODO: regression test for prep_butler having a stale cache for the butler it's updating.
-    # This may be impossible to unit test, since it seems to depend on Google-side parallelism.
-
     def test_ingest_image(self):
         self.interface.prep_butler(self.next_visit)  # Ensure raw collections exist.
         filename = "fakeRawImage.fits"
