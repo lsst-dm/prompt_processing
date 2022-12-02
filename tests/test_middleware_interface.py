@@ -31,7 +31,9 @@ import astropy.coordinates
 import astropy.units as u
 
 import astro_metadata_translator
+import lsst.pex.config
 import lsst.afw.image
+import lsst.afw.table
 from lsst.daf.butler import Butler, CollectionType, DataCoordinate
 import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
@@ -358,6 +360,59 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "No data to process"):
             self.interface.run_pipeline(self.next_visit, {2})
+
+    def _assert_in_collection(self, butler, collection, dataset_type, data_id):
+        # Pass iff any dataset matches the query, no need to check them all.
+        for dataset in butler.registry.queryDatasets(dataset_type, collections=collection, dataId=data_id):
+            return
+        self.fail(f"No datasets found matching {dataset_type}@{data_id} in {collection}.")
+
+    def _assert_not_in_collection(self, butler, collection, dataset_type, data_id):
+        # Fail iff any dataset matches the query, no need to check them all.
+        for dataset in butler.registry.queryDatasets(dataset_type, collections=collection, dataId=data_id):
+            self.fail(f"{dataset} matches {dataset_type}@{data_id} in {collection}.")
+
+    def test_clean_unsafe_datasets(self):
+        """Test that _clean_unsafe_datasets removes only "conflicting" datasets.
+
+        A conflicting dataset is one that can be produced with the same data ID
+        in different AP runs. This test currently uses ``calibrate_config`` and
+        ``src_schema`` as examples of conflicting datasets, and ``src`` and
+        ``calexp`` as counterexamples (which must not be removed).
+        """
+        butler = butler_tests.makeTestCollection(self.interface.butler, uniqueId=self.id())
+        run = butler.run
+        # Safe to define custom dataset types and IDs, because the repository
+        # is regenerated for each test.
+        raw_data_id, _ = fake_file_data("foo.bar",
+                                        butler.dimensions,
+                                        self.interface.instrument,
+                                        self.next_visit)
+        processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.items()}
+        butler_tests.addDataIdValue(butler, "exposure", raw_data_id["exposure"])
+        butler_tests.addDataIdValue(butler, "visit", processed_data_id["visit"])
+        butler_tests.addDatasetType(butler, "src_schema", set(), "SourceCatalog")
+        butler_tests.addDatasetType(butler, "calibrate_config", set(), "Config")
+        butler_tests.addDatasetType(butler, "src", {"instrument", "visit", "detector"}, "SourceCatalog")
+        butler_tests.addDatasetType(butler, "calexp", {"instrument", "visit", "detector"}, "ExposureF")
+
+        conf = lsst.pex.config.Config()
+        exp = lsst.afw.image.ExposureF(20, 20)
+        cat = lsst.afw.table.SourceCatalog()
+        butler.put(conf, "calibrate_config", processed_data_id, run=run)
+        butler.put(cat, "src_schema", processed_data_id, run=run)
+        butler.put(cat, "src", processed_data_id, run=run)
+        butler.put(exp, "calexp", processed_data_id, run=run)
+        self._assert_in_collection(butler, run, "calibrate_config", processed_data_id)
+        self._assert_in_collection(butler, run, "src_schema", processed_data_id)
+        self._assert_in_collection(butler, run, "src", processed_data_id)
+        self._assert_in_collection(butler, run, "calexp", processed_data_id)
+
+        MiddlewareInterface._clean_unsafe_datasets(butler, run)
+        self._assert_not_in_collection(butler, run, "calibrate_config", processed_data_id)
+        self._assert_not_in_collection(butler, run, "src_schema", processed_data_id)
+        self._assert_in_collection(butler, run, "src", processed_data_id)
+        self._assert_in_collection(butler, run, "calexp", processed_data_id)
 
     def test_query_missing_datasets(self):
         """Test that query_missing_datasets provides the correct values.
