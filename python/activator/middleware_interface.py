@@ -518,6 +518,8 @@ class MiddlewareInterface:
         output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
         self.butler.registry.registerCollection(output_run, CollectionType.RUN)
         _prepend_collection(self.butler, self.output_collection, [output_run])
+        # TODO: remove after DM-36162
+        self._clean_unsafe_datasets(self.butler, output_run)
         return output_run
 
     def _prep_pipeline(self, visit: Visit) -> None:
