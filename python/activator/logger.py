@@ -24,6 +24,27 @@ __all__ = ["GCloudStructuredLogFormatter", "setup_google_logger", "setup_usdf_lo
 import json
 import logging
 
+try:
+    import lsst.log as lsst_log
+except ModuleNotFoundError:
+    lsst_log = None
+
+
+def _set_lsst_logging_levels():
+    """Set up standard logging levels for LSST code.
+
+    This function consistently sets both the Python logger and lsst.log.
+    """
+    # Don't call daf_butler.CliLog.initLog because we need different formatters
+    # from what Butler assumes.
+
+    # De-prioritize output from 3rd-party packages.
+    logging.getLogger().setLevel(logging.WARNING)
+    # Capture output from Middleware and pipeline.
+    if lsst_log is not None:
+        lsst_log.Log.getLogger("lsst").setLevel(lsst_log.LevelTranslator.logging2lsstLog(logging.INFO))
+    logging.getLogger("lsst").setLevel(logging.INFO)
+
 
 # TODO: replace with something more extensible, once we know what needs to
 # vary besides the formatter (handler type?).
@@ -48,6 +69,7 @@ def setup_google_logger(labels=None):
     log_handler.setFormatter(GCloudStructuredLogFormatter(labels))
     logging.basicConfig(handlers=[log_handler])
     logging.captureWarnings(True)
+    _set_lsst_logging_levels()
     return log_handler
 
 
@@ -69,6 +91,7 @@ def setup_usdf_logger(labels=None):
     log_handler = logging.StreamHandler()
     logging.basicConfig(handlers=[log_handler])
     logging.captureWarnings(True)
+    _set_lsst_logging_levels()
     return log_handler
 
 
