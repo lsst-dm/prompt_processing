@@ -46,6 +46,18 @@ def _set_lsst_logging_levels():
     logging.getLogger("lsst").setLevel(logging.INFO)
 
 
+def _channel_all_to_pylog():
+    """Set up redirection of lsst.log and warning output to the Python logger.
+
+    This ensures that all service output is formatted consistently, making it easier to parse.
+    """
+    if lsst_log is not None:
+        lsst_log.configure_pylog_MDC("DEBUG", MDC_class=None)
+        lsst_log.usePythonLogging()
+
+    logging.captureWarnings(True)
+
+
 # TODO: replace with something more extensible, once we know what needs to
 # vary besides the formatter (handler type?).
 def setup_google_logger(labels=None):
@@ -68,7 +80,7 @@ def setup_google_logger(labels=None):
     log_handler = logging.StreamHandler()
     log_handler.setFormatter(GCloudStructuredLogFormatter(labels))
     logging.basicConfig(handlers=[log_handler])
-    logging.captureWarnings(True)
+    _channel_all_to_pylog()
     _set_lsst_logging_levels()
     return log_handler
 
@@ -90,7 +102,7 @@ def setup_usdf_logger(labels=None):
     """
     log_handler = logging.StreamHandler()
     logging.basicConfig(handlers=[log_handler])
-    logging.captureWarnings(True)
+    _channel_all_to_pylog()
     _set_lsst_logging_levels()
     return log_handler
 
