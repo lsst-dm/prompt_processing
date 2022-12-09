@@ -30,6 +30,26 @@ except ModuleNotFoundError:
     lsst_log = None
 
 
+def _parse_log_levels(spec):
+    """Parse a string description of logging levels.
+
+    Parameters
+    ----------
+    spec : `str`
+        A string consisting of space-separated pairs of logger=level
+        specifications. No attempt is made to validate whether the string
+        conforms to this format. "." refers to the root logger.
+
+    Returns
+    -------
+    levels : `list` [`tuple` [`str`, `str`]]
+        A list of tuples whose first element is a logger (root logger
+        represented by `None`) and whose second element is a logging level.
+    """
+    levels = [tuple(s.split("=", maxsplit=1)) for s in spec.split(None)]
+    return [(k if k != "." else None, v) for k, v in levels]
+
+
 def _set_lsst_logging_levels():
     """Set up standard logging levels for LSST code.
 
