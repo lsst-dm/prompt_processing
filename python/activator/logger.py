@@ -23,6 +23,9 @@ __all__ = ["GCloudStructuredLogFormatter", "setup_google_logger", "setup_usdf_lo
 
 import json
 import logging
+import os
+
+import lsst.daf.butler as daf_butler
 
 try:
     import lsst.log as lsst_log
@@ -55,15 +58,14 @@ def _set_lsst_logging_levels():
 
     This function consistently sets both the Python logger and lsst.log.
     """
-    # Don't call daf_butler.CliLog.initLog because we need different formatters
-    # from what Butler assumes.
+    # Don't call CliLog.initLog because we need different formatters from what
+    # Butler assumes.
+    default_levels = [(None, "WARNING"),  # De-prioritize output from 3rd-party packages.
+                      ("lsst", "INFO"),   # Capture output from Middleware and pipeline.
+                      ]
 
-    # De-prioritize output from 3rd-party packages.
-    logging.getLogger().setLevel(logging.WARNING)
-    # Capture output from Middleware and pipeline.
-    if lsst_log is not None:
-        lsst_log.Log.getLogger("lsst").setLevel(lsst_log.LevelTranslator.logging2lsstLog(logging.INFO))
-    logging.getLogger("lsst").setLevel(logging.INFO)
+    log_request = os.environ.get("SERVICE_LOG_LEVELS", "")
+    daf_butler.cli.cliLog.CliLog.setLogLevels(default_levels + _parse_log_levels(log_request))
 
 
 def _channel_all_to_pylog():
