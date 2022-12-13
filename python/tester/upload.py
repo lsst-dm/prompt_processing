@@ -219,7 +219,7 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
     """
     if n_groups > len(raw_pool):
         raise ValueError(f"Requested {n_groups} groups, but only {len(raw_pool)} "
-                         "unobserved raws are available.")
+                         "unobserved raw groups are available.")
 
     for i, true_group in enumerate(itertools.islice(raw_pool, n_groups)):
         group = str(group_base + i)

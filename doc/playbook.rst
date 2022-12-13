@@ -271,6 +271,11 @@ Install the prototype code:
 
     git clone https://github.com/lsst-dm/prompt_prototype
 
+The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
+They then upload a batch of files representing the snaps of the visit to the ``rubin-pp`` S3 bucket, simulating incoming raw images.
+
+Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
+
 ``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC only) and the number of groups of images to send.
 
 Sample command line:
@@ -278,6 +283,8 @@ Sample command line:
 .. code-block:: sh
 
    python upload.py HSC 3
+
+This draw images from 4 groups, in total 10 raw files, stored in the ``rubin-pp-users`` bucket.
 
 ``python/tester/upload_hsc_rc2.py``: Command line argument is the number of groups of images to send.
 
@@ -287,16 +294,16 @@ Sample command line:
 
    python upload_hsc_rc2.py 3
 
-It sends ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
-It then uploads a batch of files representing the snaps of the visit to the ``rubin-pp`` S3 bucket.
+This scripts draws images from the curated ``HSC/RC2/defaults`` collection at USDF's ``/repo/main`` butler repository.
+The source collection includes 432 visits, each with 103 detector images.
+The visits are randomly selected and uploaded as one new group for each visit.
 
-Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
 
 .. note::
 
    Both of the tester scripts use data from a limited pool of raws every time it is run, while the APDB assumes that every visit has unique timestamps.
    This causes collisions in the APDB that crash the pipeline.
-   To prevent this, follow the reset instructions under `Databases`_ before calling ``upload.py`` again.
+   To prevent this, follow the reset instructions under `Databases`_ before calling ``upload.py`` or ``upload_hsc_rc2.py`` again.
 
 
 Databases
