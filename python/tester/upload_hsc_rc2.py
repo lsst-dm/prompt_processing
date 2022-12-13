@@ -143,21 +143,17 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
         dataId={"exposure": visit_id, "instrument": "HSC"},
     )
 
-    # This may use limit() after DM-31725 fixes a bug. Currently limit() does not work.
-    exp_info = refs.dataIds.expanded().toSequence()[0].records["exposure"]
     visits = set()
-    # This simulates a simplest USDF-based replicator that just duplicates
-    # the summit event for all detectors.
-    for detector_id in range(103):
+    for dataId in refs.dataIds.expanded():
         visit = Visit(
             instrument="HSC",
-            detector=detector_id,
+            detector=dataId.records["detector"].id,
             group=group_id,
             snaps=1,
-            filter=exp_info.physical_filter,
-            ra=exp_info.tracking_ra,
-            dec=exp_info.tracking_dec,
-            rot=exp_info.sky_angle,
+            filter=dataId.records["physical_filter"].name,
+            ra=dataId.records["exposure"].tracking_ra,
+            dec=dataId.records["exposure"].tracking_dec,
+            rot=dataId.records["exposure"].sky_angle,
             kind="SURVEY",
         )
         visits.add(visit)
