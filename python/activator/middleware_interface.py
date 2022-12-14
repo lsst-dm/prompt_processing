@@ -518,6 +518,8 @@ class MiddlewareInterface:
         output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
         self.butler.registry.registerCollection(output_run, CollectionType.RUN)
         _prepend_collection(self.butler, self.output_collection, [output_run])
+        # TODO: remove after DM-36162
+        self._clean_unsafe_datasets(self.butler, output_run)
         return output_run
 
     def _prep_pipeline(self, visit: Visit) -> None:
@@ -680,6 +682,31 @@ class MiddlewareInterface:
                       f"detector {visit.detector} of {exposure_ids}.")
         else:
             _log.warning(f"No output runs to save! Called for {visit.detector} of {exposure_ids}.")
+
+    @staticmethod
+    def _clean_unsafe_datasets(butler, run: str):
+        """Remove datasets that potentially conflict with runs from other
+        exposures or detectors.
+
+        Parameters
+        ----------
+        butler : `lsst.daf.butler.Butler`
+            The butler from which to remove datasets.
+        run : `str`
+            The run from which to remove datasets. The method does **not** check
+            that this is a run and not, for example, a chained collection.
+        """
+        all_types = set(butler.registry.queryDatasetTypes(...))
+        unsafe_types = all_types - set(MiddlewareInterface._get_safe_dataset_types(butler))
+        unsafe_datasets = list(butler.registry.queryDatasets(unsafe_types, collections=run))
+        _log.debug("Removing %d unsafe datasets of types %s from '%s'.",
+                   len(unsafe_datasets),
+                   {t.name for t in unsafe_types},
+                   run)
+        butler.pruneDatasets(unsafe_datasets,
+                             # Need purge=True to remove from runs.
+                             purge=True, disassociate=True, unstore=True,
+                             )
 
     @staticmethod
     def _get_safe_dataset_types(butler):

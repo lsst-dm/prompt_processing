@@ -145,7 +145,7 @@ def parse_next_visit(http_request):
     if not event.data:
         raise ValueError("empty CloudEvent received")
 
-    # TODO: may need to sync this with upload.py implementation
+    # Message format is determined by the nextvisit-start deployment.
     data = json.loads(event.data)
     return Visit(**data)
 
