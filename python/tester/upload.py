@@ -44,7 +44,7 @@ logging.basicConfig(
     style="{",
 )
 _log = logging.getLogger("lsst." + __name__)
-_log.setLevel(logging.DEBUG)
+_log.setLevel(logging.INFO)
 
 
 def process_group(producer, visit_infos, uploader):

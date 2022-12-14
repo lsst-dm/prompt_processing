@@ -216,6 +216,7 @@ def next_visit_handler() -> Tuple[str, int]:
     status : `int`
         The HTTP response status code to return to the client.
     """
+    _log.info(f"Starting next_visit_handler for {request}.")
     consumer.subscribe([bucket_topic])
     _log.debug(f"Created subscription to '{bucket_topic}'")
     try:
@@ -298,6 +299,8 @@ def next_visit_handler() -> Tuple[str, int]:
             return "Timed out waiting for images", 500
     finally:
         consumer.unsubscribe()
+        # Want to know when the handler exited for any reason.
+        _log.info("next_visit handling completed.")
 
 
 @app.errorhandler(500)

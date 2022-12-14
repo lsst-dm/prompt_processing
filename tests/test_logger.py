@@ -25,7 +25,33 @@ import json
 import logging
 import unittest
 
-from activator.logger import GCloudStructuredLogFormatter
+from activator.logger import GCloudStructuredLogFormatter, _parse_log_levels
+
+
+class ParseLogLevelsTest(unittest.TestCase):
+    """Test _parse_log_levels.
+
+    Currently _parse_log_levels does not do input validation, so behavior for
+    invalid specs is undefined.
+    """
+    def test_single_level(self):
+        self.assertEqual(_parse_log_levels("lsst.daf.butler=DEBUG"), [("lsst.daf.butler", "DEBUG")])
+
+    def test_multi_level(self):
+        self.assertEqual(_parse_log_levels("lsst.daf.butler=DEBUG lsst.ip.isr=WARNING"),
+                         [("lsst.daf.butler", "DEBUG"), ("lsst.ip.isr", "WARNING")]
+                         )
+
+    def test_empty(self):
+        self.assertEqual(_parse_log_levels(""), [])
+
+    def test_single_root(self):
+        self.assertEqual(_parse_log_levels(".=WARNING"), [(None, "WARNING")])
+
+    def test_root_(self):
+        self.assertEqual(_parse_log_levels("lsst.daf.butler=DEBUG .=WARNING lsst=INFO"),
+                         [("lsst.daf.butler", "DEBUG"), (None, "WARNING"), ("lsst", "INFO")]
+                         )
 
 
 class GoogleFormatterTest(unittest.TestCase):

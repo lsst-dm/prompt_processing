@@ -233,6 +233,8 @@ The following environment variables are optional:
 * USER_APDB: database user for the APDB, default "postgres"
 * USER_REGISTRY: database user for the registry database, default "postgres"
 * NAMESPACE_APDB: the database namespace for the APDB, defaults to the DB's default namespace
+* SERVICE_LOG_LEVELS: requested logging levels in the format of `Middleware's --log-level argument <https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/scripts/butler.html#cmdoption-butler-log-level>`_.
+  Default is to log prompt_prototype at DEBUG, other LSST code at INFO, and third-party code at WARNING.
 
 Secrets are configured through the makefile and ``kustomization.yaml``.
 
