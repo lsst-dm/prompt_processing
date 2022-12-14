@@ -51,19 +51,20 @@ class TesterUtilsTest(unittest.TestCase):
         s3 = boto3.resource("s3")
         bucket = s3.Bucket(self.bucket_name)
         try:
-            bucket.objects.all().delete()
-        except botocore.exceptions.ClientError as e:
-            if e.response["Error"]["Code"] == "404":
-                # the key was not reachable - pass
-                pass
-            else:
-                raise
-
-        bucket = s3.Bucket(self.bucket_name)
-        bucket.delete()
-
-        # Stop the S3 mock.
-        self.mock_s3.stop()
+            try:
+                bucket.objects.all().delete()
+            except botocore.exceptions.ClientError as e:
+                if e.response["Error"]["Code"] == "404":
+                    # the key was not reachable - pass
+                    pass
+                else:
+                    raise
+            finally:
+                bucket = s3.Bucket(self.bucket_name)
+                bucket.delete()
+        finally:
+            # Stop the S3 mock.
+            self.mock_s3.stop()
 
     def test_get_last_group(self):
         s3 = boto3.resource("s3")
