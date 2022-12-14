@@ -124,8 +124,9 @@ def make_hsc_id(group_num, snap):
 
     Notes
     -----
-    The current implementation may overflow if more than ~60 calls to upload.py
-    are done on the same day.
+    The current implementation allows up to 1000 group numbers per day.
+    It can overflow with ~60 calls to upload.py on the same day or
+    upload_hsc_rc2.py with a large N_GROUPS.
     """
     # This is a bit too dependent on how group_num is generated, but I want the
     # group number to be discernible even after compressing to 8 digits.
