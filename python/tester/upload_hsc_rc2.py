@@ -146,16 +146,16 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
     )
 
     visits = set()
-    for dataId in refs.dataIds.expanded():
+    for data_id in refs.dataIds.expanded():
         visit = Visit(
             instrument="HSC",
-            detector=dataId.records["detector"].id,
+            detector=data_id.records["detector"].id,
             group=group_id,
             snaps=1,
-            filter=dataId.records["physical_filter"].name,
-            ra=dataId.records["exposure"].tracking_ra,
-            dec=dataId.records["exposure"].tracking_dec,
-            rot=dataId.records["exposure"].sky_angle,
+            filter=data_id.records["physical_filter"].name,
+            ra=data_id.records["exposure"].tracking_ra,
+            dec=data_id.records["exposure"].tracking_dec,
+            rot=data_id.records["exposure"].sky_angle,
             kind="SURVEY",
         )
         visits.add(visit)
