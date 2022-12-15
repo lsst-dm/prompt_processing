@@ -252,7 +252,7 @@ A few useful commands for managing the service:
 tester
 ======
 
-``python/tester/upload.py`` is a script that simulates the CCS image writer.
+``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` are scripts that simulate the CCS image writer.
 It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
 
 You must have a profile set up for the ``rubin-pp`` bucket (see `Buckets`_, above), and must set the ``KAFKA_CLUSTER`` environment variable.
@@ -271,7 +271,12 @@ Install the prototype code:
 
     git clone https://github.com/lsst-dm/prompt_prototype
 
-Command line arguments are the instrument name (currently HSC only) and the number of groups of images to send.
+The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
+They then upload a batch of files representing the snaps of the visit to the ``rubin-pp`` S3 bucket, simulating incoming raw images.
+
+Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
+
+``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC only) and the number of groups of images to send.
 
 Sample command line:
 
@@ -279,16 +284,26 @@ Sample command line:
 
    python upload.py HSC 3
 
-It sends ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
-It then uploads a batch of files representing the snaps of the visit to the ``rubin-pp`` S3 bucket.
+This draw images from 4 groups, in total 10 raw files, stored in the ``rubin-pp-users`` bucket.
 
-Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
+``python/tester/upload_hsc_rc2.py``: Command line argument is the number of groups of images to send.
+
+Sample command line:
+
+.. code-block:: sh
+
+   python upload_hsc_rc2.py 3
+
+This scripts draws images from the curated ``HSC/RC2/defaults`` collection at USDF's ``/repo/main`` butler repository.
+The source collection includes 432 visits, each with 103 detector images.
+The visits are randomly selected and uploaded as one new group for each visit.
+
 
 .. note::
 
-   ``upload.py`` uploads from the same small pool of raws every time it is run, while the APDB assumes that every visit has unique timestamps.
+   Both of the tester scripts use data from a limited pool of raws every time it is run, while the APDB assumes that every visit has unique timestamps.
    This causes collisions in the APDB that crash the pipeline.
-   To prevent this, follow the reset instructions under `Databases`_ before calling ``upload.py`` again.
+   To prevent this, follow the reset instructions under `Databases`_ before calling ``upload.py`` or ``upload_hsc_rc2.py`` again.
 
 
 Databases
