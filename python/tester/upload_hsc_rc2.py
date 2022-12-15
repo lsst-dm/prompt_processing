@@ -34,7 +34,7 @@ from lsst.daf.butler import Butler
 
 from activator.raw import get_raw_path
 from activator.visit import Visit
-from .utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
+from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
 
 
 EXPOSURE_INTERVAL = 18
