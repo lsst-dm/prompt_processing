@@ -109,7 +109,9 @@ def get_hsc_visit_list(butler, n_sample):
         where="instrument='HSC' and exposure.observation_type='science'",
     )
     rc2 = [record.id for record in set(results)]
-    visits = random.choices(rc2, k=n_sample)
+    if n_sample > len(rc2):
+        raise ValueError(f"Requested {n_sample} groups, but only {len(rc2)} are available.")
+    visits = random.sample(rc2, k=n_sample)
     return visits
 
 
