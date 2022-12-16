@@ -34,7 +34,7 @@ from lsst.daf.butler import Butler
 
 from activator.raw import get_raw_path
 from activator.visit import Visit
-from .utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
+from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
 
 
 EXPOSURE_INTERVAL = 18
@@ -109,7 +109,9 @@ def get_hsc_visit_list(butler, n_sample):
         where="instrument='HSC' and exposure.observation_type='science'",
     )
     rc2 = [record.id for record in set(results)]
-    visits = random.choices(rc2, k=n_sample)
+    if n_sample > len(rc2):
+        raise ValueError(f"Requested {n_sample} groups, but only {len(rc2)} are available.")
+    visits = random.sample(rc2, k=n_sample)
     return visits
 
 
@@ -144,16 +146,16 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
     )
 
     visits = set()
-    for dataId in refs.dataIds.expanded():
+    for data_id in refs.dataIds.expanded():
         visit = Visit(
             instrument="HSC",
-            detector=dataId.records["detector"].id,
+            detector=data_id.records["detector"].id,
             group=group_id,
             snaps=1,
-            filter=dataId.records["physical_filter"].name,
-            ra=dataId.records["exposure"].tracking_ra,
-            dec=dataId.records["exposure"].tracking_dec,
-            rot=dataId.records["exposure"].sky_angle,
+            filter=data_id.records["physical_filter"].name,
+            ra=data_id.records["exposure"].tracking_ra,
+            dec=data_id.records["exposure"].tracking_dec,
+            rot=data_id.records["exposure"].sky_angle,
             kind="SURVEY",
         )
         visits.add(visit)

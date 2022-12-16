@@ -15,7 +15,7 @@ from confluent_kafka import Producer
 
 from activator.raw import Snap, get_raw_path
 from activator.visit import Visit
-from .utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
+from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
 
 
 @dataclasses.dataclass
