@@ -58,6 +58,7 @@ def _make_parser():
                         help="The config file to use for the new repository. Defaults to etc/db_butler.yaml.")
     parser.add_argument("--export-file", default="export.yaml",
                         help="The export file containing the repository contents. Defaults to ./export.yaml.")
+    parser.add_argument("--hsc-rc2", action="store_true", help="Extra fix up for HSC-RC2 dataset.")
     return parser
 
 
@@ -90,10 +91,40 @@ def _add_chains(butler):
                                      butler.registry)
     defaults = instrument.makeCollectionName("defaults")
     butler.registry.registerCollection(defaults, type=CollectionType.CHAINED)
+    calib_collection = instrument.makeCalibrationCollectionName()
+    butler.registry.registerCollection(calib_collection, type=CollectionType.CHAINED)
     butler.registry.setCollectionChain(
         defaults,
-        [instrument.makeCalibrationCollectionName(), "templates", "skymaps", "refcats"]
+        [calib_collection, "templates", "skymaps", "refcats"]
     )
+
+
+def _hsc_rc2(butler):
+    """fix up some specifics of the HSC-RC2 dataset export
+
+    Parameters
+    ----------
+    butler: `lsst.daf.butler.Butler`
+        The source Butler from which datasets are exported
+    """
+    # Chain calibration collections
+    instrument = Instrument.fromName("HSC", butler.registry)
+    butler.registry.setCollectionChain(
+        instrument.makeCalibrationCollectionName(),
+        [
+            "HSC/calib/DM-32378",
+            "HSC/calib/gen2/20180117",
+            "HSC/calib/DM-28636",
+        ],
+    )
+    # Chain rerun collections to templates
+    # The export script should have guaranteed that there are only coadds in these collections.
+    current = butler.registry.getCollectionChain("templates")
+    addition = butler.registry.queryCollections("HSC/runs/*",
+                                                collectionTypes=CollectionType.RUN)
+    butler.registry.setCollectionChain("templates",
+                                       list(addition) + list(current),
+                                       flatten=False)
 
 
 def main():
@@ -109,6 +140,8 @@ def main():
     with time_this(msg="Import", level=logging.INFO):
         butler.import_(directory=args.src_repo, filename=args.export_file, transfer="auto")
     _add_chains(butler)
+    if args.hsc_rc2:
+        _hsc_rc2(butler)
 
 
 if __name__ == "__main__":
