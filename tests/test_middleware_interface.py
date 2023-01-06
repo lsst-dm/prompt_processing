@@ -612,11 +612,11 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run)
         return run
 
-    def _check_datasets(self, butler, types, collections, count, data_id):
-        datasets = list(butler.registry.queryDatasets(types, collections=collections))
-        self.assertEqual(len(datasets), count)
-        for dataset in datasets:
-            self.assertEqual(dataset.dataId, data_id)
+    def _count_datasets(self, butler, types, collections):
+        return len(set(butler.registry.queryDatasets(types, collections=collections)))
+
+    def _count_datasets_with_id(self, butler, types, collections, data_id):
+        return len(set(butler.registry.queryDatasets(types, collections=collections, dataId=data_id)))
 
     def test_export_outputs(self):
         self.interface.export_outputs(self.next_visit, {self.raw_data_id["exposure"]})
@@ -624,19 +624,24 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         central_butler = Butler(self.central_repo.name, writeable=False)
         raw_collection = f"{instname}/raw/all"
         export_collection = f"{instname}/prompt-results"
-        self._check_datasets(central_butler,
-                             "raw", raw_collection, 1, self.raw_data_id)
+        self.assertEqual(self._count_datasets(central_butler, "raw", raw_collection), 1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "raw", raw_collection, self.raw_data_id),
+            1)
         # Did not export raws directly to raw/all.
         self.assertEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.CHAINED)
-        self._check_datasets(central_butler,
-                             "calexp", export_collection, 1, self.processed_data_id)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
+            1)
         # Did not export calibs or other inputs.
-        self._check_datasets(central_butler,
-                             ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection,
-                             0, {"error": "dnc"})
+        self.assertEqual(
+            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection),
+            0)
         # Nothing placed in "input" collections.
-        self._check_datasets(central_butler,
-                             ["raw", "calexp"], f"{instname}/defaults", 0, {"error": "dnc"})
+        self.assertEqual(
+            self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
+            0)
 
     def test_export_outputs_bad_visit(self):
         bad_visit = dataclasses.replace(self.next_visit, detector=88)
@@ -657,16 +662,21 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         central_butler = Butler(self.central_repo.name, writeable=False)
         raw_collection = f"{instname}/raw/all"
         export_collection = f"{instname}/prompt-results"
-        self._check_datasets(central_butler,
-                             "raw", raw_collection, 2, self.raw_data_id)
+        self.assertEqual(self._count_datasets(central_butler, "raw", raw_collection), 2)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "raw", raw_collection, self.raw_data_id),
+            2)
         # Did not export raws directly to raw/all.
         self.assertEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.CHAINED)
-        self._check_datasets(central_butler,
-                             "calexp", export_collection, 2, self.processed_data_id)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
+            2)
         # Did not export calibs or other inputs.
-        self._check_datasets(central_butler,
-                             ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection,
-                             0, {"error": "dnc"})
+        self.assertEqual(
+            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection),
+            0)
         # Nothing placed in "input" collections.
-        self._check_datasets(central_butler,
-                             ["raw", "calexp"], f"{instname}/defaults", 0, {"error": "dnc"})
+        self.assertEqual(
+            self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
+            0)
