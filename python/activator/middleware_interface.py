@@ -209,7 +209,7 @@ class MiddlewareInterface:
                                            CollectionType.CHAINED)
         # Will be populated on ingest.
         butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
-                                           CollectionType.CHAINED)
+                                           CollectionType.RUN)
         # Will be populated on pipeline execution.
         butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
         collections = [self.instrument.makeUmbrellaCollectionName(),
@@ -357,14 +357,6 @@ class MiddlewareInterface:
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
 
-        # Create unique run to store this visit's raws. This makes it easier to
-        # clean up the central repo later.
-        # TODO: not needed after DM-36051, or if we find a way to give all test
-        # raws unique exposure IDs.
-        input_raws = self._get_raw_run_name(visit)
-        self.butler.registry.registerCollection(input_raws, CollectionType.RUN)
-        _prepend_collection(self.butler, self.instrument.makeDefaultRawIngestRunName(), [input_raws])
-
     def _export_refcats(self, export, center, radius):
         """Export the refcats for this visit from the central butler.
 
@@ -506,21 +498,6 @@ class MiddlewareInterface:
         for k, g in itertools.groupby(ordered, key=get_key):
             yield k, len(list(g))
 
-    def _get_raw_run_name(self, visit):
-        """Define a run collection specific to a particular visit.
-
-        Parameters
-        ----------
-        visit : Visit
-            The visit whose raws will be stored in this run.
-
-        Returns
-        -------
-        run : `str`
-            The name of a run collection to use for raws.
-        """
-        return self.instrument.makeCollectionName("raw", visit.groupId)
-
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
 
@@ -628,7 +605,7 @@ class MiddlewareInterface:
         if not file.isLocal:
             # TODO: RawIngestTask doesn't currently support remote files.
             file = self._download(file)
-        result = self.rawIngestTask.run([file], run=self._get_raw_run_name(visit))
+        result = self.rawIngestTask.run([file])
         # We only ingest one image at a time.
         # TODO: replace this assert with a custom exception, once we've decided
         # how we plan to handle exceptions in this code.
@@ -695,8 +672,8 @@ class MiddlewareInterface:
         """
         # TODO: this method will not be responsible for raws after DM-36051.
         self._export_subset(visit, exposure_ids, "raw",
-                            in_collections=self._get_raw_run_name(visit),
-                            out_collection=self.instrument.makeDefaultRawIngestRunName())
+                            in_collections=self.instrument.makeDefaultRawIngestRunName(),
+                            out_collection=None)
 
         umbrella = self.instrument.makeCollectionName("prompt-results")
         latest_run = self.butler.registry.getCollectionChain(self.output_collection)[0]
@@ -772,7 +749,7 @@ class MiddlewareInterface:
         in_collections
             The collections to transfer from; can be any expression described
             in :ref:`daf_butler_collection_expressions`.
-        out_collection : `str`
+        out_collection : `str`, optional
             The chained collection in which to include the datasets. Need not
             exist before the call.
         """
@@ -811,12 +788,13 @@ class MiddlewareInterface:
                                         skip_dimensions={"instrument", "detector",
                                                          "skymap", "tract", "patch"},
                                         transfer="copy")
-        # No-op if collection already exists.
-        self.central_butler.registry.registerCollection(out_collection, CollectionType.CHAINED)
-        runs = {ref.run for ref in datasets}
-        # Don't unlink any previous runs.
-        # TODO: need to secure this against concurrent modification
-        _prepend_collection(self.central_butler, out_collection, runs)
+        if out_collection is not None:
+            # No-op if collection already exists.
+            self.central_butler.registry.registerCollection(out_collection, CollectionType.CHAINED)
+            runs = {ref.run for ref in datasets}
+            # Don't unlink any previous runs.
+            # TODO: need to secure this against concurrent modification
+            _prepend_collection(self.central_butler, out_collection, runs)
 
 
 def _query_missing_datasets(src_repo: Butler, dest_repo: Butler,

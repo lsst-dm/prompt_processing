@@ -641,8 +641,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "raw", raw_collection, self.raw_data_id),
             1)
-        # Did not export raws directly to raw/all.
-        self.assertEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.CHAINED)
         self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 1)
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
@@ -682,8 +680,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "raw", raw_collection, self.second_data_id),
             1)
-        # Did not export raws directly to raw/all.
-        self.assertEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.CHAINED)
         self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
