@@ -69,7 +69,8 @@ def fake_file_data(filename, dimensions, instrument, visit):
     data_id, file_data, : `DataCoordinate`, `RawFileData`
         The id and descriptor for the mock file.
     """
-    data_id = DataCoordinate.standardize({"exposure": 1,
+    exposure_id = int(visit.groupId)
+    data_id = DataCoordinate.standardize({"exposure": exposure_id,
                                           "detector": visit.detector,
                                           "instrument": instrument.getName()},
                                          universe=dimensions)
@@ -79,15 +80,18 @@ def fake_file_data(filename, dimensions, instrument, visit):
         instrument=instrument.getName(),
         datetime_begin=time,
         datetime_end=time + 30*u.second,
-        exposure_id=1,
-        visit_id=1,
+        exposure_id=exposure_id,
+        visit_id=exposure_id,
         boresight_rotation_angle=astropy.coordinates.Angle(visit.cameraAngle*u.degree),
         boresight_rotation_coord=visit.rotationSystem.name.lower(),
         tracking_radec=astropy.coordinates.SkyCoord(*visit.position, frame="icrs", unit="deg"),
-        observation_id="1",
+        observation_id=visit.groupId,
         physical_filter=filter,
         exposure_time=30.0*u.second,
-        observation_type="science")
+        observation_type="science",
+        group_counter_start=exposure_id,
+        group_counter_end=exposure_id,
+    )
     dataset_info = RawFileDatasetInfo(data_id, obs_info)
     file_data = RawFileData([dataset_info],
                             lsst.resources.ResourcePath(filename),
@@ -555,7 +559,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         dec = -4.950050405424033
         # DECam has no rotator; instrument angle is 90 degrees in our system.
         rot = 90.
-        self.next_visit = Visit(instrument=instrument,
+        self.next_visit = Visit(instrument=instname,
                                 detector=56,
                                 groupId="1",
                                 nimages=1,
@@ -586,11 +590,17 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                      self.interface.butler.dimensions,
                                                      self.interface.instrument,
                                                      self.next_visit)
+        self.second_data_id, second_file_data = fake_file_data(filepath,
+                                                               self.interface.butler.dimensions,
+                                                               self.interface.instrument,
+                                                               self.second_visit)
+
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(self.next_visit, filename)
+            mock.return_value = second_file_data
             self.interface.ingest_image(self.second_visit, filename)
-        self.interface.define_visits.run([self.raw_data_id])
+        self.interface.define_visits.run([self.raw_data_id, self.second_data_id])
 
         self._simulate_run()
 
@@ -605,11 +615,14 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         exp = lsst.afw.image.ExposureF(20, 20)
         run = self.interface._prep_collections()
         self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
+        self.second_processed_data_id = {(k if k != "exposure" else "visit"): v
+                                         for k, v in self.second_data_id.items()}
         # Dataset types defined for local Butler on pipeline run, but no
         # guarantee this happens in central Butler.
         butler_tests.addDatasetType(self.interface.butler, "calexp", {"instrument", "visit", "detector"},
                                     "ExposureF")
         self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run)
+        self.interface.butler.put(exp, "calexp", self.second_processed_data_id, run=run)
         return run
 
     def _count_datasets(self, butler, types, collections):
@@ -657,7 +670,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         time.sleep(1.0)  # Force _simulate_run() to create a new timestamped run
         self._simulate_run()
-        self.interface.export_outputs(self.second_visit, {self.raw_data_id["exposure"]})
+        self.interface.export_outputs(self.second_visit, {self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
         raw_collection = f"{instname}/raw/all"
@@ -665,13 +678,20 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.assertEqual(self._count_datasets(central_butler, "raw", raw_collection), 2)
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "raw", raw_collection, self.raw_data_id),
-            2)
+            1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "raw", raw_collection, self.second_data_id),
+            1)
         # Did not export raws directly to raw/all.
         self.assertEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.CHAINED)
         self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
-            2)
+            1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "calexp", export_collection,
+                                         self.second_processed_data_id),
+            1)
         # Did not export calibs or other inputs.
         self.assertEqual(
             self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection),
