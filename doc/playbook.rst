@@ -99,8 +99,8 @@ The bucket ``rubin-pp`` holds incoming raw images.
 
 The bucket ``rubin-pp-users`` holds:
 
-* The central repository described in `DMTN-219`_.
-  This repository currently contains a copy of HSC data `ap_verify_ci_cosmos_pdr2/preloaded@u/kfindeisen/DM-35052-expansion <https://github.com/lsst/ap_verify_ci_cosmos_pdr2/tree/u/kfindeisen/DM-35052-expansion/preloaded>`_.
+* ``rubin-pp-users/central_repo/`` contains the central repository described in `DMTN-219`_.
+  This repository currently contains a copy of HSC RC2 data, uploaded with ``make_hsc_rc2_export.py`` and ``make_template_export``.
 
 * ``rubin-pp-users/unobserved/`` contains raw files that the upload script(s) can draw from to create incoming raws.
 
