@@ -200,7 +200,7 @@ USDF
 
 The service can be controlled with ``kubectl`` from ``rubin-devl``.
 You must first `get credentials for the development cluster <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev>`_ on the web; ignore the installation instructions and copy the commands from the second box.
-Credentials are good for roughly one work day.
+Credentials must be renewed if you get a "cannot fetch token: 400 Bad Request" error when running ``kubectl``.
 
 Each time the service container is updated, a new revision of the service should be edited and deployed.
 (Continuous deployment has not yet been set up.)
