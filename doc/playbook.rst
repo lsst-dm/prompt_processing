@@ -320,11 +320,12 @@ Run:
 and look up the ``EXTERNAL-IP``; set ``KAFKA_CLUSTER=<ip>:9094``.
 The IP address is fixed, so you should only need to look it up once.
 
-Install the prototype code:
+Install the prototype code, and set it up before use:
 
 .. code-block:: sh
 
     git clone https://github.com/lsst-dm/prompt_prototype
+    setup -r prompt_prototype
 
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin-pp`` S3 bucket, simulating incoming raw images.
