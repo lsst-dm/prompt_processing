@@ -30,6 +30,15 @@ from astropy.io import fits
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
+max_exposure = {
+    "HSC": 21474800,
+}
+"""A mapping of instrument to exposure_max (`dict` [`str`, `int`]).
+
+The values are copied here so we can access them without a Butler. All
+exposure IDs are in Middleware (integer) format, not native format.
+"""
+
 
 def get_last_group(bucket, instrument, date):
     """Identify the largest group number or a new group number.
