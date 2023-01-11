@@ -117,6 +117,13 @@ def _hsc_rc2(butler):
             "HSC/calib/DM-28636",
         ],
     )
+    butler.registry.setCollectionChain(
+        instrument.makeUnboundedCalibrationRunName(),
+        [
+            "HSC/calib/gen2/20180117/unbounded",
+            "HSC/calib/DM-28636/unbounded",
+        ],
+    )
     # Chain rerun collections to templates
     # The export script should have guaranteed that there are only coadds in these collections.
     current = butler.registry.getCollectionChain("templates")
