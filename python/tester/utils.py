@@ -30,6 +30,15 @@ from astropy.io import fits
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
+max_exposure = {
+    "HSC": 21474800,
+}
+"""A mapping of instrument to exposure_max (`dict` [`str`, `int`]).
+
+The values are copied here so we can access them without a Butler. All
+exposure IDs are in Middleware (integer) format, not native format.
+"""
+
 
 def get_last_group(bucket, instrument, date):
     """Identify the largest group number or a new group number.
@@ -124,15 +133,18 @@ def make_hsc_id(group_num, snap):
 
     Notes
     -----
-    The current implementation allows up to 1000 group numbers per day.
-    It can overflow with ~60 calls to upload.py on the same day or
-    upload_hsc_rc2.py with a large N_GROUPS.
+    The current implementation gives illegal exposure IDs after September 2024.
+    If this generator is still needed after that, it will need to be tweaked.
     """
     # This is a bit too dependent on how group_num is generated, but I want the
     # group number to be discernible even after compressing to 8 digits.
-    night_id = (group_num // 100_000) % 2020_00_00     # Always 5 digits
+    year = (group_num // 100_00_00000) - 2023          # Always 1 digit, 0-1
+    night_id = (group_num % 100_00_00000) // 100000    # Always 4 digits up to 1231
     run_id = group_num % 100_000                       # Up to 5 digits, but usually 2-3
-    exposure_id = (night_id * 1000) + (run_id % 1000)  # Always 8 digits
+    exposure_id = (year*1200 + night_id) * 10000 + (run_id % 10000)  # Always 8 digits
+    if exposure_id > max_exposure["HSC"]:
+        raise RuntimeError(f"{group_num} translated to expId {exposure_id}, "
+                           f"max allowed is { max_exposure['HSC']}.")
     return f"HSCE{exposure_id:08d}", exposure_id
 
 

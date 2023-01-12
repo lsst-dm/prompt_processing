@@ -159,7 +159,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                        ]:
             # TODO: better way to test repo location?
             self.assertTrue(
-                butler.getURI("camera", instrument=instname, run="foo", predict=True).ospath
+                butler.getURI("skyMap", skymap="deepCoadd_skyMap", run="foo", predict=True).ospath
                 .startswith(self.central_repo))
             self.assertEqual(list(butler.collections), [f"{instname}/defaults"])
             self.assertTrue(butler.isWriteable())
