@@ -316,6 +316,10 @@ class MiddlewareInterface:
         wcs = self._predict_wcs(detector, visit)
         center, radius = self._detector_bounding_circle(detector, wcs)
 
+        # central repo may have been modified by other MWI instances.
+        # TODO: get a proper synchronization API for Butler
+        self.central_butler.registry.refresh()
+
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
                 self._export_refcats(export, center, radius)
@@ -763,6 +767,10 @@ class MiddlewareInterface:
             raise ValueError("Invalid visit or exposures.") from e
         if not datasets:
             raise ValueError(f"No datasets match visit={visit} and exposures={exposure_ids}.")
+
+        # central repo may have been modified by other MWI instances.
+        # TODO: get a proper synchronization API for Butler
+        self.central_butler.registry.refresh()
 
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             # MUST NOT export governor dimensions, as this causes deadlocks in
