@@ -1,7 +1,4 @@
-description: End to end Alert Production pipeline specialized for CI-Cosmos-PDR2
-#
-# This file was copied from ap_verify_ci_cosmos_pdr2 branch DM-34237 and
-# modified to use use the calibrate.py file that was also copied over.
+description: End to end Alert Production pipeline specialized for HSC-RC2
 
 imports:
   - location: $AP_PIPE_DIR/pipelines/HyperSuprimeCam/ApPipe.yaml
@@ -9,21 +6,6 @@ parameters:
   # Use dataset's specific templates
   coaddName: goodSeeing
 tasks:
-  isr:
-    class: lsst.ip.isr.IsrTask
-    config:
-      # Ignore missing calibrations
-      doBrighterFatter: false
-      doAttachTransmissionCurve: false
-      doUseOpticsTransmission: false
-      doUseFilterTransmission: false
-      doUseSensorTransmission: false
-      doUseAtmosphereTransmission: false
-  calibrate:
-    class: lsst.pipe.tasks.calibrate.CalibrateTask
-    config:
-      # Use dataset's reference catalogs
-      file: $PROMPT_PROTOTYPE_DIR/pipelines/calibrate.py
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:
