@@ -459,6 +459,7 @@ class MiddlewareInterface:
         for collection in self.central_butler.registry.queryCollections(...,
                                                                         collectionTypes=target_types):
             export.saveCollection(collection)
+        export.saveCollection(self.instrument.makeCalibrationCollectionName())
 
     @staticmethod
     def _count_by_type(refs):
