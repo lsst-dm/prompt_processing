@@ -68,7 +68,7 @@ def get_central_butler(central_repo: str, instrument_class: str):
     registry = Butler(central_repo).registry
     instrument = lsst.obs.base.Instrument.from_string(instrument_class, registry)
     return Butler(central_repo,
-                  collections=[instrument.makeCollectionName("defaults")],
+                  collections=[instrument.makeUmbrellaCollectionName()],
                   writeable=True,
                   inferDefaults=False,
                   )
@@ -419,7 +419,8 @@ class MiddlewareInterface:
                                                 collections=self._COLLECTION_TEMPLATE,
                                                 instrument=self.instrument.getName(),
                                                 skymap=self.skymap_name,
-                                                where=template_where))
+                                                where=template_where,
+                                                findFirst=True))
         _log.debug("Found %d new template datasets.", len(templates))
         export.saveDatasets(templates)
 
@@ -438,6 +439,8 @@ class MiddlewareInterface:
         # TODO: we can't filter by validity range because it's not
         # supported in queryDatasets yet.
         calib_where = f"detector={detector_id} and physical_filter='{filter}'"
+        # TODO: we can't use findFirst=True yet because findFirst query
+        # in CALIBRATION-type collection is not supported currently.
         calibs = set(_query_missing_datasets(
             self.central_butler, self.butler,
             ...,
@@ -456,6 +459,7 @@ class MiddlewareInterface:
         for collection in self.central_butler.registry.queryCollections(...,
                                                                         collectionTypes=target_types):
             export.saveCollection(collection)
+        export.saveCollection(self.instrument.makeCalibrationCollectionName())
 
     @staticmethod
     def _count_by_type(refs):
