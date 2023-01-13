@@ -68,7 +68,7 @@ def get_central_butler(central_repo: str, instrument_class: str):
     registry = Butler(central_repo).registry
     instrument = lsst.obs.base.Instrument.from_string(instrument_class, registry)
     return Butler(central_repo,
-                  collections=[instrument.makeCollectionName("defaults")],
+                  collections=[instrument.makeUmbrellaCollectionName()],
                   writeable=True,
                   inferDefaults=False,
                   )

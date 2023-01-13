@@ -89,7 +89,7 @@ def _add_chains(butler):
 
     instrument = Instrument.fromName(list(butler.registry.queryDataIds("instrument"))[0]["instrument"],
                                      butler.registry)
-    defaults = instrument.makeCollectionName("defaults")
+    defaults = instrument.makeUmbrellaCollectionName()
     butler.registry.registerCollection(defaults, type=CollectionType.CHAINED)
     calib_collection = instrument.makeCalibrationCollectionName()
     butler.registry.registerCollection(calib_collection, type=CollectionType.CHAINED)
