@@ -3,7 +3,7 @@ __all__ = ["Visit"]
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class Visit:
     # elements must be hashable and JSON-persistable; built-in types recommended
     instrument: str    # short name

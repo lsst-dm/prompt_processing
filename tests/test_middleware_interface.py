@@ -136,7 +136,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         dec = -4.950050405424033
         # DECam has no rotator; instrument angle is 90 degrees in our system.
         rot = 90.
-        self.next_visit = Visit(instname,
+        self.next_visit = Visit(instrument=instname,
                                 detector=56,
                                 group="1",
                                 snaps=1,
@@ -548,7 +548,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         dec = -4.950050405424033
         # DECam has no rotator; instrument angle is 90 degrees in our system.
         rot = 90.
-        self.next_visit = Visit(instrument,
+        self.next_visit = Visit(instrument=instrument,
                                 detector=56,
                                 group="1",
                                 snaps=1,
