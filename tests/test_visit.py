@@ -34,7 +34,7 @@ class VisitTest(unittest.TestCase):
         self.testbed = Visit(
             instrument="NotACam",
             detector=42,
-            group="2022032100001",
+            groupId="2023-01-23T23:33:14.762",
             snaps=2,
             filter="k2022",
             ra=134.5454,
@@ -59,4 +59,4 @@ class VisitTest(unittest.TestCase):
     def test_str(self):
         self.assertNotEqual(str(self.testbed), repr(self.testbed))
         self.assertIn(str(self.testbed.detector), str(self.testbed))
-        self.assertIn(str(self.testbed.group), str(self.testbed))
+        self.assertIn(str(self.testbed.groupId), str(self.testbed))

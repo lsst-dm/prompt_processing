@@ -46,7 +46,7 @@ class RawTest(unittest.TestCase):
 
         self.visit = Visit(instrument=self.instrument,
                            detector=self.detector,
-                           group=self.group,
+                           groupId=self.group,
                            snaps=self.snaps,
                            filter=self.filter,
                            ra=self.ra,

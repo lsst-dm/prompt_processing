@@ -138,7 +138,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         rot = 90.
         self.next_visit = Visit(instrument=instname,
                                 detector=56,
-                                group="1",
+                                groupId="1",
                                 snaps=1,
                                 filter=filter,
                                 ra=ra,
@@ -254,7 +254,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface.prep_butler(self.next_visit)
 
         # Second visit with everything same except group.
-        self.next_visit = dataclasses.replace(self.next_visit, group=str(int(self.next_visit.group) + 1))
+        self.next_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
         self.interface.prep_butler(self.next_visit)
         expected_shards = {157394, 157401, 157405}
         self._check_imports(self.interface.butler, detector=56, expected_shards=expected_shards)
@@ -263,7 +263,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Only 5, 10, 56, 60 have valid calibs.
         self.next_visit = dataclasses.replace(self.next_visit,
                                               detector=5,
-                                              group=str(int(self.next_visit.group) + 1),
+                                              groupId=str(int(self.next_visit.groupId) + 1),
                                               # Offset by a bit over 1 patch.
                                               ra=self.next_visit.ra + 0.4,
                                               dec=self.next_visit.dec - 0.4,
@@ -550,14 +550,14 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         rot = 90.
         self.next_visit = Visit(instrument=instrument,
                                 detector=56,
-                                group="1",
+                                groupId="1",
                                 snaps=1,
                                 filter=filter,
                                 ra=ra,
                                 dec=dec,
                                 rot=rot,
                                 kind="SURVEY")
-        self.second_visit = dataclasses.replace(self.next_visit, group="2")
+        self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.logger_name = "lsst.activator.middleware_interface"
 
         # Populate repository.

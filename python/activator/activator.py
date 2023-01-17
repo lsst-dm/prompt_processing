@@ -236,7 +236,7 @@ def next_visit_handler() -> Tuple[str, int]:
         for snap in range(expected_visit.snaps):
             oid = check_for_snap(
                 expected_visit.instrument,
-                expected_visit.group,
+                expected_visit.groupId,
                 snap,
                 expected_visit.detector,
             )

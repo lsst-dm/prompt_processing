@@ -150,7 +150,7 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
         visit = Visit(
             instrument="HSC",
             detector=data_id.records["detector"].id,
-            group=group_id,
+            groupId=group_id,
             snaps=1,
             filter=data_id.records["physical_filter"].name,
             ra=data_id.records["exposure"].tracking_ra,

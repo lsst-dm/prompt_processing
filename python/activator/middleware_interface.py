@@ -497,7 +497,7 @@ class MiddlewareInterface:
         run : `str`
             The name of a run collection to use for raws.
         """
-        return self.instrument.makeCollectionName("raw", visit.group)
+        return self.instrument.makeCollectionName("raw", visit.groupId)
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.

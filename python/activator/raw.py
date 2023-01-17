@@ -78,7 +78,7 @@ class Snap:
         """
         return (self.instrument == visit.instrument
                 and self.detector == visit.detector
-                and self.group == visit.group
+                and self.group == visit.groupId
                 and self.snap < visit.snaps
                 )
 
