@@ -248,6 +248,8 @@ A few useful commands for managing the service:
 * ``kubectl logs <pod>`` outputs the entire log associated with a particular pod.
   This can be a long file, so consider piping to ``less`` or ``grep``.
   ``kubectl logs`` also offers the ``-f`` flag for streaming output.
+* ``kubectl describe <pod>`` lists the entire configuration of a particular pod.
+  One useful entry is ``Containers:user-container:Image``, which gives `the hash of the service container <https://github.com/lsst-dm/prompt_prototype/pkgs/container/prompt-proto-service>`_ running on that pod and can be used to infer which version of the code is being tested.
 
 tester
 ======
