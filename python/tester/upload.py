@@ -56,7 +56,7 @@ def process_group(producer, visit_infos, uploader):
     visit_infos : `set` [`activator.Visit`]
         The visit-detector combinations to be observed; each object may
         represent multiple snaps. Assumed to represent a single group, and to
-        share instrument, snaps, filter, and kind.
+        share instrument, snaps, filters, and kind.
     uploader : callable [`activator.Visit`, int]
         A callable that takes an exposure spec and a snap ID, and uploads the
         visit's data.
@@ -76,10 +76,10 @@ def process_group(producer, visit_infos, uploader):
         _log.info(f"Taking group: {group} snap: {snap}")
         time.sleep(EXPOSURE_INTERVAL)
         for info in visit_infos:
-            _log.info(f"Uploading group: {info.groupId} snap: {snap} filter: {info.filter} "
+            _log.info(f"Uploading group: {info.groupId} snap: {snap} filters: {info.filters} "
                       f"detector: {info.detector}")
             uploader(info, snap)
-            _log.info(f"Uploaded group: {info.groupId} snap: {snap} filter: {info.filter} "
+            _log.info(f"Uploaded group: {info.groupId} snap: {snap} filters: {info.filters} "
                       f"detector: {info.detector}")
 
 
@@ -164,7 +164,7 @@ def get_samples(bucket, instrument):
                       detector=snap.detector,
                       groupId=snap.group,
                       snaps=INSTRUMENTS[instrument].n_snaps,
-                      filter=snap.filter,
+                      filters=snap.filter,
                       position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
                       cameraAngle=hsc_metadata[snap.exp_id]["rot"],
                       kind="SURVEY",
@@ -242,7 +242,7 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
             exposure_key, exposure_header, exposure_num = \
                 make_exposure_id(visit.instrument, int(visit.groupId), snap_id)
             filename = get_raw_path(visit.instrument, visit.detector, visit.groupId, snap_id,
-                                    exposure_num, visit.filter)
+                                    exposure_num, visit.filters)
             # r+b required by replace_header_key.
             with tempfile.TemporaryFile(mode="r+b") as buffer:
                 src_bucket.download_fileobj(src_blob.key, buffer)

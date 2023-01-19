@@ -15,11 +15,11 @@ class Visit:
     # (ra, dec) in degrees. Use compare=False to exclude from hash.
     position: list[float] = field(compare=False)
     cameraAngle: float  # in degrees
+    filters: str        # physical filter(s)
 
     instrument: str    # short name
     detector: int
     snaps: int         # number of snaps expected
-    filter: str        # physical filter
     kind: str
 
     def __str__(self):

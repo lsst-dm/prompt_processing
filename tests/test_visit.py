@@ -36,7 +36,7 @@ class VisitTest(unittest.TestCase):
             detector=42,
             groupId="2023-01-23T23:33:14.762",
             snaps=2,
-            filter="k2022",
+            filters="k2022",
             position=[134.5454, -65.3261],
             cameraAngle=135.0,
             kind="IMAGINARY",

@@ -140,7 +140,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 detector=56,
                                 groupId="1",
                                 snaps=1,
-                                filter=filter,
+                                filters=filter,
                                 position=[ra, dec],
                                 cameraAngle=rot,
                                 kind="SURVEY")
@@ -551,7 +551,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                 detector=56,
                                 groupId="1",
                                 snaps=1,
-                                filter=filter,
+                                filters=filter,
                                 position=[ra, dec],
                                 cameraAngle=rot,
                                 kind="SURVEY")
