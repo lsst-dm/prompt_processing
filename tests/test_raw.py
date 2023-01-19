@@ -49,8 +49,7 @@ class RawTest(unittest.TestCase):
                            groupId=self.group,
                            snaps=self.snaps,
                            filter=self.filter,
-                           ra=self.ra,
-                           dec=self.dec,
+                           position=[self.ra, self.dec],
                            rot=self.rot,
                            kind=self.kind,
                            )

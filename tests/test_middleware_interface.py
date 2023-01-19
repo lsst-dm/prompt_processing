@@ -83,7 +83,7 @@ def fake_file_data(filename, dimensions, instrument, visit):
         visit_id=1,
         boresight_rotation_angle=astropy.coordinates.Angle(visit.rot*u.degree),
         boresight_rotation_coord='sky',
-        tracking_radec=astropy.coordinates.SkyCoord(visit.ra, visit.dec, frame="icrs", unit="deg"),
+        tracking_radec=astropy.coordinates.SkyCoord(*visit.position, frame="icrs", unit="deg"),
         observation_id="1",
         physical_filter=filter,
         exposure_time=30.0*u.second,
@@ -141,8 +141,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 groupId="1",
                                 snaps=1,
                                 filter=filter,
-                                ra=ra,
-                                dec=dec,
+                                position=[ra, dec],
                                 rot=rot,
                                 kind="SURVEY")
         self.logger_name = "lsst.activator.middleware_interface"
@@ -265,8 +264,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                               detector=5,
                                               groupId=str(int(self.next_visit.groupId) + 1),
                                               # Offset by a bit over 1 patch.
-                                              ra=self.next_visit.ra + 0.4,
-                                              dec=self.next_visit.dec - 0.4,
+                                              position=[self.next_visit.position[0] + 0.4,
+                                                        self.next_visit.position[1] - 0.4],
                                               )
         self.interface.prep_butler(self.next_visit)
         expected_shards.update({157218, 157229})
@@ -553,8 +552,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                 groupId="1",
                                 snaps=1,
                                 filter=filter,
-                                ra=ra,
-                                dec=dec,
+                                position=[ra, dec],
                                 rot=rot,
                                 kind="SURVEY")
         self.second_visit = dataclasses.replace(self.next_visit, groupId="2")

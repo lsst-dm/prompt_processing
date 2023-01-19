@@ -261,7 +261,7 @@ class MiddlewareInterface:
         wcs : `lsst.afw.geom.SkyWcs`
             An approximate WCS for ``visit``.
         """
-        boresight_center = lsst.geom.SpherePoint(visit.ra, visit.dec, lsst.geom.degrees)
+        boresight_center = lsst.geom.SpherePoint(visit.position[0], visit.position[1], lsst.geom.degrees)
         orientation = lsst.geom.Angle(visit.rot, lsst.geom.degrees)
         flip_x = True if self.instrument.getName() == "DECam" else False
         return lsst.obs.base.createInitialSkyWcsFromBoresight(boresight_center,

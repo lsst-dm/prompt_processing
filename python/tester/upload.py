@@ -165,8 +165,7 @@ def get_samples(bucket, instrument):
                       groupId=snap.group,
                       snaps=INSTRUMENTS[instrument].n_snaps,
                       filter=snap.filter,
-                      ra=hsc_metadata[snap.exp_id]["ra"],
-                      dec=hsc_metadata[snap.exp_id]["dec"],
+                      position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
                       rot=hsc_metadata[snap.exp_id]["rot"],
                       kind="SURVEY",
                       )
