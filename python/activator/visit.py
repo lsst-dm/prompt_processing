@@ -11,16 +11,15 @@ class Visit:
 
     # Inherited from SAL next_visit schema; keep in sync with
     # https://ts-xml.lsst.io/sal_interfaces/ScriptQueue.html#nextvisit
-    groupId: str       # observatory-specific ID; not the same as visit number
+    groupId: str        # observatory-specific ID; not the same as visit number
     # (ra, dec) in degrees. Use compare=False to exclude from hash.
     position: list[float] = field(compare=False)
+    cameraAngle: float  # in degrees
 
     instrument: str    # short name
     detector: int
     snaps: int         # number of snaps expected
     filter: str        # physical filter
-    # all angles are in degrees
-    rot: float
     kind: str
 
     def __str__(self):

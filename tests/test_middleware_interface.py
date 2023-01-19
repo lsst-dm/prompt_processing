@@ -81,7 +81,7 @@ def fake_file_data(filename, dimensions, instrument, visit):
         datetime_end=time + 30*u.second,
         exposure_id=1,
         visit_id=1,
-        boresight_rotation_angle=astropy.coordinates.Angle(visit.rot*u.degree),
+        boresight_rotation_angle=astropy.coordinates.Angle(visit.cameraAngle*u.degree),
         boresight_rotation_coord='sky',
         tracking_radec=astropy.coordinates.SkyCoord(*visit.position, frame="icrs", unit="deg"),
         observation_id="1",
@@ -142,7 +142,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 snaps=1,
                                 filter=filter,
                                 position=[ra, dec],
-                                rot=rot,
+                                cameraAngle=rot,
                                 kind="SURVEY")
         self.logger_name = "lsst.activator.middleware_interface"
 
@@ -553,7 +553,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                 snaps=1,
                                 filter=filter,
                                 position=[ra, dec],
-                                rot=rot,
+                                cameraAngle=rot,
                                 kind="SURVEY")
         self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.logger_name = "lsst.activator.middleware_interface"

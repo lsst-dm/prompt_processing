@@ -166,7 +166,7 @@ def get_samples(bucket, instrument):
                       snaps=INSTRUMENTS[instrument].n_snaps,
                       filter=snap.filter,
                       position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
-                      rot=hsc_metadata[snap.exp_id]["rot"],
+                      cameraAngle=hsc_metadata[snap.exp_id]["rot"],
                       kind="SURVEY",
                       )
         _log.debug(f"File {blob.key} parsed as snap {snap.snap} of visit {visit}.")

@@ -154,7 +154,7 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
             snaps=1,
             filter=data_id.records["physical_filter"].name,
             position=[data_id.records["exposure"].tracking_ra, data_id.records["exposure"].tracking_dec],
-            rot=data_id.records["exposure"].sky_angle,
+            cameraAngle=data_id.records["exposure"].sky_angle,
             kind="SURVEY",
         )
         visits.add(visit)

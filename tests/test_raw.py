@@ -50,7 +50,7 @@ class RawTest(unittest.TestCase):
                            snaps=self.snaps,
                            filter=self.filter,
                            position=[self.ra, self.dec],
-                           rot=self.rot,
+                           cameraAngle=self.rot,
                            kind=self.kind,
                            )
 

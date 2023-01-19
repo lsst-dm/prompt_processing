@@ -38,7 +38,7 @@ class VisitTest(unittest.TestCase):
             snaps=2,
             filter="k2022",
             position=[134.5454, -65.3261],
-            rot=135.0,
+            cameraAngle=135.0,
             kind="IMAGINARY",
         )
 
