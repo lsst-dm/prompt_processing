@@ -232,8 +232,10 @@ def next_visit_handler() -> Tuple[str, int]:
         # Copy calibrations for this detector/visit
         mwi.prep_butler(expected_visit)
 
+        # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
+        expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
         # Check to see if any snaps have already arrived
-        for snap in range(expected_visit.snaps):
+        for snap in range(expected_snaps):
             oid = check_for_snap(
                 expected_visit.instrument,
                 expected_visit.groupId,
@@ -248,7 +250,7 @@ def next_visit_handler() -> Tuple[str, int]:
 
         _log.debug(f"Waiting for snaps from {expected_visit}.")
         start = time.time()
-        while len(expid_set) < expected_visit.snaps:
+        while len(expid_set) < expected_snaps:
             response = consumer.consume(
                 num_messages=189 + 8 + 8,
                 timeout=timeout,
@@ -286,8 +288,9 @@ def next_visit_handler() -> Tuple[str, int]:
             # Got at least some snaps; run the pipeline.
             # If this is only a partial set, the processed results may still be
             # useful for quality purposes.
-            if len(expid_set) < expected_visit.snaps:
-                _log.warning(f"Processing {len(expid_set)} snaps, expected {expected_visit.snaps}.")
+            # If nimages == 0, any positive number of snaps is OK.
+            if len(expid_set) < expected_visit.nimages:
+                _log.warning(f"Processing {len(expid_set)} snaps, expected {expected_visit.nimages}.")
             _log.info(f"Running pipeline on {expected_visit}.")
             mwi.run_pipeline(expected_visit, expid_set)
             # TODO: broadcast alerts here

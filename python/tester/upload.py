@@ -56,7 +56,7 @@ def process_group(producer, visit_infos, uploader):
     visit_infos : `set` [`activator.Visit`]
         The visit-detector combinations to be observed; each object may
         represent multiple snaps. Assumed to represent a single group, and to
-        share instrument, snaps, filters, and kind.
+        share instrument, nimages, filters, and kind.
     uploader : callable [`activator.Visit`, int]
         A callable that takes an exposure spec and a snap ID, and uploads the
         visit's data.
@@ -64,7 +64,7 @@ def process_group(producer, visit_infos, uploader):
     # Assume group/snaps is shared among all visit_infos
     for info in visit_infos:
         group = info.groupId
-        n_snaps = info.snaps
+        n_snaps = info.nimages
         break
     else:
         _log.info("No observations to make; aborting.")
@@ -163,7 +163,7 @@ def get_samples(bucket, instrument):
         visit = Visit(instrument=instrument,
                       detector=snap.detector,
                       groupId=snap.group,
-                      snaps=INSTRUMENTS[instrument].n_snaps,
+                      nimages=INSTRUMENTS[instrument].n_snaps,
                       filters=snap.filter,
                       position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
                       cameraAngle=hsc_metadata[snap.exp_id]["rot"],

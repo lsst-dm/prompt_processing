@@ -47,7 +47,7 @@ class RawTest(unittest.TestCase):
         self.visit = Visit(instrument=self.instrument,
                            detector=self.detector,
                            groupId=self.group,
-                           snaps=self.snaps,
+                           nimages=self.snaps,
                            filters=self.filter,
                            position=[self.ra, self.dec],
                            cameraAngle=self.rot,
@@ -106,7 +106,7 @@ class RawTest(unittest.TestCase):
         snap = Snap.from_oid(path)
         self.assertFalse(snap.is_consistent(self.visit))
 
-        path = get_raw_path(self.instrument, self.detector, self.group, self.visit.snaps,
+        path = get_raw_path(self.instrument, self.detector, self.group, self.visit.nimages,
                             self.exposure, self.filter)
         snap = Snap.from_oid(path)
         self.assertFalse(snap.is_consistent(self.visit))

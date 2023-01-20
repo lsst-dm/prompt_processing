@@ -16,10 +16,10 @@ class Visit:
     position: list[float] = field(compare=False)
     cameraAngle: float  # in degrees
     filters: str        # physical filter(s)
+    nimages: int        # number of snaps expected, 0 if unknown
 
     instrument: str    # short name
     detector: int
-    snaps: int         # number of snaps expected
     kind: str
 
     def __str__(self):

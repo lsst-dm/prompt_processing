@@ -79,7 +79,8 @@ class Snap:
         return (self.instrument == visit.instrument
                 and self.detector == visit.detector
                 and self.group == visit.groupId
-                and self.snap < visit.snaps
+                # nimages == 0 means "not known in advance"
+                and (self.snap < visit.nimages or visit.nimages == 0)
                 )
 
 
