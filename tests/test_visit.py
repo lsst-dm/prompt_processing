@@ -37,6 +37,7 @@ class VisitTest(unittest.TestCase):
             groupId="2023-01-23T23:33:14.762",
             nimages=2,
             filters="k2022",
+            coordinateSystem=Visit.CoordSys.ICRS,
             position=[134.5454, -65.3261],
             cameraAngle=135.0,
             survey="IMAGINARY",
@@ -54,6 +55,11 @@ class VisitTest(unittest.TestCase):
         serialized = json.dumps(self.testbed.__dict__).encode("utf-8")
         deserialized = Visit(**json.loads(serialized))
         self.assertEqual(deserialized, self.testbed)
+        # Test that enums are handled correctly despite being serialized as shorts.
+        # isinstance checks are ambigious because IntEnum is-an int.
+        self.assertIs(type(self.testbed.coordinateSystem), Visit.CoordSys)
+        self.assertIs(type(deserialized.coordinateSystem), int)
+        self.assertIsNot(type(deserialized.coordinateSystem), Visit.CoordSys)
 
     def test_str(self):
         self.assertNotEqual(str(self.testbed), repr(self.testbed))

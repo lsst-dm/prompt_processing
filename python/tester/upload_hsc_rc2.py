@@ -153,6 +153,7 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
             groupId=group_id,
             nimages=1,
             filters=data_id.records["physical_filter"].name,
+            coordinateSystem=Visit.CoordSys.ICRS,
             position=[data_id.records["exposure"].tracking_ra, data_id.records["exposure"].tracking_dec],
             cameraAngle=data_id.records["exposure"].sky_angle,
             survey="SURVEY",

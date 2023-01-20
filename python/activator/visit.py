@@ -1,6 +1,7 @@
 __all__ = ["Visit"]
 
 from dataclasses import dataclass, field
+import enum
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -11,16 +12,25 @@ class Visit:
 
     # Inherited from SAL next_visit schema; keep in sync with
     # https://ts-xml.lsst.io/sal_interfaces/ScriptQueue.html#nextvisit
-    groupId: str        # observatory-specific ID; not the same as visit number
-    # (ra, dec) in degrees. Use compare=False to exclude from hash.
+    class CoordSys(enum.IntEnum):
+        # This is a redeclaration of lsst.ts.idl.enums.Script.MetadataCoordSys,
+        # but we need Visit to work in code that can't import lsst.ts.
+        NONE = 1
+        ICRS = 2
+        OBSERVED = 3
+        MOUNT = 4
+
+    groupId: str                # observatory-specific ID; not the same as visit number
+    coordinateSystem: CoordSys  # coordinate system of position
+    # (ra, dec) or (az, alt) in degrees. Use compare=False to exclude from hash.
     position: list[float] = field(compare=False)
-    cameraAngle: float  # in degrees
-    filters: str        # physical filter(s)
-    nimages: int        # number of snaps expected, 0 if unknown
-    survey: str         # survey name
+    cameraAngle: float          # in degrees
+    filters: str                # physical filter(s)
+    nimages: int                # number of snaps expected, 0 if unknown
+    survey: str                 # survey name
 
     # Added by the Kafka consumer at USDF.
-    instrument: str     # short name
+    instrument: str             # short name
     detector: int
 
     def __str__(self):

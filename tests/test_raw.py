@@ -49,6 +49,7 @@ class RawTest(unittest.TestCase):
                            groupId=self.group,
                            nimages=self.snaps,
                            filters=self.filter,
+                           coordinateSystem=Visit.CoordSys.ICRS,
                            position=[self.ra, self.dec],
                            cameraAngle=self.rot,
                            survey=self.survey,

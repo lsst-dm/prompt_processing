@@ -260,7 +260,15 @@ class MiddlewareInterface:
         -------
         wcs : `lsst.afw.geom.SkyWcs`
             An approximate WCS for ``visit``.
+
+        Raises
+        ------
+        ValueError
+            Raised if ``visit`` does not have equatorial coordinates.
         """
+        if visit.coordinateSystem != Visit.CoordSys.ICRS:
+            raise ValueError("Only ICRS coordinates are supported in Visit, "
+                             f"got {visit.coordinateSystem!r} instead.")
         boresight_center = lsst.geom.SpherePoint(visit.position[0], visit.position[1], lsst.geom.degrees)
         orientation = visit.cameraAngle * lsst.geom.degrees
         flip_x = True if self.instrument.getName() == "DECam" else False
@@ -309,6 +317,12 @@ class MiddlewareInterface:
         ----------
         visit : `Visit`
             Group of snaps from one detector to prepare the butler for.
+
+        Raises
+        ------
+        ValueError
+            Raised if ``visit`` does not have equatorial coordinates for
+            calculating which refcats and other spatial datasets are needed.
         """
         _log.info(f"Preparing Butler for visit {visit!r}")
 

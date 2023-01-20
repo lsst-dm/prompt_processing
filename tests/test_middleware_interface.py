@@ -141,6 +141,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 groupId="1",
                                 nimages=1,
                                 filters=filter,
+                                coordinateSystem=Visit.CoordSys.ICRS,
                                 position=[ra, dec],
                                 cameraAngle=rot,
                                 survey="SURVEY")
@@ -552,6 +553,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                 groupId="1",
                                 nimages=1,
                                 filters=filter,
+                                coordinateSystem=Visit.CoordSys.ICRS,
                                 position=[ra, dec],
                                 cameraAngle=rot,
                                 survey="SURVEY")
