@@ -42,6 +42,11 @@ class VisitTest(unittest.TestCase):
             rotationSystem=Visit.RotSys.SKY,
             cameraAngle=135.0,
             survey="IMAGINARY",
+            salIndex=42,
+            scriptSalIndex=42,
+            dome=Visit.Dome.OPEN,
+            duration=35.0,
+            totalCheckpoints=1,
         )
 
     def test_hash(self):

@@ -145,7 +145,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 position=[ra, dec],
                                 rotationSystem=Visit.RotSys.SKY,
                                 cameraAngle=rot,
-                                survey="SURVEY")
+                                survey="SURVEY",
+                                salIndex=42,
+                                scriptSalIndex=42,
+                                dome=Visit.Dome.OPEN,
+                                duration=35.0,
+                                totalCheckpoints=1,
+                                )
         self.logger_name = "lsst.activator.middleware_interface"
 
     def tearDown(self):
@@ -558,7 +564,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                 position=[ra, dec],
                                 rotationSystem=Visit.RotSys.SKY,
                                 cameraAngle=rot,
-                                survey="SURVEY")
+                                survey="SURVEY",
+                                salIndex=42,
+                                scriptSalIndex=42,
+                                dome=Visit.Dome.OPEN,
+                                duration=35.0,
+                                totalCheckpoints=1,
+                                )
         self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.logger_name = "lsst.activator.middleware_interface"
 

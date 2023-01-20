@@ -54,6 +54,11 @@ class RawTest(unittest.TestCase):
                            rotationSystem=Visit.RotSys.SKY,
                            cameraAngle=self.rot,
                            survey=self.survey,
+                           salIndex=42,
+                           scriptSalIndex=42,
+                           dome=Visit.Dome.OPEN,
+                           duration=35.0,
+                           totalCheckpoints=1,
                            )
 
     def test_writeread(self):

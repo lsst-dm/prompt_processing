@@ -170,6 +170,11 @@ def get_samples(bucket, instrument):
                       rotationSystem=Visit.RotSys.SKY,
                       cameraAngle=hsc_metadata[snap.exp_id]["rot"],
                       survey="SURVEY",
+                      salIndex=42,
+                      scriptSalIndex=42,
+                      dome=Visit.Dome.OPEN,
+                      duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
+                      totalCheckpoints=1,
                       )
         _log.debug(f"File {blob.key} parsed as snap {snap.snap} of visit {visit}.")
         if snap.group in result:

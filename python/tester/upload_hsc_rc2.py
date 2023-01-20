@@ -158,6 +158,11 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
             rotationSystem=Visit.RotSys.SKY,
             cameraAngle=data_id.records["exposure"].sky_angle,
             survey="SURVEY",
+            salIndex=42,
+            scriptSalIndex=42,
+            dome=Visit.Dome.OPEN,
+            duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
+            totalCheckpoints=1,
         )
         visits.add(visit)
 

@@ -27,6 +27,14 @@ class Visit:
         HORIZON = 3
         MOUNT = 4
 
+    class Dome(enum.IntEnum):
+        # Redeclaration of lsst.ts.idl.enums.Script.MetadataDome.
+        CLOSED = 1
+        OPEN = 2
+        EITHER = 3
+
+    salIndex: int
+    scriptSalIndex: int
     groupId: str                # observatory-specific ID; not the same as visit number
     coordinateSystem: CoordSys  # coordinate system of position
     # (ra, dec) or (az, alt) in degrees. Use compare=False to exclude from hash.
@@ -34,8 +42,11 @@ class Visit:
     rotationSystem: RotSys      # coordinate system of cameraAngle
     cameraAngle: float          # in degrees
     filters: str                # physical filter(s)
+    dome: Dome
+    duration: float             # script execution, not exposure
     nimages: int                # number of snaps expected, 0 if unknown
     survey: str                 # survey name
+    totalCheckpoints: int
 
     # Added by the Kafka consumer at USDF.
     instrument: str             # short name
