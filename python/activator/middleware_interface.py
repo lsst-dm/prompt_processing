@@ -264,13 +264,19 @@ class MiddlewareInterface:
         Raises
         ------
         ValueError
-            Raised if ``visit`` does not have equatorial coordinates.
+            Raised if ``visit`` does not have equatorial coordinates and sky
+            rotation angle.
         """
         if visit.coordinateSystem != Visit.CoordSys.ICRS:
             raise ValueError("Only ICRS coordinates are supported in Visit, "
                              f"got {visit.coordinateSystem!r} instead.")
         boresight_center = lsst.geom.SpherePoint(visit.position[0], visit.position[1], lsst.geom.degrees)
+
+        if visit.rotationSystem != Visit.RotSys.SKY:
+            raise ValueError("Only sky camera rotations are supported in Visit, "
+                             f"got {visit.rotationSystem!r} instead.")
         orientation = visit.cameraAngle * lsst.geom.degrees
+
         flip_x = True if self.instrument.getName() == "DECam" else False
         return lsst.obs.base.createInitialSkyWcsFromBoresight(boresight_center,
                                                               orientation,
@@ -321,8 +327,9 @@ class MiddlewareInterface:
         Raises
         ------
         ValueError
-            Raised if ``visit`` does not have equatorial coordinates for
-            calculating which refcats and other spatial datasets are needed.
+            Raised if ``visit`` does not have equatorial coordinates and sky
+            rotation angles for calculating which refcats or other spatial
+            datasets are needed.
         """
         _log.info(f"Preparing Butler for visit {visit!r}")
 

@@ -51,6 +51,7 @@ class RawTest(unittest.TestCase):
                            filters=self.filter,
                            coordinateSystem=Visit.CoordSys.ICRS,
                            position=[self.ra, self.dec],
+                           rotationSystem=Visit.RotSys.SKY,
                            cameraAngle=self.rot,
                            survey=self.survey,
                            )

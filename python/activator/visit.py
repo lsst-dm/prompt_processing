@@ -20,10 +20,18 @@ class Visit:
         OBSERVED = 3
         MOUNT = 4
 
+    class RotSys(enum.IntEnum):
+        # Redeclaration of lsst.ts.idl.enums.Script.MetadataRotSys.
+        NONE = 1
+        SKY = 2
+        HORIZON = 3
+        MOUNT = 4
+
     groupId: str                # observatory-specific ID; not the same as visit number
     coordinateSystem: CoordSys  # coordinate system of position
     # (ra, dec) or (az, alt) in degrees. Use compare=False to exclude from hash.
     position: list[float] = field(compare=False)
+    rotationSystem: RotSys      # coordinate system of cameraAngle
     cameraAngle: float          # in degrees
     filters: str                # physical filter(s)
     nimages: int                # number of snaps expected, 0 if unknown

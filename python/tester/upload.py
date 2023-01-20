@@ -167,6 +167,7 @@ def get_samples(bucket, instrument):
                       filters=snap.filter,
                       coordinateSystem=Visit.CoordSys.ICRS,
                       position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
+                      rotationSystem=Visit.RotSys.SKY,
                       cameraAngle=hsc_metadata[snap.exp_id]["rot"],
                       survey="SURVEY",
                       )

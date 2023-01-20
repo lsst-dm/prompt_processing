@@ -39,6 +39,7 @@ class VisitTest(unittest.TestCase):
             filters="k2022",
             coordinateSystem=Visit.CoordSys.ICRS,
             position=[134.5454, -65.3261],
+            rotationSystem=Visit.RotSys.SKY,
             cameraAngle=135.0,
             survey="IMAGINARY",
         )
