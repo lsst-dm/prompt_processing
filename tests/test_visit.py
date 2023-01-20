@@ -39,7 +39,7 @@ class VisitTest(unittest.TestCase):
             filters="k2022",
             position=[134.5454, -65.3261],
             cameraAngle=135.0,
-            kind="IMAGINARY",
+            survey="IMAGINARY",
         )
 
     def test_hash(self):

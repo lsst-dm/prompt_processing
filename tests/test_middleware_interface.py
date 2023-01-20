@@ -143,7 +143,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 filters=filter,
                                 position=[ra, dec],
                                 cameraAngle=rot,
-                                kind="SURVEY")
+                                survey="SURVEY")
         self.logger_name = "lsst.activator.middleware_interface"
 
     def tearDown(self):
@@ -554,7 +554,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                 filters=filter,
                                 position=[ra, dec],
                                 cameraAngle=rot,
-                                kind="SURVEY")
+                                survey="SURVEY")
         self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.logger_name = "lsst.activator.middleware_interface"
 

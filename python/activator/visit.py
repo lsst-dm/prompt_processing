@@ -17,10 +17,11 @@ class Visit:
     cameraAngle: float  # in degrees
     filters: str        # physical filter(s)
     nimages: int        # number of snaps expected, 0 if unknown
+    survey: str         # survey name
 
-    instrument: str    # short name
+    # Added by the Kafka consumer at USDF.
+    instrument: str     # short name
     detector: int
-    kind: str
 
     def __str__(self):
         """Return a short string that disambiguates the visit but does not

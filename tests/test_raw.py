@@ -40,7 +40,7 @@ class RawTest(unittest.TestCase):
         self.ra = 134.5454
         self.dec = -65.3261
         self.rot = 135.0
-        self.kind = "IMAGINARY"
+        self.survey = "IMAGINARY"
         self.snap = 1
         self.exposure = 404
 
@@ -51,7 +51,7 @@ class RawTest(unittest.TestCase):
                            filters=self.filter,
                            position=[self.ra, self.dec],
                            cameraAngle=self.rot,
-                           kind=self.kind,
+                           survey=self.survey,
                            )
 
     def test_writeread(self):
