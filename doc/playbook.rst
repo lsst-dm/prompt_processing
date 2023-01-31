@@ -251,6 +251,28 @@ A few useful commands for managing the service:
 * ``kubectl describe <pod>`` lists the entire configuration of a particular pod.
   One useful entry is ``Containers:user-container:Image``, which gives `the hash of the service container <https://github.com/lsst-dm/prompt_prototype/pkgs/container/prompt-proto-service>`_ running on that pod and can be used to infer which version of the code is being tested.
 
+Troubleshooting
+^^^^^^^^^^^^^^^
+
+Deleting Old Services
+"""""""""""""""""""""
+
+Normally, old revisions of a service are automatically removed when a new revision is deployed.
+However, sometimes an old revision will stick around; this seems to be related to Python errors from bad code.
+Such revisions usually manifest as a "CrashLoopBackOff" pod in ``kubectl get pods``.
+
+To delete such services manually:
+
+.. code-block:: sh
+
+   kubectl get revision  # Find the name of the broken revision
+   kubectl delete revision <revision name>
+
+.. note::
+
+   There's no point to deleting the pod itself, because the service will just recreate it.
+
+
 tester
 ======
 
