@@ -248,8 +248,61 @@ A few useful commands for managing the service:
 * ``kubectl logs <pod>`` outputs the entire log associated with a particular pod.
   This can be a long file, so consider piping to ``less`` or ``grep``.
   ``kubectl logs`` also offers the ``-f`` flag for streaming output.
-* ``kubectl describe <pod>`` lists the entire configuration of a particular pod.
-  One useful entry is ``Containers:user-container:Image``, which gives `the hash of the service container <https://github.com/lsst-dm/prompt_prototype/pkgs/container/prompt-proto-service>`_ running on that pod and can be used to infer which version of the code is being tested.
+
+Troubleshooting
+^^^^^^^^^^^^^^^
+
+Deleting Old Services
+"""""""""""""""""""""
+
+Normally, old revisions of a service are automatically removed when a new revision is deployed.
+However, sometimes an old revision will stick around; this seems to be related to Python errors from bad code.
+Such revisions usually manifest as a "CrashLoopBackOff" pod in ``kubectl get pods``.
+
+To delete such services manually:
+
+.. code-block:: sh
+
+   kubectl get revision  # Find the name of the broken revision
+   kubectl delete revision <revision name>
+
+.. note::
+
+   There's no point to deleting the pod itself, because the service will just recreate it.
+
+Identifying a Pod's Codebase
+""""""""""""""""""""""""""""
+
+To identify which version of ``prompt-prototype`` a pod is running, run
+
+.. code-block:: sh
+
+   kubectl describe pod <pod name> | grep "prompt-proto-service@"
+
+This gives the hash of the service container running on that pod.
+Actually mapping the hash to a branch version may require a bit of detective work; `the GitHub container registry <https://github.com/lsst-dm/prompt_prototype/pkgs/container/prompt-proto-service>`_ (which calls hashes "Digests") is a good starting point.
+
+To find the version of Science Pipelines used, find the container's page in the GitHub registry, then search for ``EUPS_TAG``.
+
+Inspecting a Pod
+""""""""""""""""
+
+To inspect the state of a pod (e.g., the local repo):
+
+.. code-block:: sh
+
+   kubectl exec -it <pod name> -- bash
+
+Then in the pod:
+
+.. code-block:: sh
+
+   source /opt/lsst/software/stack/loadLSST.bash
+
+The local repo is a directory of the form ``/tmp/butler-????????``.
+There should be only one local repo per ``MiddlewareInterface`` object, and at the time of writing there should be only one such object per pod.
+If in doubt, check the logs first.
+
 
 tester
 ======
