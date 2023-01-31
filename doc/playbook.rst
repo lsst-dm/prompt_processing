@@ -284,6 +284,25 @@ Actually mapping the hash to a branch version may require a bit of detective wor
 
 To find the version of Science Pipelines used, find the container's page in the GitHub registry, then search for ``EUPS_TAG``.
 
+Inspecting a Pod
+""""""""""""""""
+
+To inspect the state of a pod (e.g., the local repo):
+
+.. code-block:: sh
+
+   kubectl exec -it <pod name> -- bash
+
+Then in the pod:
+
+.. code-block:: sh
+
+   source /opt/lsst/software/stack/loadLSST.bash
+
+The local repo is a directory of the form ``/tmp/butler-????????``.
+There should be only one local repo per ``MiddlewareInterface`` object, and at the time of writing there should be only one such object per pod.
+If in doubt, check the logs first.
+
 
 tester
 ======
