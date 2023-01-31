@@ -248,8 +248,6 @@ A few useful commands for managing the service:
 * ``kubectl logs <pod>`` outputs the entire log associated with a particular pod.
   This can be a long file, so consider piping to ``less`` or ``grep``.
   ``kubectl logs`` also offers the ``-f`` flag for streaming output.
-* ``kubectl describe <pod>`` lists the entire configuration of a particular pod.
-  One useful entry is ``Containers:user-container:Image``, which gives `the hash of the service container <https://github.com/lsst-dm/prompt_prototype/pkgs/container/prompt-proto-service>`_ running on that pod and can be used to infer which version of the code is being tested.
 
 Troubleshooting
 ^^^^^^^^^^^^^^^
@@ -271,6 +269,20 @@ To delete such services manually:
 .. note::
 
    There's no point to deleting the pod itself, because the service will just recreate it.
+
+Identifying a Pod's Codebase
+""""""""""""""""""""""""""""
+
+To identify which version of ``prompt-prototype`` a pod is running, run
+
+.. code-block:: sh
+
+   kubectl describe pod <pod name> | grep "prompt-proto-service@"
+
+This gives the hash of the service container running on that pod.
+Actually mapping the hash to a branch version may require a bit of detective work; `the GitHub container registry <https://github.com/lsst-dm/prompt_prototype/pkgs/container/prompt-proto-service>`_ (which calls hashes "Digests") is a good starting point.
+
+To find the version of Science Pipelines used, find the container's page in the GitHub registry, then search for ``EUPS_TAG``.
 
 
 tester
