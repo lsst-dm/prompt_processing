@@ -56,15 +56,15 @@ def process_group(producer, visit_infos, uploader):
     visit_infos : `set` [`activator.Visit`]
         The visit-detector combinations to be observed; each object may
         represent multiple snaps. Assumed to represent a single group, and to
-        share instrument, snaps, filter, and kind.
+        share instrument, nimages, filters, and survey.
     uploader : callable [`activator.Visit`, int]
         A callable that takes an exposure spec and a snap ID, and uploads the
         visit's data.
     """
     # Assume group/snaps is shared among all visit_infos
     for info in visit_infos:
-        group = info.group
-        n_snaps = info.snaps
+        group = info.groupId
+        n_snaps = info.nimages
         break
     else:
         _log.info("No observations to make; aborting.")
@@ -76,10 +76,10 @@ def process_group(producer, visit_infos, uploader):
         _log.info(f"Taking group: {group} snap: {snap}")
         time.sleep(EXPOSURE_INTERVAL)
         for info in visit_infos:
-            _log.info(f"Uploading group: {info.group} snap: {snap} filter: {info.filter} "
+            _log.info(f"Uploading group: {info.groupId} snap: {snap} filters: {info.filters} "
                       f"detector: {info.detector}")
             uploader(info, snap)
-            _log.info(f"Uploaded group: {info.group} snap: {snap} filter: {info.filter} "
+            _log.info(f"Uploaded group: {info.groupId} snap: {snap} filters: {info.filters} "
                       f"detector: {info.detector}")
 
 
@@ -162,13 +162,19 @@ def get_samples(bucket, instrument):
         snap = Snap.from_oid(blob.key)
         visit = Visit(instrument=instrument,
                       detector=snap.detector,
-                      group=snap.group,
-                      snaps=INSTRUMENTS[instrument].n_snaps,
-                      filter=snap.filter,
-                      ra=hsc_metadata[snap.exp_id]["ra"],
-                      dec=hsc_metadata[snap.exp_id]["dec"],
-                      rot=hsc_metadata[snap.exp_id]["rot"],
-                      kind="SURVEY",
+                      groupId=snap.group,
+                      nimages=INSTRUMENTS[instrument].n_snaps,
+                      filters=snap.filter,
+                      coordinateSystem=Visit.CoordSys.ICRS,
+                      position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
+                      rotationSystem=Visit.RotSys.SKY,
+                      cameraAngle=hsc_metadata[snap.exp_id]["rot"],
+                      survey="SURVEY",
+                      salIndex=42,
+                      scriptSalIndex=42,
+                      dome=Visit.Dome.OPEN,
+                      duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
+                      totalCheckpoints=1,
                       )
         _log.debug(f"File {blob.key} parsed as snap {snap.snap} of visit {visit}.")
         if snap.group in result:
@@ -230,7 +236,7 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
         # replacing the (immutable) Visit objects to point to group
         # instead of true_group.
         for snap_id, old_visits in raw_pool[true_group].items():
-            snap_dict[snap_id] = {dataclasses.replace(true_visit, group=group): blob
+            snap_dict[snap_id] = {dataclasses.replace(true_visit, groupId=group): blob
                                   for true_visit, blob in old_visits.items()}
         # Gather all the Visit objects found in snap_dict, merging
         # duplicates for different snaps of the same detector.
@@ -241,9 +247,9 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
         def upload_from_pool(visit, snap_id):
             src_blob = snap_dict[snap_id][visit]
             exposure_key, exposure_header, exposure_num = \
-                make_exposure_id(visit.instrument, int(visit.group), snap_id)
-            filename = get_raw_path(visit.instrument, visit.detector, visit.group, snap_id,
-                                    exposure_num, visit.filter)
+                make_exposure_id(visit.instrument, int(visit.groupId), snap_id)
+            filename = get_raw_path(visit.instrument, visit.detector, visit.groupId, snap_id,
+                                    exposure_num, visit.filters)
             # r+b required by replace_header_key.
             with tempfile.TemporaryFile(mode="r+b") as buffer:
                 src_bucket.download_fileobj(src_blob.key, buffer)

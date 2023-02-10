@@ -260,9 +260,23 @@ class MiddlewareInterface:
         -------
         wcs : `lsst.afw.geom.SkyWcs`
             An approximate WCS for ``visit``.
+
+        Raises
+        ------
+        ValueError
+            Raised if ``visit`` does not have equatorial coordinates and sky
+            rotation angle.
         """
-        boresight_center = lsst.geom.SpherePoint(visit.ra, visit.dec, lsst.geom.degrees)
-        orientation = lsst.geom.Angle(visit.rot, lsst.geom.degrees)
+        if visit.coordinateSystem != Visit.CoordSys.ICRS:
+            raise ValueError("Only ICRS coordinates are supported in Visit, "
+                             f"got {visit.coordinateSystem!r} instead.")
+        boresight_center = lsst.geom.SpherePoint(visit.position[0], visit.position[1], lsst.geom.degrees)
+
+        if visit.rotationSystem != Visit.RotSys.SKY:
+            raise ValueError("Only sky camera rotations are supported in Visit, "
+                             f"got {visit.rotationSystem!r} instead.")
+        orientation = visit.cameraAngle * lsst.geom.degrees
+
         flip_x = True if self.instrument.getName() == "DECam" else False
         return lsst.obs.base.createInitialSkyWcsFromBoresight(boresight_center,
                                                               orientation,
@@ -309,6 +323,13 @@ class MiddlewareInterface:
         ----------
         visit : `Visit`
             Group of snaps from one detector to prepare the butler for.
+
+        Raises
+        ------
+        ValueError
+            Raised if ``visit`` does not have equatorial coordinates and sky
+            rotation angles for calculating which refcats or other spatial
+            datasets are needed.
         """
         _log.info(f"Preparing Butler for visit {visit!r}")
 
@@ -323,8 +344,9 @@ class MiddlewareInterface:
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
                 self._export_refcats(export, center, radius)
-                self._export_skymap_and_templates(export, center, detector, wcs, visit.filter)
-                self._export_calibs(export, visit.detector, visit.filter)
+                # TODO: Summit filter names may not match Butler names, especially for composite filters.
+                self._export_skymap_and_templates(export, center, detector, wcs, visit.filters)
+                self._export_calibs(export, visit.detector, visit.filters)
 
                 # CHAINED collections
                 export.saveCollection(self.instrument.makeRefCatCollectionName())
@@ -497,7 +519,7 @@ class MiddlewareInterface:
         run : `str`
             The name of a run collection to use for raws.
         """
-        return self.instrument.makeCollectionName("raw", visit.group)
+        return self.instrument.makeCollectionName("raw", visit.groupId)
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.

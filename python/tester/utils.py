@@ -164,8 +164,9 @@ def send_next_visit(producer, group, visit_infos):
     _log.info(f"Sending next_visit for group: {group}")
     topic = "next-visit-topic"
     for info in visit_infos:
-        _log.debug(f"Sending next_visit for group: {info.group} detector: {info.detector} "
-                   f"filter: {info.filter} ra: {info.ra} dec: {info.dec} kind: {info.kind}")
+        _log.debug(f"Sending next_visit for group: {info.groupId} detector: {info.detector} "
+                   f"filters: {info.filters} ra: {info.position[0]} dec: {info.position[1]} "
+                   f"survey: {info.survey}")
         data = json.dumps(info.__dict__).encode("utf-8")
         producer.produce(topic, data)
 

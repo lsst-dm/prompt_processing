@@ -40,19 +40,25 @@ class RawTest(unittest.TestCase):
         self.ra = 134.5454
         self.dec = -65.3261
         self.rot = 135.0
-        self.kind = "IMAGINARY"
+        self.survey = "IMAGINARY"
         self.snap = 1
         self.exposure = 404
 
         self.visit = Visit(instrument=self.instrument,
                            detector=self.detector,
-                           group=self.group,
-                           snaps=self.snaps,
-                           filter=self.filter,
-                           ra=self.ra,
-                           dec=self.dec,
-                           rot=self.rot,
-                           kind=self.kind,
+                           groupId=self.group,
+                           nimages=self.snaps,
+                           filters=self.filter,
+                           coordinateSystem=Visit.CoordSys.ICRS,
+                           position=[self.ra, self.dec],
+                           rotationSystem=Visit.RotSys.SKY,
+                           cameraAngle=self.rot,
+                           survey=self.survey,
+                           salIndex=42,
+                           scriptSalIndex=42,
+                           dome=Visit.Dome.OPEN,
+                           duration=35.0,
+                           totalCheckpoints=1,
                            )
 
     def test_writeread(self):
@@ -107,7 +113,7 @@ class RawTest(unittest.TestCase):
         snap = Snap.from_oid(path)
         self.assertFalse(snap.is_consistent(self.visit))
 
-        path = get_raw_path(self.instrument, self.detector, self.group, self.visit.snaps,
+        path = get_raw_path(self.instrument, self.detector, self.group, self.visit.nimages,
                             self.exposure, self.filter)
         snap = Snap.from_oid(path)
         self.assertFalse(snap.is_consistent(self.visit))

@@ -34,13 +34,19 @@ class VisitTest(unittest.TestCase):
         self.testbed = Visit(
             instrument="NotACam",
             detector=42,
-            group="2022032100001",
-            snaps=2,
-            filter="k2022",
-            ra=134.5454,
-            dec=-65.3261,
-            rot=135.0,
-            kind="IMAGINARY",
+            groupId="2023-01-23T23:33:14.762",
+            nimages=2,
+            filters="k2022",
+            coordinateSystem=Visit.CoordSys.ICRS,
+            position=[134.5454, -65.3261],
+            rotationSystem=Visit.RotSys.SKY,
+            cameraAngle=135.0,
+            survey="IMAGINARY",
+            salIndex=42,
+            scriptSalIndex=42,
+            dome=Visit.Dome.OPEN,
+            duration=35.0,
+            totalCheckpoints=1,
         )
 
     def test_hash(self):
@@ -55,8 +61,13 @@ class VisitTest(unittest.TestCase):
         serialized = json.dumps(self.testbed.__dict__).encode("utf-8")
         deserialized = Visit(**json.loads(serialized))
         self.assertEqual(deserialized, self.testbed)
+        # Test that enums are handled correctly despite being serialized as shorts.
+        # isinstance checks are ambigious because IntEnum is-an int.
+        self.assertIs(type(self.testbed.coordinateSystem), Visit.CoordSys)
+        self.assertIs(type(deserialized.coordinateSystem), int)
+        self.assertIsNot(type(deserialized.coordinateSystem), Visit.CoordSys)
 
     def test_str(self):
         self.assertNotEqual(str(self.testbed), repr(self.testbed))
         self.assertIn(str(self.testbed.detector), str(self.testbed))
-        self.assertIn(str(self.testbed.group), str(self.testbed))
+        self.assertIn(str(self.testbed.groupId), str(self.testbed))

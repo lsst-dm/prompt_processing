@@ -150,13 +150,19 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
         visit = Visit(
             instrument="HSC",
             detector=data_id.records["detector"].id,
-            group=group_id,
-            snaps=1,
-            filter=data_id.records["physical_filter"].name,
-            ra=data_id.records["exposure"].tracking_ra,
-            dec=data_id.records["exposure"].tracking_dec,
-            rot=data_id.records["exposure"].sky_angle,
-            kind="SURVEY",
+            groupId=group_id,
+            nimages=1,
+            filters=data_id.records["physical_filter"].name,
+            coordinateSystem=Visit.CoordSys.ICRS,
+            position=[data_id.records["exposure"].tracking_ra, data_id.records["exposure"].tracking_dec],
+            rotationSystem=Visit.RotSys.SKY,
+            cameraAngle=data_id.records["exposure"].sky_angle,
+            survey="SURVEY",
+            salIndex=42,
+            scriptSalIndex=42,
+            dome=Visit.Dome.OPEN,
+            duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
+            totalCheckpoints=1,
         )
         visits.add(visit)
 

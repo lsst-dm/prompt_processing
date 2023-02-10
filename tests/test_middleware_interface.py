@@ -81,9 +81,9 @@ def fake_file_data(filename, dimensions, instrument, visit):
         datetime_end=time + 30*u.second,
         exposure_id=1,
         visit_id=1,
-        boresight_rotation_angle=astropy.coordinates.Angle(visit.rot*u.degree),
-        boresight_rotation_coord='sky',
-        tracking_radec=astropy.coordinates.SkyCoord(visit.ra, visit.dec, frame="icrs", unit="deg"),
+        boresight_rotation_angle=astropy.coordinates.Angle(visit.cameraAngle*u.degree),
+        boresight_rotation_coord=visit.rotationSystem.name.lower(),
+        tracking_radec=astropy.coordinates.SkyCoord(*visit.position, frame="icrs", unit="deg"),
         observation_id="1",
         physical_filter=filter,
         exposure_time=30.0*u.second,
@@ -136,15 +136,22 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         dec = -4.950050405424033
         # DECam has no rotator; instrument angle is 90 degrees in our system.
         rot = 90.
-        self.next_visit = Visit(instname,
+        self.next_visit = Visit(instrument=instname,
                                 detector=56,
-                                group="1",
-                                snaps=1,
-                                filter=filter,
-                                ra=ra,
-                                dec=dec,
-                                rot=rot,
-                                kind="SURVEY")
+                                groupId="1",
+                                nimages=1,
+                                filters=filter,
+                                coordinateSystem=Visit.CoordSys.ICRS,
+                                position=[ra, dec],
+                                rotationSystem=Visit.RotSys.SKY,
+                                cameraAngle=rot,
+                                survey="SURVEY",
+                                salIndex=42,
+                                scriptSalIndex=42,
+                                dome=Visit.Dome.OPEN,
+                                duration=35.0,
+                                totalCheckpoints=1,
+                                )
         self.logger_name = "lsst.activator.middleware_interface"
 
     def tearDown(self):
@@ -254,7 +261,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface.prep_butler(self.next_visit)
 
         # Second visit with everything same except group.
-        self.next_visit = dataclasses.replace(self.next_visit, group=str(int(self.next_visit.group) + 1))
+        self.next_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
         self.interface.prep_butler(self.next_visit)
         expected_shards = {157394, 157401, 157405}
         self._check_imports(self.interface.butler, detector=56, expected_shards=expected_shards)
@@ -263,10 +270,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Only 5, 10, 56, 60 have valid calibs.
         self.next_visit = dataclasses.replace(self.next_visit,
                                               detector=5,
-                                              group=str(int(self.next_visit.group) + 1),
+                                              groupId=str(int(self.next_visit.groupId) + 1),
                                               # Offset by a bit over 1 patch.
-                                              ra=self.next_visit.ra + 0.4,
-                                              dec=self.next_visit.dec - 0.4,
+                                              position=[self.next_visit.position[0] + 0.4,
+                                                        self.next_visit.position[1] - 0.4],
                                               )
         self.interface.prep_butler(self.next_visit)
         expected_shards.update({157218, 157229})
@@ -548,16 +555,23 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         dec = -4.950050405424033
         # DECam has no rotator; instrument angle is 90 degrees in our system.
         rot = 90.
-        self.next_visit = Visit(instrument,
+        self.next_visit = Visit(instrument=instrument,
                                 detector=56,
-                                group="1",
-                                snaps=1,
-                                filter=filter,
-                                ra=ra,
-                                dec=dec,
-                                rot=rot,
-                                kind="SURVEY")
-        self.second_visit = dataclasses.replace(self.next_visit, group="2")
+                                groupId="1",
+                                nimages=1,
+                                filters=filter,
+                                coordinateSystem=Visit.CoordSys.ICRS,
+                                position=[ra, dec],
+                                rotationSystem=Visit.RotSys.SKY,
+                                cameraAngle=rot,
+                                survey="SURVEY",
+                                salIndex=42,
+                                scriptSalIndex=42,
+                                dome=Visit.Dome.OPEN,
+                                duration=35.0,
+                                totalCheckpoints=1,
+                                )
+        self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.logger_name = "lsst.activator.middleware_interface"
 
         # Populate repository.
