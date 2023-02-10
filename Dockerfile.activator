@@ -1,4 +1,5 @@
-FROM ghcr.io/lsst-dm/prompt-proto-base:latest
+ARG STACK_TAG=latest
+FROM ghcr.io/lsst-dm/prompt-proto-base:${STACK_TAG}
 ENV PYTHONUNBUFFERED True
 ENV APP_HOME /app
 ENV PROMPT_PROTOTYPE_DIR $APP_HOME

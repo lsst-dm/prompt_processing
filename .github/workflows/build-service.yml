@@ -18,8 +18,25 @@ on:
 permissions:
   packages: write
 
+env:
+  STACK_TAG_LIST: '["latest"]'
+
 jobs:
+  matrix-gen:
+    # This job exists solely because fromJSON() cannot directly accept
+    # env.STACK_TAG_LIST for some reason.
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: echo "matrix=${STACK_TAG_LIST}" >> $GITHUB_OUTPUT
+
   test-service:
+    needs: matrix-gen
+    strategy:
+      matrix:
+        stackTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
     name: Test service
     runs-on: ubuntu-latest
     steps:
@@ -37,7 +54,7 @@ jobs:
         run: |
           docker run \
               -v $GITHUB_WORKSPACE:/home/lsst/prompt_prototype \
-              ghcr.io/${{ github.repository_owner }}/prompt-proto-base:latest \
+              ghcr.io/${{ github.repository_owner }}/prompt-proto-base:${{ matrix.stackTag }} \
               bash -c '
                   cd /home/lsst/prompt_prototype
                   source /opt/lsst/software/stack/loadLSST.bash
@@ -48,10 +65,16 @@ jobs:
 
   update-service-image:
     name: Update service image
-    needs: test-service
+    needs:
+      - matrix-gen
+      - test-service
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        stackTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
     env:
       IMAGE_NAME: prompt-proto-service
+      STACK_TAG: ${{ matrix.stackTag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -61,31 +84,33 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build image
-        run: docker build . -f Dockerfile.activator --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}"
-      - name: Push image to GitHub Container Registry
-        run: |
-          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
-          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
-          [ "$VERSION" == "merge" ] && VERSION=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
-          [ "$VERSION" == "main" ] && VERSION=latest
-          echo IMAGE_ID=$IMAGE_ID
-          echo VERSION=$VERSION
-          docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
-          docker push $IMAGE_ID:$VERSION
       - name: Login to Google Artifact Registry
         uses: docker/login-action@v2
         with:
           registry: us-central1-docker.pkg.dev
           username: _json_key_base64
           password: ${{ secrets.GAR_JSON_B64 }}
-      - name: Push image to Google Artifact Registry
+      - name: Build image
         run: |
-          IMAGE_ID=us-central1-docker.pkg.dev/prompt-proto/prompt/$IMAGE_NAME
-          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
-          [ "$VERSION" == "merge" ] && VERSION=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
-          [ "$VERSION" == "main" ] && VERSION=latest
-          echo IMAGE_ID=$IMAGE_ID
-          echo VERSION=$VERSION
-          docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
-          docker push $IMAGE_ID:$VERSION
+          docker build . -f Dockerfile.activator \
+            --build-arg "STACK_TAG=$STACK_TAG" \
+            --tag $IMAGE_NAME \
+            --label "runnumber=${GITHUB_RUN_ID}" \
+            --label "stacktag=${STACK_TAG}"
+      - name: Push image to container registries
+        run: |
+          BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+          [ "$BRANCH" == "merge" ] && BRANCH=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
+
+          for IMAGE_ID in "ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME" \
+                          "us-central1-docker.pkg.dev/prompt-proto/prompt/$IMAGE_NAME"; do
+            if [ "$BRANCH" == "main" ]; then
+              VERSION="$STACK_TAG"
+            else
+              VERSION="${BRANCH}-$STACK_TAG"
+            fi
+            echo IMAGE_ID=$IMAGE_ID
+            echo VERSION=$VERSION
+            docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+            docker push $IMAGE_ID:$VERSION
+          done
