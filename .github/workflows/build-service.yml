@@ -90,13 +90,18 @@ jobs:
           registry: us-central1-docker.pkg.dev
           username: _json_key_base64
           password: ${{ secrets.GAR_JSON_B64 }}
+      - name: Determine eups tag
+        run: |
+          docker run ghcr.io/${{ github.repository_owner }}/prompt-proto-base:"$BASE_TAG" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag
+          echo "Eups tag = $(< eups.tag)"
       - name: Build image
         run: |
           docker build . -f Dockerfile.activator \
             --build-arg "BASE_TAG=$BASE_TAG" \
             --tag $IMAGE_NAME \
             --label "runnumber=${GITHUB_RUN_ID}" \
-            --label "basetag=${BASE_TAG}"
+            --label "basetag=${BASE_TAG}" \
+            --label "eupstag=$(< eups.tag)"
       - name: Push image to container registries
         run: |
           BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
@@ -113,4 +118,15 @@ jobs:
             echo VERSION=$VERSION
             docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
             docker push $IMAGE_ID:$VERSION
+            EUPS_TAG=$(< eups.tag)
+            if [ "$BASE_TAG" != "$EUPS_TAG" ]; then
+              if [ "$BRANCH" == "main" ]; then
+                VERSION="$EUPS_TAG"
+              else
+                VERSION="${BRANCH}-$EUPS_TAG"
+              fi
+              echo VERSION=$VERSION
+              docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+              docker push $IMAGE_ID:$VERSION
+            fi
           done
