@@ -19,24 +19,24 @@ permissions:
   packages: write
 
 env:
-  STACK_TAG_LIST: '["latest"]'
+  BASE_TAG_LIST: '["latest"]'
 
 jobs:
   matrix-gen:
     # This job exists solely because fromJSON() cannot directly accept
-    # env.STACK_TAG_LIST for some reason.
+    # env.BASE_TAG_LIST for some reason.
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
       - id: set-matrix
-        run: echo "matrix=${STACK_TAG_LIST}" >> $GITHUB_OUTPUT
+        run: echo "matrix=${BASE_TAG_LIST}" >> $GITHUB_OUTPUT
 
   test-service:
     needs: matrix-gen
     strategy:
       matrix:
-        stackTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
+        baseTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
     name: Test service
     runs-on: ubuntu-latest
     steps:
@@ -54,7 +54,7 @@ jobs:
         run: |
           docker run \
               -v $GITHUB_WORKSPACE:/home/lsst/prompt_prototype \
-              ghcr.io/${{ github.repository_owner }}/prompt-proto-base:${{ matrix.stackTag }} \
+              ghcr.io/${{ github.repository_owner }}/prompt-proto-base:${{ matrix.baseTag }} \
               bash -c '
                   cd /home/lsst/prompt_prototype
                   source /opt/lsst/software/stack/loadLSST.bash
@@ -71,10 +71,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        stackTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
+        baseTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
     env:
       IMAGE_NAME: prompt-proto-service
-      STACK_TAG: ${{ matrix.stackTag }}
+      BASE_TAG: ${{ matrix.baseTag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -93,10 +93,10 @@ jobs:
       - name: Build image
         run: |
           docker build . -f Dockerfile.activator \
-            --build-arg "STACK_TAG=$STACK_TAG" \
+            --build-arg "BASE_TAG=$BASE_TAG" \
             --tag $IMAGE_NAME \
             --label "runnumber=${GITHUB_RUN_ID}" \
-            --label "stacktag=${STACK_TAG}"
+            --label "basetag=${BASE_TAG}"
       - name: Push image to container registries
         run: |
           BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
@@ -105,9 +105,9 @@ jobs:
           for IMAGE_ID in "ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME" \
                           "us-central1-docker.pkg.dev/prompt-proto/prompt/$IMAGE_NAME"; do
             if [ "$BRANCH" == "main" ]; then
-              VERSION="$STACK_TAG"
+              VERSION="$BASE_TAG"
             else
-              VERSION="${BRANCH}-$STACK_TAG"
+              VERSION="${BRANCH}-$BASE_TAG"
             fi
             echo IMAGE_ID=$IMAGE_ID
             echo VERSION=$VERSION
