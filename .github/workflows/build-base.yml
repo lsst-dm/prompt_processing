@@ -12,6 +12,17 @@ on:
       - '.github/workflows/build-base.yml'
       - 'Dockerfile.main'
   workflow_dispatch:
+    inputs:
+      stackTag:
+        description: 'Science Pipelines tag (default: d_latest)'
+        required: true
+        default: 'd_latest'
+        type: string
+      makeLatest:
+        description: 'Push container with "latest" tag'
+        required: false
+        type: boolean
+
 
 permissions:
   packages: write
@@ -22,41 +33,89 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IMAGE_NAME: prompt-proto-base
+      STACK_TAG: ${{ inputs.stackTag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-      - name: Build image
-        # Context-frree build
-        run: docker build - --tag $IMAGE_NAME --label "runnumber=${GITHUB_RUN_ID}" < Dockerfile.main
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push image to GitHub Container Registry
-        run: |
-          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME
-          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
-          [ "$VERSION" == "merge" ] && VERSION=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
-          [ "$VERSION" == "main" ] && VERSION=latest
-          echo IMAGE_ID=$IMAGE_ID
-          echo VERSION=$VERSION
-          docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
-          docker push $IMAGE_ID:$VERSION
       - name: Login to Google Artifact Registry
         uses: docker/login-action@v2
         with:
           registry: us-central1-docker.pkg.dev
           username: _json_key_base64
           password: ${{ secrets.GAR_JSON_B64 }}
-      - name: Push image to Google Artifact Registry
+      - name: Determine base image eups tag
         run: |
-          IMAGE_ID=us-central1-docker.pkg.dev/prompt-proto/prompt/$IMAGE_NAME
-          VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
-          [ "$VERSION" == "merge" ] && VERSION=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
-          [ "$VERSION" == "main" ] && VERSION=latest
-          echo IMAGE_ID=$IMAGE_ID
-          echo VERSION=$VERSION
-          docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
-          docker push $IMAGE_ID:$VERSION
+          if [[ -n "$STACK_TAG" ]]; then
+            if [[ "$STACK_TAG" == "*_latest" ]]; then
+              echo "$STACK_TAG" > lsst.docker.tag
+            else
+              echo "7-stack-lsst_distrib-$STACK_TAG" > lsst.docker.tag
+            fi
+            echo "$STACK_TAG" > stack.tag
+          else
+            echo "d_latest" > lsst.docker.tag
+            echo "d_latest" > stack.tag
+          fi
+          docker run lsstsqre/centos:"$(< lsst.docker.tag)" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag
+          echo "Eups tag = $(< eups.tag)"
+      - name: Build image
+        # Context-free build
+        run: |
+          docker build - \
+            --build-arg "STACK_TAG=$(< lsst.docker.tag)" \
+            --tag $IMAGE_NAME \
+            --label "runnumber=${GITHUB_RUN_ID}" \
+            --label "stacktag=$(< stack.tag)" \
+            --label "eupstag=$(< eups.tag)" \
+            < Dockerfile.main
+      - name: Push image to registries
+        run: |
+          MAKE_LATEST="${{ inputs.makeLatest }}"
+          [[ -n "$MAKE_LATEST" ]] || MAKE_LATEST="false"
+          BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+          [ "$BRANCH" == "merge" ] && BRANCH=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
+
+          for IMAGE_ID in "ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME" \
+            "us-central1-docker.pkg.dev/prompt-proto/prompt/$IMAGE_NAME"; do
+
+            STACK_TAG="$(< stack.tag)"
+            if [ "$BRANCH" == "main" ]; then
+              VERSION="$STACK_TAG"
+            else
+              VERSION="${BRANCH}-$STACK_TAG"
+            fi
+            echo IMAGE_ID=$IMAGE_ID
+            echo VERSION=$VERSION
+            docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+            docker push $IMAGE_ID:$VERSION
+
+            EUPS_TAG=$(< eups.tag)
+            if [ "$STACK_TAG" != "$EUPS_TAG" ]; then
+              # Also push actual eups tag if not the same (e.g. d_latest)
+              if [ "$BRANCH" == "main" ]; then
+                VERSION="$EUPS_TAG"
+              else
+                VERSION="${BRANCH}-$EUPS_TAG"
+              fi
+              echo VERSION=$VERSION
+              docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+              docker push $IMAGE_ID:$VERSION
+            fi
+            if [ "$MAKE_LATEST" == "true" ]; then
+              # Push latest if requested
+              if [ "$BRANCH" == "main" ]; then
+                VERSION="latest"
+              else
+                VERSION="${BRANCH}-latest"
+              fi
+              echo VERSION=$VERSION
+              docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+              docker push $IMAGE_ID:$VERSION
+            fi
+          done
