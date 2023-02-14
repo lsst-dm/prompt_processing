@@ -19,6 +19,12 @@ permissions:
   packages: write
 
 env:
+  # This is a bracketed, comma-separated list of double-quoted base container
+  # tags that will be used to build service containers on each branch
+  # (including "main").  Typically, any tags listed beyond "latest" would be
+  # relatively stable Pipelines containers that are needed to avoid issues with
+  # the "latest" version; they would remain in this list until "latest" becomes
+  # usable for all building and testing.
   BASE_TAG_LIST: '["latest"]'
 
 jobs:
