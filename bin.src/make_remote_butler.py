@@ -117,6 +117,11 @@ def _hsc_rc2(butler):
             "HSC/calib/DM-28636",
         ],
     )
+
+    butler.registry.registerCollection(
+        instrument.makeUnboundedCalibrationRunName(),
+        type=CollectionType.CHAINED
+    )
     butler.registry.setCollectionChain(
         instrument.makeUnboundedCalibrationRunName(),
         [

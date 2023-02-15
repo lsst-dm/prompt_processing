@@ -194,7 +194,7 @@ def upload_hsc_images(dest_bucket, group_id, butler, refs):
                 ref.dataId["detector"],
                 group_id,
                 0,
-                ref.dataId["exposure"],
+                exposure_num,
                 ref.dataId["physical_filter"],
             )
             transferred = butler.retrieveArtifacts(
