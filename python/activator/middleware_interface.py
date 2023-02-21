@@ -111,6 +111,8 @@ class MiddlewareInterface:
         name or the short name. Examples: "LsstCam", "lsst.obs.lsst.LsstCam".
         TODO: this arg can probably be removed and replaced with internal
         use of the butler.
+    skymap: `str`
+        Name of the skymap in the central repo for querying templates.
     local_storage : `str`
         An absolute path to a space where this object can create a local
         Butler repo. The repo is guaranteed to be unique to this object.
@@ -138,7 +140,7 @@ class MiddlewareInterface:
     #   corresponding to self.camera and self.skymap.
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
-                 local_storage: str,
+                 skymap: str, local_storage: str,
                  prefix: str = "s3://"):
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
@@ -167,11 +169,9 @@ class MiddlewareInterface:
             "camera", instrument=self.instrument.getName(),
             collections=self.instrument.makeUnboundedCalibrationRunName()
         )
-        # TODO: is central_butler guaranteed to have only one skymap dimension?
-        skymaps = list(self.central_butler.registry.queryDataIds("skymap"))
-        assert len(skymaps) == 1, "Ambiguous or missing skymap in central repo."
-        self.skymap_name = skymaps[0]["skymap"]
-        self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name)
+        self.skymap_name = skymap
+        self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
+                                              collections=self._COLLECTION_SKYMAP)
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds

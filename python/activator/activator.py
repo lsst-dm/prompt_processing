@@ -43,6 +43,8 @@ PROJECT_ID = "prompt-proto"
 
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
+# The skymap to use in the central repo
+skymap = os.environ["SKYMAP"]
 # URI to the main repository containing calibs and templates
 calib_repo = os.environ["CALIB_REPO"]
 # S3 Endpoint for Buckets; needed for direct Boto access but not Butler
@@ -86,6 +88,7 @@ storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
 mwi = MiddlewareInterface(get_central_butler(calib_repo, instrument_name),
                           image_bucket,
                           instrument_name,
+                          skymap,
                           local_repos)
 
 

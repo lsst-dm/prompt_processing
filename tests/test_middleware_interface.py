@@ -48,6 +48,8 @@ from activator.middleware_interface import get_central_butler, MiddlewareInterfa
 instname = "DECam"
 # Full name of the physical filter for the test file.
 filter = "g DECam SDSS c0001 4720.0 1520.0"
+# The skymap name used in the test repo.
+skymap_name = "deepCoadd_skyMap"
 
 
 def fake_file_data(filename, dimensions, instrument, visit):
@@ -133,7 +135,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Have to preserve the tempdir, so that it doesn't get cleaned up.
         self.workspace = tempfile.TemporaryDirectory()
         self.interface = MiddlewareInterface(central_butler, self.input_data, instrument,
-                                             self.workspace.name,
+                                             skymap_name, self.workspace.name,
                                              prefix="file://")
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
@@ -171,7 +173,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                        ]:
             # TODO: better way to test repo location?
             self.assertTrue(
-                butler.getURI("skyMap", skymap="deepCoadd_skyMap", run="foo", predict=True).ospath
+                butler.getURI("skyMap", skymap=skymap_name, run="foo", predict=True).ospath
                 .startswith(self.central_repo))
             self.assertEqual(list(butler.collections), [f"{instname}/defaults"])
             self.assertTrue(butler.isWriteable())
@@ -203,7 +205,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the right skymap is in the chained output collection.
         self.assertTrue(
             butler.datasetExists("skyMap",
-                                 skymap="deepCoadd_skyMap",
+                                 skymap=skymap_name,
                                  collections=self.interface.output_collection)
         )
 
@@ -241,7 +243,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         butler.registry.refresh()
         for patch in (464, 465, 509, 510):
             butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
-                                 skymap="deepCoadd_skyMap",
+                                 skymap=skymap_name,
                                  collections=self.interface.output_collection)
 
     def test_prep_butler(self):
@@ -592,7 +594,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self._create_copied_repo()
         central_butler = Butler(self.central_repo.name,
                                 instrument=instname,
-                                skymap="deepCoadd_skyMap",
+                                skymap=skymap_name,
                                 collections=[f"{instname}/defaults"],
                                 writeable=True)
         instrument = "lsst.obs.decam.DarkEnergyCamera"
@@ -628,7 +630,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.logger_name = "lsst.activator.middleware_interface"
 
         # Populate repository.
-        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument, workspace.name,
+        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument,
+                                             skymap_name, workspace.name,
                                              prefix="file://")
         # TODO: should MiddlewareInterface have a cleanup method?
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, self.interface._repo)
