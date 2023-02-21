@@ -529,7 +529,29 @@ class MiddlewareInterface:
         self._clean_unsafe_datasets(self.butler, output_run)
         return output_run
 
-    def _prep_pipeline(self, visit: Visit) -> None:
+    def _get_pipeline_file(self, visit: Visit) -> str:
+        """Identify the pipeline to be run, based on the configured instrument
+        and details of the visit.
+
+        Parameters
+        ----------
+        visit : Visit
+            Group of snaps from one detector to prepare the pipeline for.
+
+        Returns
+        -------
+        pipeline : `str`
+            A path to a configured pipeline file.
+        """
+        # TODO: We hacked the basepath in the Dockerfile so this works both in
+        # development and in service container, but it would be better if there
+        # were a path that's valid in both.
+        return os.path.join(getPackageDir("prompt_prototype"),
+                            "pipelines",
+                            visit.instrument,
+                            "ApPipe.yaml")
+
+    def _prep_pipeline(self, visit: Visit) -> lsst.pipe.base.Pipeline:
         """Setup the pipeline to be run, based on the configured instrument and
         details of the incoming visit.
 
@@ -549,11 +571,7 @@ class MiddlewareInterface:
             Raised if there is no AP pipeline file for this configuration.
             TODO: could be a good case for a custom exception here.
         """
-        # TODO: We hacked the basepath in the Dockerfile so this works both in
-        # development and in service container, but it would be better if there
-        # were a path that's valid in both.
-        ap_pipeline_file = os.path.join(getPackageDir("prompt_prototype"),
-                                        "pipelines", self.instrument.getName(), "ApPipe.yaml")
+        ap_pipeline_file = self._get_pipeline_file(visit)
         try:
             pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         except FileNotFoundError:
