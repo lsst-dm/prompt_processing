@@ -23,7 +23,6 @@ import dataclasses
 import datetime
 import itertools
 import tempfile
-import time
 import os.path
 import unittest
 import unittest.mock
@@ -622,24 +621,19 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
     def _simulate_run(self):
         """Create a mock pipeline execution that stores a calexp for self.raw_data_id.
-
-        Returns
-        -------
-        run : `str`
-            The output run containing the output.
         """
         exp = lsst.afw.image.ExposureF(20, 20)
-        run = self.interface._prep_collections()
+        run1 = self.interface._prep_collections(self.next_visit)
         self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
+        run2 = self.interface._prep_collections(self.second_visit)
         self.second_processed_data_id = {(k if k != "exposure" else "visit"): v
                                          for k, v in self.second_data_id.items()}
         # Dataset types defined for local Butler on pipeline run, but no
         # guarantee this happens in central Butler.
         butler_tests.addDatasetType(self.interface.butler, "calexp", {"instrument", "visit", "detector"},
                                     "ExposureF")
-        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run)
-        self.interface.butler.put(exp, "calexp", self.second_processed_data_id, run=run)
-        return run
+        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run1)
+        self.interface.butler.put(exp, "calexp", self.second_processed_data_id, run=run2)
 
     def _count_datasets(self, butler, types, collections):
         return len(set(butler.registry.queryDatasets(types, collections=collections)))
@@ -681,9 +675,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
     def test_export_outputs_retry(self):
         self.interface.export_outputs(self.next_visit, {self.raw_data_id["exposure"]})
-
-        time.sleep(1.0)  # Force _simulate_run() to create a new timestamped run
-        self._simulate_run()
         self.interface.export_outputs(self.second_visit, {self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)

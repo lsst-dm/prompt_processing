@@ -139,8 +139,6 @@ class MiddlewareInterface:
     #   pre-made inputs, and raws, in that order. However, self.butler is not
     #   guaranteed to contain concrete data, or even the dimensions
     #   corresponding to self.camera and self.skymap.
-    # if it exists, the latest run in self.output_collection is always the first
-    # in the chain.
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  local_storage: str,
@@ -569,8 +567,13 @@ class MiddlewareInterface:
         return self.instrument.makeCollectionName(
             "prompt", f"output-{date:%Y-%m-%d}", pipeline_name, self._deployment)
 
-    def _prep_collections(self):
+    def _prep_collections(self, visit: Visit):
         """Pre-register output collections in advance of running the pipeline.
+
+        Parameters
+        ----------
+        visit : Visit
+            Group of snaps needing an output run.
 
         Returns
         -------
@@ -578,23 +581,10 @@ class MiddlewareInterface:
             The name of a new run collection to use for outputs. The run name
             is prefixed by ``self.output_collection``.
         """
-        # NOTE: Because we receive a butler on init, we can't use this
-        # prep_butler() because it takes a repo path.
-        # butler = SimplePipelineExecutor.prep_butler(
-        #     self.repo,
-        #     inputs=[self.calibration_collection,
-        #             self.instrument.makeDefaultRawIngestRunName(),
-        #             'refcats'],
-        #     output=self.output_collection)
-        # The below is taken from SimplePipelineExecutor.prep_butler.
-        # TODO: currently the run **must** be unique for each unit of
-        # processing. It must be unique per group because in the prototype the
-        # same exposures may be rerun under different group IDs, and they must
-        # be unique per detector because the same worker may be tasked with
-        # different detectors from the same group. Replace with a single
-        # universal run on DM-36586.
-        output_run = f"{self.output_collection}/{self.instrument.makeCollectionTimestamp()}"
+        output_run = self._get_output_run(visit)
         self.butler.registry.registerCollection(output_run, CollectionType.RUN)
+        # As of Feb 2023, this moves output_run to the front of the chain if
+        # it's already present, but this behavior cannot be relied upon.
         _prepend_collection(self.butler, self.output_collection, [output_run])
         # TODO: remove after DM-36162
         self._clean_unsafe_datasets(self.butler, output_run)
@@ -725,16 +715,17 @@ class MiddlewareInterface:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.") from e
 
-        output_run = self._prep_collections()
+        output_run = self._prep_collections(visit)
 
         where = f"instrument='{visit.instrument}' and detector={visit.detector} " \
                 f"and exposure in ({','.join(str(x) for x in exposure_ids)})"
         pipeline = self._prep_pipeline(visit)
+        output_run_butler = Butler(butler=self.butler,
+                                   collections=(self._get_init_output_run(visit), ) + self.butler.collections,
+                                   run=output_run)
         executor = SimplePipelineExecutor.from_pipeline(pipeline,
                                                         where=where,
-                                                        butler=Butler(butler=self.butler,
-                                                                      collections=self.butler.collections,
-                                                                      run=output_run))
+                                                        butler=output_run_butler)
         if len(executor.quantum_graph) == 0:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.")
@@ -765,19 +756,16 @@ class MiddlewareInterface:
                             out_collection=None)
 
         umbrella = self.instrument.makeCollectionName("prompt-results")
-        latest_run = self.butler.registry.getCollectionChain(self.output_collection)[0]
-        if latest_run.startswith(self.output_collection + "/"):
-            self._export_subset(visit, exposure_ids,
-                                # TODO: find a way to merge datasets like *_config
-                                # or *_schema that are duplicated across multiple
-                                # workers.
-                                self._get_safe_dataset_types(self.butler),
-                                in_collections=latest_run,
-                                out_collection=umbrella)
-            _log.info(f"Pipeline products saved to collection '{umbrella}' for "
-                      f"detector {visit.detector} of {exposure_ids}.")
-        else:
-            _log.warning(f"No output runs to save! Called for {visit.detector} of {exposure_ids}.")
+        latest_run = self._get_output_run(visit)
+        self._export_subset(visit, exposure_ids,
+                            # TODO: find a way to merge datasets like *_config
+                            # or *_schema that are duplicated across multiple
+                            # workers.
+                            self._get_safe_dataset_types(self.butler),
+                            in_collections=latest_run,
+                            out_collection=umbrella)
+        _log.info(f"Pipeline products saved to collection '{umbrella}' for "
+                  f"detector {visit.detector} of {exposure_ids}.")
 
     @staticmethod
     def _clean_unsafe_datasets(butler, run: str):
