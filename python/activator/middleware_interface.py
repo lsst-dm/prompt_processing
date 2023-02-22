@@ -22,6 +22,8 @@
 __all__ = ["get_central_butler", "MiddlewareInterface"]
 
 import collections.abc
+import datetime
+import hashlib
 import itertools
 import logging
 import os
@@ -129,7 +131,8 @@ class MiddlewareInterface:
     # self._apdb_uri is a valid URI that unambiguously identifies the APDB
     # self.image_host is a valid URI with non-empty path and no query or fragment.
     # self._download_store is None if and only if self.image_host is a local URI.
-    # self.instrument, self.camera, and self.skymap do not change after __init__.
+    # self.instrument, self.camera, self.skymap, self._deployment do not change
+    #   after __init__.
     # self._repo is the only reference to its TemporaryDirectory object.
     # self.butler defaults to a chained collection named
     #   self.output_collection, which contains zero or more output runs,
@@ -142,6 +145,8 @@ class MiddlewareInterface:
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
                  local_storage: str,
                  prefix: str = "s3://"):
+        # Deployment/version ID -- potentially expensive to generate.
+        self._deployment = self._get_deployment()
         self._apdb_uri = self._make_apdb_uri()
         self._apdb_namespace = os.environ.get("NAMESPACE_APDB", None)
         self.central_butler = central_butler
@@ -175,6 +180,27 @@ class MiddlewareInterface:
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
+
+    def _get_deployment(self):
+        """Get a unique version ID of the active stack and pipeline configuration(s).
+
+        Returns
+        -------
+        version : `str`
+            A unique version identifier for the stack. Contains only
+            word characters and "-", but not guaranteed to be human-readable.
+        """
+        try:
+            # Defined by Knative in containers, guaranteed to be unique for
+            # each deployment. Currently of the form prompt-proto-service-#####.
+            return os.environ["K_REVISION"]
+        except KeyError:
+            # If not in a container, read the active Science Pipelines install.
+            packages = lsst.utils.packages.Packages.fromSystem()  # Takes several seconds!
+            h = hashlib.md5(usedforsecurity=False)
+            for package, version in packages.items():
+                h.update(bytes(package + version, encoding="utf-8"))
+            return f"local-{h.hexdigest()}"
 
     def _make_apdb_uri(self):
         """Generate a URI for accessing the APDB.
@@ -497,6 +523,51 @@ class MiddlewareInterface:
         ordered = sorted(refs, key=get_key)
         for k, g in itertools.groupby(ordered, key=get_key):
             yield k, len(list(g))
+
+    def _get_init_output_run(self,
+                             visit: Visit,
+                             date: datetime.date = datetime.datetime.now(datetime.timezone.utc)) -> str:
+        """Generate a deterministic init-output collection name that avoids
+        configuration conflicts.
+
+        Parameters
+        ----------
+        visit : Visit
+            Group of snaps whose processing goes into the run.
+        date : `datetime.date`
+            Date of the processing run (not observation!)
+
+        Returns
+        -------
+        run : `str`
+            The run in which to place pipeline init-outputs.
+        """
+        # Current executor requires that init-outputs be in the same run as
+        # outputs. This can be changed once DM-36162 is done.
+        return self._get_output_run(visit, date)
+
+    def _get_output_run(self,
+                        visit: Visit,
+                        date: datetime.date = datetime.datetime.now(datetime.timezone.utc)) -> str:
+        """Generate a deterministic collection name that avoids version or
+        provenance conflicts.
+
+        Parameters
+        ----------
+        visit : Visit
+            Group of snaps whose processing goes into the run.
+        date : `datetime.date`
+            Date of the processing run (not observation!)
+
+        Returns
+        -------
+        run : `str`
+            The run in which to place processing outputs.
+        """
+        pipeline_name, _ = os.path.splitext(os.path.basename(self._get_pipeline_file(visit)))
+        # Order optimized for S3 bucket -- filter out as many files as soon as possible.
+        return self.instrument.makeCollectionName(
+            "prompt", f"output-{date:%Y-%m-%d}", pipeline_name, self._deployment)
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.

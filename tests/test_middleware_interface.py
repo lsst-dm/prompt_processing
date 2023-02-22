@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import dataclasses
+import datetime
 import itertools
 import tempfile
 import time
@@ -109,6 +110,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                    {"IP_APDB": "localhost",
                                                     "DB_APDB": "postgres",
                                                     "USER_APDB": "postgres",
+                                                    "K_REVISION": "prompt-proto-service-042",
                                                     })
         cls.env_patcher.start()
 
@@ -372,6 +374,19 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "No data to process"):
             self.interface.run_pipeline(self.next_visit, {2})
 
+    def test_get_output_run(self):
+        for date in [datetime.date.today(), datetime.datetime.today()]:
+            out_run = self.interface._get_output_run(self.next_visit, date)
+            self.assertEqual(out_run,
+                             f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
+                             "/ApPipe/prompt-proto-service-042"
+                             )
+            init_run = self.interface._get_init_output_run(self.next_visit, date)
+            self.assertEqual(init_run,
+                             f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
+                             "/ApPipe/prompt-proto-service-042"
+                             )
+
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
         # Pass iff any dataset matches the query, no need to check them all.
         for dataset in butler.registry.queryDatasets(dataset_type, collections=collection, dataId=data_id):
@@ -503,6 +518,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                    {"IP_APDB": "localhost",
                                                     "DB_APDB": "postgres",
                                                     "USER_APDB": "postgres",
+                                                    "K_REVISION": "prompt-proto-service-042",
                                                     })
         cls.env_patcher.start()
 
