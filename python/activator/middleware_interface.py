@@ -740,9 +740,6 @@ class MiddlewareInterface:
         """Copy raws and pipeline outputs from processing a set of images back
         to the central Butler.
 
-        The copied raws can be found in the collection ``<instrument>/raw/all``,
-        while the outputs can be found in ``"<instrument>/prompt-results"``.
-
         Parameters
         ----------
         visit : Visit
@@ -753,9 +750,8 @@ class MiddlewareInterface:
         # TODO: this method will not be responsible for raws after DM-36051.
         self._export_subset(visit, exposure_ids, "raw",
                             in_collections=self.instrument.makeDefaultRawIngestRunName(),
-                            out_collection=None)
+                            )
 
-        umbrella = self.instrument.makeCollectionName("prompt-results")
         latest_run = self._get_output_run(visit)
         self._export_subset(visit, exposure_ids,
                             # TODO: find a way to merge datasets like *_config
@@ -763,8 +759,8 @@ class MiddlewareInterface:
                             # workers.
                             self._get_safe_dataset_types(self.butler),
                             in_collections=latest_run,
-                            out_collection=umbrella)
-        _log.info(f"Pipeline products saved to collection '{umbrella}' for "
+                            )
+        _log.info(f"Pipeline products saved to collection '{latest_run}' for "
                   f"detector {visit.detector} of {exposure_ids}.")
 
     @staticmethod
@@ -810,7 +806,7 @@ class MiddlewareInterface:
                 if "detector" in dstype.dimensions]
 
     def _export_subset(self, visit: Visit, exposure_ids: set[int],
-                       dataset_types: typing.Any, in_collections: typing.Any, out_collection: str) -> None:
+                       dataset_types: typing.Any, in_collections: typing.Any) -> None:
         """Copy datasets associated with a processing run back to the
         central Butler.
 
@@ -826,9 +822,6 @@ class MiddlewareInterface:
         in_collections
             The collections to transfer from; can be any expression described
             in :ref:`daf_butler_collection_expressions`.
-        out_collection : `str`, optional
-            The chained collection in which to include the datasets. Need not
-            exist before the call.
         """
         try:
             # Need to iterate over datasets at least twice, so list.
@@ -865,13 +858,6 @@ class MiddlewareInterface:
                                         skip_dimensions={"instrument", "detector",
                                                          "skymap", "tract", "patch"},
                                         transfer="copy")
-        if out_collection is not None:
-            # No-op if collection already exists.
-            self.central_butler.registry.registerCollection(out_collection, CollectionType.CHAINED)
-            runs = {ref.run for ref in datasets}
-            # Don't unlink any previous runs.
-            # TODO: need to secure this against concurrent modification
-            _prepend_collection(self.central_butler, out_collection, runs)
 
 
 def _query_missing_datasets(src_repo: Butler, dest_repo: Butler,
