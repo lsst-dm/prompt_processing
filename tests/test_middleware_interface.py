@@ -397,18 +397,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         for dataset in butler.registry.queryDatasets(dataset_type, collections=collection, dataId=data_id):
             self.fail(f"{dataset} matches {dataset_type}@{data_id} in {collection}.")
 
-    def test_clean_unsafe_datasets(self):
-        """Test that _clean_unsafe_datasets removes only "conflicting" datasets.
-
-        A conflicting dataset is one that can be produced with the same data ID
-        in different AP runs. This test currently uses ``calibrate_config`` and
-        ``src_schema`` as examples of conflicting datasets, and ``src`` and
-        ``calexp`` as counterexamples (which must not be removed).
+    def test_clean_local_repo(self):
+        """Test that clean_local_repo removes old datasets from the datastore.
         """
-        butler = butler_tests.makeTestCollection(self.interface.butler, uniqueId=self.id())
-        run = butler.run
         # Safe to define custom dataset types and IDs, because the repository
         # is regenerated for each test.
+        butler = self.interface.butler
         raw_data_id, _ = fake_file_data("foo.bar",
                                         butler.dimensions,
                                         self.interface.instrument,
@@ -416,28 +410,31 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.items()}
         butler_tests.addDataIdValue(butler, "exposure", raw_data_id["exposure"])
         butler_tests.addDataIdValue(butler, "visit", processed_data_id["visit"])
-        butler_tests.addDatasetType(butler, "src_schema", set(), "SourceCatalog")
-        butler_tests.addDatasetType(butler, "calibrate_config", set(), "Config")
-        butler_tests.addDatasetType(butler, "src", {"instrument", "visit", "detector"}, "SourceCatalog")
-        butler_tests.addDatasetType(butler, "calexp", {"instrument", "visit", "detector"}, "ExposureF")
+        butler_tests.addDatasetType(butler, "raw", raw_data_id.keys(), "Exposure")
+        butler_tests.addDatasetType(butler, "src", processed_data_id.keys(), "SourceCatalog")
+        butler_tests.addDatasetType(butler, "calexp", processed_data_id.keys(), "ExposureF")
 
-        conf = lsst.pex.config.Config()
         exp = lsst.afw.image.ExposureF(20, 20)
         cat = lsst.afw.table.SourceCatalog()
-        butler.put(conf, "calibrate_config", processed_data_id, run=run)
-        butler.put(cat, "src_schema", processed_data_id, run=run)
-        butler.put(cat, "src", processed_data_id, run=run)
-        butler.put(exp, "calexp", processed_data_id, run=run)
-        self._assert_in_collection(butler, run, "calibrate_config", processed_data_id)
-        self._assert_in_collection(butler, run, "src_schema", processed_data_id)
-        self._assert_in_collection(butler, run, "src", processed_data_id)
-        self._assert_in_collection(butler, run, "calexp", processed_data_id)
+        raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
+        butler.registry.registerCollection(raw_collection, CollectionType.RUN)
+        out_collection = self.interface._get_output_run(self.next_visit)
+        butler.registry.registerCollection(out_collection, CollectionType.RUN)
+        chain = "generic-chain"
+        butler.registry.registerCollection(chain, CollectionType.CHAINED)
+        butler.registry.setCollectionChain(chain, [out_collection, raw_collection])
 
-        MiddlewareInterface._clean_unsafe_datasets(butler, run)
-        self._assert_not_in_collection(butler, run, "calibrate_config", processed_data_id)
-        self._assert_not_in_collection(butler, run, "src_schema", processed_data_id)
-        self._assert_in_collection(butler, run, "src", processed_data_id)
-        self._assert_in_collection(butler, run, "calexp", processed_data_id)
+        butler.put(exp, "raw", raw_data_id, run=raw_collection)
+        butler.put(cat, "src", processed_data_id, run=out_collection)
+        butler.put(exp, "calexp", processed_data_id, run=out_collection)
+        self._assert_in_collection(butler, "*", "raw", raw_data_id)
+        self._assert_in_collection(butler, "*", "src", processed_data_id)
+        self._assert_in_collection(butler, "*", "calexp", processed_data_id)
+
+        self.interface.clean_local_repo(self.next_visit, {raw_data_id["exposure"]})
+        self._assert_not_in_collection(butler, "*", "raw", raw_data_id)
+        self._assert_not_in_collection(butler, "*", "src", processed_data_id)
+        self._assert_not_in_collection(butler, "*", "calexp", processed_data_id)
 
     def test_query_missing_datasets(self):
         """Test that query_missing_datasets provides the correct values.

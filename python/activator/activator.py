@@ -296,6 +296,8 @@ def next_visit_handler() -> Tuple[str, int]:
             # TODO: broadcast alerts here
             # TODO: call export_outputs on success or permanent failure in DM-34141
             mwi.export_outputs(expected_visit, expid_set)
+            # Clean only if export successful.
+            mwi.clean_local_repo(expected_visit, expid_set)
             return "Pipeline executed", 200
         else:
             _log.error(f"Timed out waiting for images for {expected_visit}.")

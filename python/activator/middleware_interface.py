@@ -586,8 +586,6 @@ class MiddlewareInterface:
         # As of Feb 2023, this moves output_run to the front of the chain if
         # it's already present, but this behavior cannot be relied upon.
         _prepend_collection(self.butler, self.output_collection, [output_run])
-        # TODO: remove after DM-36162
-        self._clean_unsafe_datasets(self.butler, output_run)
         return output_run
 
     def _get_pipeline_file(self, visit: Visit) -> str:
@@ -764,31 +762,6 @@ class MiddlewareInterface:
                   f"detector {visit.detector} of {exposure_ids}.")
 
     @staticmethod
-    def _clean_unsafe_datasets(butler, run: str):
-        """Remove datasets that potentially conflict with runs from other
-        exposures or detectors.
-
-        Parameters
-        ----------
-        butler : `lsst.daf.butler.Butler`
-            The butler from which to remove datasets.
-        run : `str`
-            The run from which to remove datasets. The method does **not** check
-            that this is a run and not, for example, a chained collection.
-        """
-        all_types = set(butler.registry.queryDatasetTypes(...))
-        unsafe_types = all_types - set(MiddlewareInterface._get_safe_dataset_types(butler))
-        unsafe_datasets = list(butler.registry.queryDatasets(unsafe_types, collections=run))
-        _log.debug("Removing %d unsafe datasets of types %s from '%s'.",
-                   len(unsafe_datasets),
-                   {t.name for t in unsafe_types},
-                   run)
-        butler.pruneDatasets(unsafe_datasets,
-                             # Need purge=True to remove from runs.
-                             purge=True, disassociate=True, unstore=True,
-                             )
-
-    @staticmethod
     def _get_safe_dataset_types(butler):
         """Return the set of dataset types that can be safely merged from a worker.
 
@@ -858,6 +831,32 @@ class MiddlewareInterface:
                                         skip_dimensions={"instrument", "detector",
                                                          "skymap", "tract", "patch"},
                                         transfer="copy")
+
+    def clean_local_repo(self, visit: Visit, exposure_ids: set[int]) -> None:
+        """Remove local repo content that is only needed for a single visit.
+
+        This includes raws and pipeline outputs.
+
+        Parameter
+        ---------
+        visit : Visit
+            The visit to be removed.
+        exposure_ids : `set` [`int`]
+            Identifiers of the exposures to be removed.
+        """
+        raws = self.butler.registry.queryDatasets(
+            'raw',
+            collections=self.instrument.makeDefaultRawIngestRunName(),
+            where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
+            instrument=visit.instrument,
+            detector=visit.detector,
+        )
+        self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
+        # Outputs are all in one run, so just drop it.
+        output_run = self._get_output_run(visit)
+        for chain in self.butler.registry.getCollectionParentChains(output_run):
+            _remove_from_chain(self.butler, chain, [output_run])
+        self.butler.removeRuns([output_run], unstore=True)
 
 
 def _query_missing_datasets(src_repo: Butler, dest_repo: Butler,
