@@ -42,7 +42,7 @@ import lsst.resources
 
 from activator.visit import Visit
 from activator.middleware_interface import get_central_butler, MiddlewareInterface, \
-    _query_missing_datasets, _prepend_collection
+    _query_missing_datasets, _prepend_collection, _remove_from_chain
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -500,6 +500,23 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         _prepend_collection(butler, "_prepend_base", ["_prepend3"])
         self.assertEqual(list(butler.registry.getCollectionChain("_prepend_base")),
                          ["_prepend3", "_prepend1", "_prepend2"])
+
+    def test_remove_from_chain(self):
+        butler = self.interface.butler
+        butler.registry.registerCollection("_remove1", CollectionType.TAGGED)
+        butler.registry.registerCollection("_remove2", CollectionType.TAGGED)
+        butler.registry.registerCollection("_remove33", CollectionType.TAGGED)
+        butler.registry.registerCollection("_remove_base", CollectionType.CHAINED)
+
+        # Empty chain.
+        self.assertEqual(list(butler.registry.getCollectionChain("_remove_base")), [])
+        _remove_from_chain(butler, "_remove_base", ["_remove1"])
+        self.assertEqual(list(butler.registry.getCollectionChain("_remove_base")), [])
+
+        # Non-empty chain.
+        butler.registry.setCollectionChain("_remove_base", ["_remove1", "_remove2"])
+        _remove_from_chain(butler, "_remove_base", ["_remove2", "_remove3"])
+        self.assertEqual(list(butler.registry.getCollectionChain("_remove_base")), ["_remove1"])
 
 
 class MiddlewareInterfaceWriteableTest(unittest.TestCase):
