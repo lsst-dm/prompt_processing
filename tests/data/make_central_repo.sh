@@ -22,4 +22,6 @@ find central_repo/DECam/calib/20150313T000000Z -name "*.fits" -execdir sh -c '> 
 find central_repo/DECam/calib/curated -name "*.fits" -execdir sh -c '> "$1"' -- {} \;
 # find central_repo/skymaps -name "*.fits" -execdir sh -c '> "$1"' -- {} \;
 
-sqlite3 central_repo/gen3.sqlite3 "update file_datastore_records set file_size=0;"
+# The camera and skymap files are not emptied out. The records need to be consistent so that
+# the datastore does not complain about size mismatch when reading them.
+sqlite3 central_repo/gen3.sqlite3 'update file_datastore_records set file_size=0 where path != "DECam/calib/unbounded/camera/camera_DECam_DECam_calib_unbounded.fits" and path != "skymaps/skyMap/skyMap_deepCoadd_skyMap_skymaps.pickle";'
