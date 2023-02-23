@@ -1,13 +1,15 @@
-# Created from ap_verify_ci_hits2015 on 2022-03-16 using make_preloaded_export.py
-# and then modified to add the necessary collection CHAINs.
+# Created from ap_verify_ci_hits2015 on 2023-02-23 using make_preloaded_export.py
 description: Butler Data Repository Export
-version: 1.0.1
+version: 1.0.2
+universe_version: 3
+universe_namespace: daf_butler
 data:
 - type: dimension
   element: instrument
   records:
   - name: DECam
     visit_max: 33554432
+    visit_system: 0
     exposure_max: 33554432
     detector_max: 100
     class_name: lsst.obs.decam.DarkEnergyCamera
@@ -541,24 +543,6 @@ data:
   host: null
   timespan_begin: null
   timespan_end: null
-- type: collection
-  collection_type: CHAINED
-  name: refcats
-  children:
-  - refcats/gen2
-- type: collection
-  collection_type: CHAINED
-  name: templates
-  children:
-  - templates/deep
-- type: collection
-  collection_type: CHAINED
-  name: DECam/defaults
-  children:
-  - DECam/calib
-  - refcats
-  - templates
-  - skymaps
 - type: dataset_type
   name: camera
   dimensions:

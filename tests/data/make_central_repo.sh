@@ -3,11 +3,14 @@
 # tests, making all the files be empty and adjusting the sqlite registry to
 # match.
 
-# This export file was created with this command, and then modified to have the
-# CHAINED collections that we expect (path is the repo on JKP's desktop):
-# make_preloaded_export.py --src-rep /data/ap_verify_ci_hits2015
+# This export file was created with this command, and then added a comment on the first line:
+# make_preloaded_export.py --src-rep $AP_VERIFY_CI_HITS2015_DIR
 butler create central_repo
 butler import --export-file export.yaml --transfer copy central_repo/ $AP_VERIFY_CI_HITS2015_DIR/preloaded/
+
+butler collection-chain central_repo refcats refcats/gen2
+butler collection-chain central_repo templates templates/deep
+butler collection-chain central_repo DECam/defaults DECam/calib,refcats,templates,skymaps
 
 # Empty out files and make them size 0 in the registry.
 # We do not empty the camera description in ``DECAM/calib/unbounded`
