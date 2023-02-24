@@ -99,8 +99,8 @@ The bucket ``rubin-pp`` holds incoming raw images.
 
 The bucket ``rubin-pp-users`` holds:
 
-* The central repository described in `DMTN-219`_.
-  This repository currently contains a copy of HSC data `ap_verify_ci_cosmos_pdr2/preloaded@u/kfindeisen/DM-35052-expansion <https://github.com/lsst/ap_verify_ci_cosmos_pdr2/tree/u/kfindeisen/DM-35052-expansion/preloaded>`_.
+* ``rubin-pp-users/central_repo/`` contains the central repository described in `DMTN-219`_.
+  This repository currently contains a copy of HSC RC2 data, uploaded with ``make_hsc_rc2_export.py`` and ``make_template_export``.
 
 * ``rubin-pp-users/unobserved/`` contains raw files that the upload script(s) can draw from to create incoming raws.
 
@@ -200,7 +200,7 @@ USDF
 
 The service can be controlled with ``kubectl`` from ``rubin-devl``.
 You must first `get credentials for the development cluster <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev>`_ on the web; ignore the installation instructions and copy the commands from the second box.
-Credentials are good for roughly one work day.
+Credentials must be renewed if you get a "cannot fetch token: 400 Bad Request" error when running ``kubectl``.
 
 Each time the service container is updated, a new revision of the service should be edited and deployed.
 (Continuous deployment has not yet been set up.)
@@ -320,11 +320,12 @@ Run:
 and look up the ``EXTERNAL-IP``; set ``KAFKA_CLUSTER=<ip>:9094``.
 The IP address is fixed, so you should only need to look it up once.
 
-Install the prototype code:
+Install the prototype code, and set it up before use:
 
 .. code-block:: sh
 
     git clone https://github.com/lsst-dm/prompt_prototype
+    setup -r prompt_prototype
 
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin-pp`` S3 bucket, simulating incoming raw images.

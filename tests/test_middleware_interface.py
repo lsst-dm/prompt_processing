@@ -20,9 +20,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import dataclasses
+import datetime
 import itertools
 import tempfile
-import time
 import os.path
 import unittest
 import unittest.mock
@@ -42,7 +42,7 @@ import lsst.resources
 
 from activator.visit import Visit
 from activator.middleware_interface import get_central_butler, MiddlewareInterface, \
-    _query_missing_datasets, _prepend_collection
+    _query_missing_datasets, _prepend_collection, _remove_from_chain
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -69,25 +69,29 @@ def fake_file_data(filename, dimensions, instrument, visit):
     data_id, file_data, : `DataCoordinate`, `RawFileData`
         The id and descriptor for the mock file.
     """
-    data_id = DataCoordinate.standardize({"exposure": 1,
+    exposure_id = int(visit.groupId)
+    data_id = DataCoordinate.standardize({"exposure": exposure_id,
                                           "detector": visit.detector,
                                           "instrument": instrument.getName()},
                                          universe=dimensions)
 
-    time = astropy.time.Time("2015-02-18T05:28:18.716517500", scale="tai")
+    start_time = astropy.time.Time("2015-02-18T05:28:18.716517500", scale="tai")
     obs_info = astro_metadata_translator.makeObservationInfo(
         instrument=instrument.getName(),
-        datetime_begin=time,
-        datetime_end=time + 30*u.second,
-        exposure_id=1,
-        visit_id=1,
+        datetime_begin=start_time,
+        datetime_end=start_time + 30*u.second,
+        exposure_id=exposure_id,
+        visit_id=exposure_id,
         boresight_rotation_angle=astropy.coordinates.Angle(visit.cameraAngle*u.degree),
         boresight_rotation_coord=visit.rotationSystem.name.lower(),
         tracking_radec=astropy.coordinates.SkyCoord(*visit.position, frame="icrs", unit="deg"),
-        observation_id="1",
+        observation_id=visit.groupId,
         physical_filter=filter,
         exposure_time=30.0*u.second,
-        observation_type="science")
+        observation_type="science",
+        group_counter_start=exposure_id,
+        group_counter_end=exposure_id,
+    )
     dataset_info = RawFileDatasetInfo(data_id, obs_info)
     file_data = RawFileData([dataset_info],
                             lsst.resources.ResourcePath(filename),
@@ -105,6 +109,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                    {"IP_APDB": "localhost",
                                                     "DB_APDB": "postgres",
                                                     "USER_APDB": "postgres",
+                                                    "K_REVISION": "prompt-proto-service-042",
                                                     })
         cls.env_patcher.start()
 
@@ -368,6 +373,19 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "No data to process"):
             self.interface.run_pipeline(self.next_visit, {2})
 
+    def test_get_output_run(self):
+        for date in [datetime.date.today(), datetime.datetime.today()]:
+            out_run = self.interface._get_output_run(self.next_visit, date)
+            self.assertEqual(out_run,
+                             f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
+                             "/ApPipe/prompt-proto-service-042"
+                             )
+            init_run = self.interface._get_init_output_run(self.next_visit, date)
+            self.assertEqual(init_run,
+                             f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
+                             "/ApPipe/prompt-proto-service-042"
+                             )
+
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
         # Pass iff any dataset matches the query, no need to check them all.
         for dataset in butler.registry.queryDatasets(dataset_type, collections=collection, dataId=data_id):
@@ -379,18 +397,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         for dataset in butler.registry.queryDatasets(dataset_type, collections=collection, dataId=data_id):
             self.fail(f"{dataset} matches {dataset_type}@{data_id} in {collection}.")
 
-    def test_clean_unsafe_datasets(self):
-        """Test that _clean_unsafe_datasets removes only "conflicting" datasets.
-
-        A conflicting dataset is one that can be produced with the same data ID
-        in different AP runs. This test currently uses ``calibrate_config`` and
-        ``src_schema`` as examples of conflicting datasets, and ``src`` and
-        ``calexp`` as counterexamples (which must not be removed).
+    def test_clean_local_repo(self):
+        """Test that clean_local_repo removes old datasets from the datastore.
         """
-        butler = butler_tests.makeTestCollection(self.interface.butler, uniqueId=self.id())
-        run = butler.run
         # Safe to define custom dataset types and IDs, because the repository
         # is regenerated for each test.
+        butler = self.interface.butler
         raw_data_id, _ = fake_file_data("foo.bar",
                                         butler.dimensions,
                                         self.interface.instrument,
@@ -398,28 +410,31 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.items()}
         butler_tests.addDataIdValue(butler, "exposure", raw_data_id["exposure"])
         butler_tests.addDataIdValue(butler, "visit", processed_data_id["visit"])
-        butler_tests.addDatasetType(butler, "src_schema", set(), "SourceCatalog")
-        butler_tests.addDatasetType(butler, "calibrate_config", set(), "Config")
-        butler_tests.addDatasetType(butler, "src", {"instrument", "visit", "detector"}, "SourceCatalog")
-        butler_tests.addDatasetType(butler, "calexp", {"instrument", "visit", "detector"}, "ExposureF")
+        butler_tests.addDatasetType(butler, "raw", raw_data_id.keys(), "Exposure")
+        butler_tests.addDatasetType(butler, "src", processed_data_id.keys(), "SourceCatalog")
+        butler_tests.addDatasetType(butler, "calexp", processed_data_id.keys(), "ExposureF")
 
-        conf = lsst.pex.config.Config()
         exp = lsst.afw.image.ExposureF(20, 20)
         cat = lsst.afw.table.SourceCatalog()
-        butler.put(conf, "calibrate_config", processed_data_id, run=run)
-        butler.put(cat, "src_schema", processed_data_id, run=run)
-        butler.put(cat, "src", processed_data_id, run=run)
-        butler.put(exp, "calexp", processed_data_id, run=run)
-        self._assert_in_collection(butler, run, "calibrate_config", processed_data_id)
-        self._assert_in_collection(butler, run, "src_schema", processed_data_id)
-        self._assert_in_collection(butler, run, "src", processed_data_id)
-        self._assert_in_collection(butler, run, "calexp", processed_data_id)
+        raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
+        butler.registry.registerCollection(raw_collection, CollectionType.RUN)
+        out_collection = self.interface._get_output_run(self.next_visit)
+        butler.registry.registerCollection(out_collection, CollectionType.RUN)
+        chain = "generic-chain"
+        butler.registry.registerCollection(chain, CollectionType.CHAINED)
+        butler.registry.setCollectionChain(chain, [out_collection, raw_collection])
 
-        MiddlewareInterface._clean_unsafe_datasets(butler, run)
-        self._assert_not_in_collection(butler, run, "calibrate_config", processed_data_id)
-        self._assert_not_in_collection(butler, run, "src_schema", processed_data_id)
-        self._assert_in_collection(butler, run, "src", processed_data_id)
-        self._assert_in_collection(butler, run, "calexp", processed_data_id)
+        butler.put(exp, "raw", raw_data_id, run=raw_collection)
+        butler.put(cat, "src", processed_data_id, run=out_collection)
+        butler.put(exp, "calexp", processed_data_id, run=out_collection)
+        self._assert_in_collection(butler, "*", "raw", raw_data_id)
+        self._assert_in_collection(butler, "*", "src", processed_data_id)
+        self._assert_in_collection(butler, "*", "calexp", processed_data_id)
+
+        self.interface.clean_local_repo(self.next_visit, {raw_data_id["exposure"]})
+        self._assert_not_in_collection(butler, "*", "raw", raw_data_id)
+        self._assert_not_in_collection(butler, "*", "src", processed_data_id)
+        self._assert_not_in_collection(butler, "*", "calexp", processed_data_id)
 
     def test_query_missing_datasets(self):
         """Test that query_missing_datasets provides the correct values.
@@ -483,6 +498,23 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(list(butler.registry.getCollectionChain("_prepend_base")),
                          ["_prepend3", "_prepend1", "_prepend2"])
 
+    def test_remove_from_chain(self):
+        butler = self.interface.butler
+        butler.registry.registerCollection("_remove1", CollectionType.TAGGED)
+        butler.registry.registerCollection("_remove2", CollectionType.TAGGED)
+        butler.registry.registerCollection("_remove33", CollectionType.TAGGED)
+        butler.registry.registerCollection("_remove_base", CollectionType.CHAINED)
+
+        # Empty chain.
+        self.assertEqual(list(butler.registry.getCollectionChain("_remove_base")), [])
+        _remove_from_chain(butler, "_remove_base", ["_remove1"])
+        self.assertEqual(list(butler.registry.getCollectionChain("_remove_base")), [])
+
+        # Non-empty chain.
+        butler.registry.setCollectionChain("_remove_base", ["_remove1", "_remove2"])
+        _remove_from_chain(butler, "_remove_base", ["_remove2", "_remove3"])
+        self.assertEqual(list(butler.registry.getCollectionChain("_remove_base")), ["_remove1"])
+
 
 class MiddlewareInterfaceWriteableTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
@@ -499,6 +531,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                    {"IP_APDB": "localhost",
                                                     "DB_APDB": "postgres",
                                                     "USER_APDB": "postgres",
+                                                    "K_REVISION": "prompt-proto-service-042",
                                                     })
         cls.env_patcher.start()
 
@@ -555,7 +588,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         dec = -4.950050405424033
         # DECam has no rotator; instrument angle is 90 degrees in our system.
         rot = 90.
-        self.next_visit = Visit(instrument=instrument,
+        self.next_visit = Visit(instrument=instname,
                                 detector=56,
                                 groupId="1",
                                 nimages=1,
@@ -586,57 +619,66 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                      self.interface.butler.dimensions,
                                                      self.interface.instrument,
                                                      self.next_visit)
+        self.second_data_id, second_file_data = fake_file_data(filepath,
+                                                               self.interface.butler.dimensions,
+                                                               self.interface.instrument,
+                                                               self.second_visit)
+
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(self.next_visit, filename)
+            mock.return_value = second_file_data
             self.interface.ingest_image(self.second_visit, filename)
-        self.interface.define_visits.run([self.raw_data_id])
+        self.interface.define_visits.run([self.raw_data_id, self.second_data_id])
 
         self._simulate_run()
 
     def _simulate_run(self):
         """Create a mock pipeline execution that stores a calexp for self.raw_data_id.
-
-        Returns
-        -------
-        run : `str`
-            The output run containing the output.
         """
         exp = lsst.afw.image.ExposureF(20, 20)
-        run = self.interface._prep_collections()
+        run1 = self.interface._prep_collections(self.next_visit)
         self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
+        run2 = self.interface._prep_collections(self.second_visit)
+        self.second_processed_data_id = {(k if k != "exposure" else "visit"): v
+                                         for k, v in self.second_data_id.items()}
         # Dataset types defined for local Butler on pipeline run, but no
         # guarantee this happens in central Butler.
         butler_tests.addDatasetType(self.interface.butler, "calexp", {"instrument", "visit", "detector"},
                                     "ExposureF")
-        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run)
-        return run
+        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run1)
+        self.interface.butler.put(exp, "calexp", self.second_processed_data_id, run=run2)
 
-    def _check_datasets(self, butler, types, collections, count, data_id):
-        datasets = list(butler.registry.queryDatasets(types, collections=collections))
-        self.assertEqual(len(datasets), count)
-        for dataset in datasets:
-            self.assertEqual(dataset.dataId, data_id)
+    def _count_datasets(self, butler, types, collections):
+        return len(set(butler.registry.queryDatasets(types, collections=collections)))
+
+    def _count_datasets_with_id(self, butler, types, collections, data_id):
+        return len(set(butler.registry.queryDatasets(types, collections=collections, dataId=data_id)))
 
     def test_export_outputs(self):
         self.interface.export_outputs(self.next_visit, {self.raw_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
         raw_collection = f"{instname}/raw/all"
-        export_collection = f"{instname}/prompt-results"
-        self._check_datasets(central_butler,
-                             "raw", raw_collection, 1, self.raw_data_id)
-        # Did not export raws directly to raw/all.
-        self.assertEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.CHAINED)
-        self._check_datasets(central_butler,
-                             "calexp", export_collection, 1, self.processed_data_id)
+        date = datetime.datetime.now(datetime.timezone.utc)
+        export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
+                            "/ApPipe/prompt-proto-service-042"
+        self.assertEqual(self._count_datasets(central_butler, "raw", raw_collection), 1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "raw", raw_collection, self.raw_data_id),
+            1)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
+            1)
         # Did not export calibs or other inputs.
-        self._check_datasets(central_butler,
-                             ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection,
-                             0, {"error": "dnc"})
+        self.assertEqual(
+            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection),
+            0)
         # Nothing placed in "input" collections.
-        self._check_datasets(central_butler,
-                             ["raw", "calexp"], f"{instname}/defaults", 0, {"error": "dnc"})
+        self.assertEqual(
+            self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
+            0)
 
     def test_export_outputs_bad_visit(self):
         bad_visit = dataclasses.replace(self.next_visit, detector=88)
@@ -649,24 +691,33 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
     def test_export_outputs_retry(self):
         self.interface.export_outputs(self.next_visit, {self.raw_data_id["exposure"]})
-
-        time.sleep(1.0)  # Force _simulate_run() to create a new timestamped run
-        self._simulate_run()
-        self.interface.export_outputs(self.second_visit, {self.raw_data_id["exposure"]})
+        self.interface.export_outputs(self.second_visit, {self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
         raw_collection = f"{instname}/raw/all"
-        export_collection = f"{instname}/prompt-results"
-        self._check_datasets(central_butler,
-                             "raw", raw_collection, 2, self.raw_data_id)
-        # Did not export raws directly to raw/all.
-        self.assertEqual(central_butler.registry.getCollectionType(raw_collection), CollectionType.CHAINED)
-        self._check_datasets(central_butler,
-                             "calexp", export_collection, 2, self.processed_data_id)
+        date = datetime.datetime.now(datetime.timezone.utc)
+        export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
+                            "/ApPipe/prompt-proto-service-042"
+        self.assertEqual(self._count_datasets(central_butler, "raw", raw_collection), 2)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "raw", raw_collection, self.raw_data_id),
+            1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "raw", raw_collection, self.second_data_id),
+            1)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
+            1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "calexp", export_collection,
+                                         self.second_processed_data_id),
+            1)
         # Did not export calibs or other inputs.
-        self._check_datasets(central_butler,
-                             ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection,
-                             0, {"error": "dnc"})
+        self.assertEqual(
+            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection),
+            0)
         # Nothing placed in "input" collections.
-        self._check_datasets(central_butler,
-                             ["raw", "calexp"], f"{instname}/defaults", 0, {"error": "dnc"})
+        self.assertEqual(
+            self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
+            0)
