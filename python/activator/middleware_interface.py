@@ -120,9 +120,6 @@ class MiddlewareInterface:
         appropriate for use in the USDF environment; typically only
         change this when running local tests.
     """
-    _COLLECTION_TEMPLATE = "templates"
-    """The collection used for templates.
-    """
     _COLLECTION_SKYMAP = "skymaps"
     """The collection used for skymaps.
     """
@@ -374,12 +371,17 @@ class MiddlewareInterface:
 
                 # CHAINED collections
                 export.saveCollection(self.instrument.makeRefCatCollectionName())
-                export.saveCollection(self._COLLECTION_TEMPLATE)
+                export.saveCollection(self._get_template_collection())
                 export.saveCollection(self.instrument.makeUmbrellaCollectionName())
 
             self.butler.import_(filename=export_file.name,
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
+
+    def _get_template_collection(self):
+        """Get the collection name for templates
+        """
+        return self.instrument.makeCollectionName("templates")
 
     def _export_refcats(self, export, center, radius):
         """Export the refcats for this visit from the central butler.
@@ -456,7 +458,7 @@ class MiddlewareInterface:
         templates = set(_filter_datasets(
             self.central_butler, self.butler,
             "*Coadd",
-            collections=self._COLLECTION_TEMPLATE,
+            collections=self._get_template_collection(),
             instrument=self.instrument.getName(),
             skymap=self.skymap_name,
             where=template_where,
