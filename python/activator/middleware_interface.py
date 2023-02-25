@@ -497,11 +497,25 @@ class MiddlewareInterface:
         export.saveDatasets(
             calibs,
             elements=[])  # elements=[] means do not export dimension records
-        target_types = {CollectionType.CALIBRATION}
-        for collection in self.central_butler.registry.queryCollections(...,
-                                                                        collectionTypes=target_types):
-            export.saveCollection(collection)
-        export.saveCollection(self.instrument.makeCalibrationCollectionName())
+        self._export_collections(export, self.instrument.makeCalibrationCollectionName())
+
+    def _export_collections(self, export, collection):
+        """Export the collection and all its children.
+
+        This preserves the collection structure even if some child collections
+        do not have data. Exporting a collection does not export its datasets.
+
+        Parameters
+        ----------
+        export : `Iterator[RepoExportContext]`
+            Export context manager.
+        collection : `str`
+            The collection to be exported. It is usually a CHAINED collection
+            and can have many children.
+        """
+        for child in self.central_butler.registry.queryCollections(
+                collection, flattenChains=True, includeChains=True):
+            export.saveCollection(child)
 
     @staticmethod
     def _count_by_type(refs):
