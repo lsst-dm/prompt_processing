@@ -368,11 +368,7 @@ class MiddlewareInterface:
                 # TODO: Summit filter names may not match Butler names, especially for composite filters.
                 self._export_skymap_and_templates(export, center, detector, wcs, visit.filters)
                 self._export_calibs(export, visit.detector, visit.filters)
-
-                # CHAINED collections
-                export.saveCollection(self.instrument.makeRefCatCollectionName())
-                export.saveCollection(self._get_template_collection())
-                export.saveCollection(self.instrument.makeUmbrellaCollectionName())
+                self._export_collections(export, self.instrument.makeUmbrellaCollectionName())
 
             self.butler.import_(filename=export_file.name,
                                 directory=self.central_butler.datastore.root,
@@ -497,7 +493,6 @@ class MiddlewareInterface:
         export.saveDatasets(
             calibs,
             elements=[])  # elements=[] means do not export dimension records
-        self._export_collections(export, self.instrument.makeCalibrationCollectionName())
 
     def _export_collections(self, export, collection):
         """Export the collection and all its children.

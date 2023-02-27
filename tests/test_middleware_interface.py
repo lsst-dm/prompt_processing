@@ -675,6 +675,23 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
     def _count_datasets_with_id(self, butler, types, collections, data_id):
         return len(set(butler.registry.queryDatasets(types, collections=collections, dataId=data_id)))
 
+    def test_extra_collection(self):
+        """Test that extra collections in the chain will not lead to MissingCollectionError
+        even if they do not carry useful data.
+        """
+        central_butler = Butler(self.central_repo.name, writeable=True)
+        central_butler.registry.registerCollection("emptyrun", CollectionType.RUN)
+        _prepend_collection(central_butler, "refcats", ["emptyrun"])
+
+        self.interface.prep_butler(self.next_visit)
+
+        self.assertEqual(
+            self._count_datasets(self.interface.butler, "gaia", f"{instname}/defaults"),
+            3)
+        self.assertIn(
+            "emptyrun",
+            self.interface.butler.registry.queryCollections("refcats", flattenChains=True))
+
     def test_export_outputs(self):
         self.interface.export_outputs(self.next_visit, {self.raw_data_id["exposure"]})
 
