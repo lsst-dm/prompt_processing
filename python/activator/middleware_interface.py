@@ -405,7 +405,8 @@ class MiddlewareInterface:
         # currently, and we can't queryDatasetTypes in just the refcats
         # collection, so we have to specify a list here. Replace this
         # with another solution ASAP.
-        possible_refcats = ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110"]
+        possible_refcats = ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110",
+                            "atlas_refcat2_20220201"]
         refcats = set(_filter_datasets(
                       self.central_butler, self.butler,
                       possible_refcats,
