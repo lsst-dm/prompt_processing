@@ -656,8 +656,12 @@ class MiddlewareInterface:
             pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         except FileNotFoundError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
-        pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
-        pipeline.addConfigOverride("diaPipe", "apdb.namespace", self._apdb_namespace)
+
+        try:
+            pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
+            pipeline.addConfigOverride("diaPipe", "apdb.namespace", self._apdb_namespace)
+        except LookupError:
+            _log.debug("diaPipe is not in this pipeline.")
         return pipeline
 
     def _download(self, remote):
