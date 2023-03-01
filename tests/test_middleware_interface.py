@@ -42,7 +42,7 @@ import lsst.resources
 
 from activator.visit import Visit
 from activator.middleware_interface import get_central_butler, MiddlewareInterface, \
-    _filter_datasets, _prepend_collection, _remove_from_chain
+    _filter_datasets, _prepend_collection, _remove_from_chain, _MissingDatasetError
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -276,12 +276,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.next_visit = dataclasses.replace(self.next_visit,
                                               detector=5,
                                               groupId=str(int(self.next_visit.groupId) + 1),
-                                              # Offset by a bit over 1 patch.
-                                              position=[self.next_visit.position[0] + 0.4,
-                                                        self.next_visit.position[1] - 0.4],
+                                              # Offset to put detector=5 in same templates.
+                                              position=[self.next_visit.position[0] + 0.2,
+                                                        self.next_visit.position[1] - 1.2],
                                               )
         self.interface.prep_butler(self.next_visit)
-        expected_shards.update({157218, 157229})
+        expected_shards.update({157393, 157395})
         self._check_imports(self.interface.butler, detector=5, expected_shards=expected_shards)
 
     def test_ingest_image(self):
@@ -446,7 +446,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         data2 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 25})
         data3 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 42})
 
-        for src, existing in itertools.product([set(), {data1, data2}, {data1, data2, data3}], repeat=2):
+        combinations = [{data1, data2}, {data1, data2, data3}]
+        # Case where src is empty now covered in test_filter_datasets_nosrc.
+        for src, existing in itertools.product(combinations, [set()] + combinations):
             diff = src - existing
             src_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": src})
             existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
@@ -479,6 +481,24 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         result = set(_filter_datasets(src_butler, existing_butler, "skyMap", ..., skymap="mymap"))
         src_butler.registry.queryDatasets.assert_called_once_with("skyMap", ..., skymap="mymap")
         self.assertEqual(result, {data1})
+
+    def test_filter_datasets_nosrc(self):
+        """Test that _filter_datasets reports if the datasets are missing from
+        the source repository, regardless of whether they are present in the
+        destination repository.
+        """
+        # Much easier to create DatasetRefs with a real repo.
+        butler = self.interface.central_butler
+        dtype = butler.registry.getDatasetType("cpBias")
+        data1 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 42})
+
+        src_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": set()})
+        for existing in [set(), {data1}]:
+            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+
+            with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
+                with self.assertRaises(_MissingDatasetError):
+                    _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam")
 
     def test_prepend_collection(self):
         butler = self.interface.butler

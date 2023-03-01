@@ -861,10 +861,20 @@ class MiddlewareInterface:
         self.butler.removeRuns([output_run], unstore=True)
 
 
+class _MissingDatasetError(RuntimeError):
+    """An exception flagging that required datasets were not found
+    where expected.
+    """
+    pass
+
+
 def _filter_datasets(src_repo: Butler, dest_repo: Butler,
                      *args, **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
     """Identify datasets in a source repository, filtering out those already
     present in a destination.
+
+    Unlike Butler or database queries, this method raises if nothing in the
+    source repository matches the query criteria.
 
     Parameters
     ----------
@@ -881,6 +891,11 @@ def _filter_datasets(src_repo: Butler, dest_repo: Butler,
     -------
     datasets : iterable [`lsst.daf.butler.DatasetRef`]
         The datasets that exist in ``src_repo`` but not ``dest_repo``.
+
+    Raises
+    ------
+    _MissingDatasetError
+        Raised if the query on ``src_repo`` failed to find any datasets.
     """
     try:
         known_datasets = set(dest_repo.registry.queryDatasets(*args, **kwargs))
@@ -894,8 +909,15 @@ def _filter_datasets(src_repo: Butler, dest_repo: Butler,
 
     # Let exceptions from src_repo query raise: if it fails, that invalidates
     # this operation.
-    return itertools.filterfalse(lambda ref: ref in known_datasets,
-                                 src_repo.registry.queryDatasets(*args, **kwargs))
+    src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs))
+    if not src_datasets:
+        raise _MissingDatasetError(
+            "Source repo query with args '{}, {}' found no matches.".format(
+                ", ".join(repr(a) for a in args),
+                ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
+            )
+        )
+    return itertools.filterfalse(lambda ref: ref in known_datasets, src_datasets)
 
 
 def _prepend_collection(butler: Butler, chain: str, new_collections: collections.abc.Iterable[str]) -> None:
