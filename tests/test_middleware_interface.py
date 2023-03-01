@@ -42,7 +42,7 @@ import lsst.resources
 
 from activator.visit import Visit
 from activator.middleware_interface import get_central_butler, MiddlewareInterface, \
-    _query_missing_datasets, _prepend_collection, _remove_from_chain
+    _filter_datasets, _prepend_collection, _remove_from_chain
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -436,8 +436,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self._assert_not_in_collection(butler, "*", "src", processed_data_id)
         self._assert_not_in_collection(butler, "*", "calexp", processed_data_id)
 
-    def test_query_missing_datasets(self):
-        """Test that query_missing_datasets provides the correct values.
+    def test_filter_datasets(self):
+        """Test that _filter_datasets provides the correct values.
         """
         # Much easier to create DatasetRefs with a real repo.
         butler = self.interface.central_butler
@@ -453,14 +453,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
-                result = set(_query_missing_datasets(src_butler, existing_butler,
-                                                     "cpBias", instrument="DECam"))
+                result = set(_filter_datasets(src_butler, existing_butler,
+                                              "cpBias", instrument="DECam"))
                 src_butler.registry.queryDatasets.assert_called_once_with("cpBias", instrument="DECam")
                 existing_butler.registry.queryDatasets.assert_called_once_with("cpBias", instrument="DECam")
                 self.assertEqual(result, diff)
 
-    def test_query_missing_datasets_nodim(self):
-        """Test that query_missing_datasets provides the correct values when
+    def test_filter_datasets_nodim(self):
+        """Test that _filter_datasets provides the correct values when
         the destination repository is missing not only datasets, but the
         dimensions to define them.
         """
@@ -476,7 +476,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                    "Unknown values specified for governor dimension skymap: {'mymap'}")
                })
 
-        result = set(_query_missing_datasets(src_butler, existing_butler, "skyMap", ..., skymap="mymap"))
+        result = set(_filter_datasets(src_butler, existing_butler, "skyMap", ..., skymap="mymap"))
         src_butler.registry.queryDatasets.assert_called_once_with("skyMap", ..., skymap="mymap")
         self.assertEqual(result, {data1})
 

@@ -402,7 +402,7 @@ class MiddlewareInterface:
         # collection, so we have to specify a list here. Replace this
         # with another solution ASAP.
         possible_refcats = ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110"]
-        refcats = set(_query_missing_datasets(
+        refcats = set(_filter_datasets(
                       self.central_butler, self.butler,
                       possible_refcats,
                       collections=self.instrument.makeRefCatCollectionName(),
@@ -430,11 +430,12 @@ class MiddlewareInterface:
         """
         # TODO: This exports the whole skymap, but we want to only export the
         # subset of the skymap that covers this data.
-        skymaps = set(_query_missing_datasets(self.central_butler, self.butler,
-                                              "skyMap",
-                                              skymap=self.skymap_name,
-                                              collections=self._COLLECTION_SKYMAP,
-                                              findFirst=True))
+        skymaps = set(_filter_datasets(
+            self.central_butler, self.butler,
+            "skyMap",
+            skymap=self.skymap_name,
+            collections=self._COLLECTION_SKYMAP,
+            findFirst=True))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
         export.saveDatasets(skymaps)
         # Getting only one tract should be safe: we're getting the
@@ -452,13 +453,14 @@ class MiddlewareInterface:
         # TODO: alternately, we need to extract it from the pipeline? (best?)
         # TODO: alternately, can we just assume that there is exactly
         # one coadd type in the central butler?
-        templates = set(_query_missing_datasets(self.central_butler, self.butler,
-                                                "*Coadd",
-                                                collections=self._COLLECTION_TEMPLATE,
-                                                instrument=self.instrument.getName(),
-                                                skymap=self.skymap_name,
-                                                where=template_where,
-                                                findFirst=True))
+        templates = set(_filter_datasets(
+            self.central_butler, self.butler,
+            "*Coadd",
+            collections=self._COLLECTION_TEMPLATE,
+            instrument=self.instrument.getName(),
+            skymap=self.skymap_name,
+            where=template_where,
+            findFirst=True))
         _log.debug("Found %d new template datasets.", len(templates))
         export.saveDatasets(templates)
 
@@ -479,7 +481,7 @@ class MiddlewareInterface:
         calib_where = f"detector={detector_id} and physical_filter='{filter}'"
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
-        calibs = set(_query_missing_datasets(
+        calibs = set(_filter_datasets(
             self.central_butler, self.butler,
             ...,
             collections=self.instrument.makeCalibrationCollectionName(),
@@ -859,9 +861,10 @@ class MiddlewareInterface:
         self.butler.removeRuns([output_run], unstore=True)
 
 
-def _query_missing_datasets(src_repo: Butler, dest_repo: Butler,
-                            *args, **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
-    """Return datasets that are present in one repository but not another.
+def _filter_datasets(src_repo: Butler, dest_repo: Butler,
+                     *args, **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
+    """Identify datasets in a source repository, filtering out those already
+    present in a destination.
 
     Parameters
     ----------
