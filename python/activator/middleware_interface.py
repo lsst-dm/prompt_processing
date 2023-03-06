@@ -374,6 +374,12 @@ class MiddlewareInterface:
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
 
+        # Temporary workarounds until we have a prompt-processing default top-level collection
+        # in shared repos and then we can organize collections without worrying DRP use cases.
+        _prepend_collection(self.butler,
+                            self.instrument.makeUmbrellaCollectionName(),
+                            [self._get_template_collection()])
+
     def _get_template_collection(self):
         """Get the collection name for templates
         """
@@ -461,6 +467,7 @@ class MiddlewareInterface:
             findFirst=True))
         _log.debug("Found %d new template datasets.", len(templates))
         export.saveDatasets(templates)
+        self._export_collections(export, self._get_template_collection())
 
     def _export_calibs(self, export, detector_id, filter):
         """Export the calibs for this visit from the central butler.
