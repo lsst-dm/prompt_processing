@@ -458,16 +458,20 @@ class MiddlewareInterface:
         # TODO: alternately, we need to extract it from the pipeline? (best?)
         # TODO: alternately, can we just assume that there is exactly
         # one coadd type in the central butler?
-        templates = set(_filter_datasets(
-            self.central_butler, self.butler,
-            "*Coadd",
-            collections=self._get_template_collection(),
-            instrument=self.instrument.getName(),
-            skymap=self.skymap_name,
-            where=template_where,
-            findFirst=True))
-        _log.debug("Found %d new template datasets.", len(templates))
-        export.saveDatasets(templates)
+        try:
+            templates = set(_filter_datasets(
+                self.central_butler, self.butler,
+                "*Coadd",
+                collections=self._get_template_collection(),
+                instrument=self.instrument.getName(),
+                skymap=self.skymap_name,
+                where=template_where,
+                findFirst=True))
+        except _MissingDatasetError as err:
+            _log.error(err)
+        else:
+            _log.debug("Found %d new template datasets.", len(templates))
+            export.saveDatasets(templates)
         self._export_collections(export, self._get_template_collection())
 
     def _export_calibs(self, export, detector_id, filter):
