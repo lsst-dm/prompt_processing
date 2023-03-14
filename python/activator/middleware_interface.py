@@ -111,6 +111,8 @@ class MiddlewareInterface:
         name or the short name. Examples: "LsstCam", "lsst.obs.lsst.LsstCam".
         TODO: this arg can probably be removed and replaced with internal
         use of the butler.
+    skymap: `str`
+        Name of the skymap in the central repo for querying templates.
     local_storage : `str`
         An absolute path to a space where this object can create a local
         Butler repo. The repo is guaranteed to be unique to this object.
@@ -119,9 +121,6 @@ class MiddlewareInterface:
         constructing URIs to retrieve incoming files. The default is
         appropriate for use in the USDF environment; typically only
         change this when running local tests.
-    """
-    _COLLECTION_TEMPLATE = "templates"
-    """The collection used for templates.
     """
     _COLLECTION_SKYMAP = "skymaps"
     """The collection used for skymaps.
@@ -141,7 +140,7 @@ class MiddlewareInterface:
     #   corresponding to self.camera and self.skymap.
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
-                 local_storage: str,
+                 skymap: str, local_storage: str,
                  prefix: str = "s3://"):
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
@@ -170,11 +169,9 @@ class MiddlewareInterface:
             "camera", instrument=self.instrument.getName(),
             collections=self.instrument.makeUnboundedCalibrationRunName()
         )
-        # TODO: is central_butler guaranteed to have only one skymap dimension?
-        skymaps = list(self.central_butler.registry.queryDataIds("skymap"))
-        assert len(skymaps) == 1, "Ambiguous or missing skymap in central repo."
-        self.skymap_name = skymaps[0]["skymap"]
-        self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name)
+        self.skymap_name = skymap
+        self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
+                                              collections=self._COLLECTION_SKYMAP)
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
@@ -371,15 +368,22 @@ class MiddlewareInterface:
                 # TODO: Summit filter names may not match Butler names, especially for composite filters.
                 self._export_skymap_and_templates(export, center, detector, wcs, visit.filters)
                 self._export_calibs(export, visit.detector, visit.filters)
-
-                # CHAINED collections
-                export.saveCollection(self.instrument.makeRefCatCollectionName())
-                export.saveCollection(self._COLLECTION_TEMPLATE)
-                export.saveCollection(self.instrument.makeUmbrellaCollectionName())
+                self._export_collections(export, self.instrument.makeUmbrellaCollectionName())
 
             self.butler.import_(filename=export_file.name,
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
+
+        # Temporary workarounds until we have a prompt-processing default top-level collection
+        # in shared repos and then we can organize collections without worrying DRP use cases.
+        _prepend_collection(self.butler,
+                            self.instrument.makeUmbrellaCollectionName(),
+                            [self._get_template_collection()])
+
+    def _get_template_collection(self):
+        """Get the collection name for templates
+        """
+        return self.instrument.makeCollectionName("templates")
 
     def _export_refcats(self, export, center, radius):
         """Export the refcats for this visit from the central butler.
@@ -401,7 +405,8 @@ class MiddlewareInterface:
         # currently, and we can't queryDatasetTypes in just the refcats
         # collection, so we have to specify a list here. Replace this
         # with another solution ASAP.
-        possible_refcats = ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110"]
+        possible_refcats = ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110",
+                            "atlas_refcat2_20220201"]
         refcats = set(_filter_datasets(
                       self.central_butler, self.butler,
                       possible_refcats,
@@ -453,16 +458,21 @@ class MiddlewareInterface:
         # TODO: alternately, we need to extract it from the pipeline? (best?)
         # TODO: alternately, can we just assume that there is exactly
         # one coadd type in the central butler?
-        templates = set(_filter_datasets(
-            self.central_butler, self.butler,
-            "*Coadd",
-            collections=self._COLLECTION_TEMPLATE,
-            instrument=self.instrument.getName(),
-            skymap=self.skymap_name,
-            where=template_where,
-            findFirst=True))
-        _log.debug("Found %d new template datasets.", len(templates))
-        export.saveDatasets(templates)
+        try:
+            templates = set(_filter_datasets(
+                self.central_butler, self.butler,
+                "*Coadd",
+                collections=self._get_template_collection(),
+                instrument=self.instrument.getName(),
+                skymap=self.skymap_name,
+                where=template_where,
+                findFirst=True))
+        except _MissingDatasetError as err:
+            _log.error(err)
+        else:
+            _log.debug("Found %d new template datasets.", len(templates))
+            export.saveDatasets(templates)
+        self._export_collections(export, self._get_template_collection())
 
     def _export_calibs(self, export, detector_id, filter):
         """Export the calibs for this visit from the central butler.
@@ -495,11 +505,24 @@ class MiddlewareInterface:
         export.saveDatasets(
             calibs,
             elements=[])  # elements=[] means do not export dimension records
-        target_types = {CollectionType.CALIBRATION}
-        for collection in self.central_butler.registry.queryCollections(...,
-                                                                        collectionTypes=target_types):
-            export.saveCollection(collection)
-        export.saveCollection(self.instrument.makeCalibrationCollectionName())
+
+    def _export_collections(self, export, collection):
+        """Export the collection and all its children.
+
+        This preserves the collection structure even if some child collections
+        do not have data. Exporting a collection does not export its datasets.
+
+        Parameters
+        ----------
+        export : `Iterator[RepoExportContext]`
+            Export context manager.
+        collection : `str`
+            The collection to be exported. It is usually a CHAINED collection
+            and can have many children.
+        """
+        for child in self.central_butler.registry.queryCollections(
+                collection, flattenChains=True, includeChains=True):
+            export.saveCollection(child)
 
     @staticmethod
     def _count_by_type(refs):
@@ -637,8 +660,12 @@ class MiddlewareInterface:
             pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
         except FileNotFoundError:
             raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
-        pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
-        pipeline.addConfigOverride("diaPipe", "apdb.namespace", self._apdb_namespace)
+
+        try:
+            pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
+            pipeline.addConfigOverride("diaPipe", "apdb.namespace", self._apdb_namespace)
+        except LookupError:
+            _log.debug("diaPipe is not in this pipeline.")
         return pipeline
 
     def _download(self, remote):
