@@ -56,8 +56,8 @@ calib_repo = os.environ["CALIB_REPO"]
 s3_endpoint = os.environ["S3_ENDPOINT_URL"]
 # Bucket name (not URI) containing raw images
 image_bucket = os.environ["IMAGE_BUCKET"]
-# Time to wait for raw image upload, in seconds
-timeout = os.environ.get("IMAGE_TIMEOUT", 50)
+# Time to wait after expected script completion for image arrival, in seconds
+image_timeout = int(os.environ.get("IMAGE_TIMEOUT", 20))
 # Absolute path on this worker's system where local repos may be created
 local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
 # Kafka server
@@ -248,6 +248,10 @@ def next_visit_handler() -> Tuple[str, int]:
 
         # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
         expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
+        # Heuristic: take the upcoming script's duration and multiply by 2 to
+        # include the currently executing script, then add time to transfer
+        # the last image.
+        timeout = expected_visit.duration * 2 + image_timeout
         # Check to see if any snaps have already arrived
         for snap in range(expected_snaps):
             oid = check_for_snap(
