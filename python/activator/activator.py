@@ -65,8 +65,7 @@ kafka_cluster = os.environ["KAFKA_CLUSTER"]
 # Kafka group; must be worker-unique to keep workers from "stealing" messages for others.
 kafka_group_id = str(uuid.uuid4())
 # The topic on which to listen to updates to image_bucket
-# bucket_topic = f"{instrument_name}-image"
-bucket_topic = "rubin-prompt-processing"
+bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
 
 setup_usdf_logger(
     labels={"instrument": instrument_name},
