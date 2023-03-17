@@ -734,8 +734,11 @@ class MiddlewareInterface:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.") from e
 
-        where = f"instrument='{self.visit.instrument}' and detector={self.visit.detector} " \
-                f"and exposure in ({','.join(str(x) for x in exposure_ids)})"
+        where = (
+            f"instrument='{self.visit.instrument}' and detector={self.visit.detector}"
+            f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
+            " and visit_system = 0"
+        )
         pipeline = self._prep_pipeline()
         executor = SeparablePipelineExecutor(self.butler, clobber_output=False, skip_existing_in=None)
         qgraph = executor.make_quantum_graph(pipeline, where=where)
