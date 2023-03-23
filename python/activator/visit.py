@@ -1,11 +1,11 @@
-__all__ = ["FannedOutVisit"]
+__all__ = ["FannedOutVisit", "SummitVisit", "BareVisit"]
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 import enum
 
 
 @dataclass(frozen=True, kw_only=True)
-class FannedOutVisit:
+class BareVisit:
     # Elements must be hashable and JSON-persistable; built-in types
     # recommended. list is not hashable, but gets special treatment because
     # neither Kafka nor JSON deserialize sequences as tuples.
@@ -14,7 +14,7 @@ class FannedOutVisit:
     # https://ts-xml.lsst.io/sal_interfaces/ScriptQueue.html#nextvisit
     class CoordSys(enum.IntEnum):
         # This is a redeclaration of lsst.ts.idl.enums.Script.MetadataCoordSys,
-        # but we need FannedOutVisit to work in code that can't import lsst.ts.
+        # but we need BareVisit to work in code that can't import lsst.ts.
         NONE = 1
         ICRS = 2
         OBSERVED = 3
@@ -33,7 +33,7 @@ class FannedOutVisit:
         OPEN = 2
         EITHER = 3
 
-    salIndex: int
+    salIndex: int               # this maps to an instrument
     scriptSalIndex: int
     groupId: str                # observatory-specific ID; not the same as visit number
     coordinateSystem: CoordSys  # coordinate system of position
@@ -48,7 +48,16 @@ class FannedOutVisit:
     survey: str                 # survey name
     totalCheckpoints: int
 
-    # Added by the Kafka consumer at USDF.
+    def __str__(self):
+        """Return a short string that represents the visit but does not
+        include complete metadata.
+        """
+        return f"(groupId={self.groupId}, salIndex={self.salIndex})"
+
+
+@dataclass(frozen=True, kw_only=True)
+class FannedOutVisit(BareVisit):
+    # Extra information is added by the fan-out service at USDF.
     instrument: str             # short name
     detector: int
 
@@ -57,3 +66,23 @@ class FannedOutVisit:
         include "metadata" fields.
         """
         return f"(instrument={self.instrument}, groupId={self.groupId}, detector={self.detector})"
+
+    def get_bare_visit(self):
+        """Return visit-level info as a dict"""
+        info = asdict(self)
+        info.pop("instrument")
+        info.pop("detector")
+        return info
+
+
+@dataclass(frozen=True, kw_only=True)
+class SummitVisit(BareVisit):
+    # Extra fields are in the NextVisit messages from the summit
+    private_efdStamp: float = 0.0
+    private_kafkaStamp: float = 0.0
+    private_identity: str = "ScriptQueue"
+    private_revCode: str = "c9aab3df"
+    private_origin: int = 0
+    private_seqNum: int = 0
+    private_rcvStamp: float = 0.0
+    private_sndStamp: float = 0.0

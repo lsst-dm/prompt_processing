@@ -19,10 +19,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import dataclasses
 import json
 import unittest
 
-from activator.visit import FannedOutVisit
+from activator.visit import FannedOutVisit, BareVisit
 
 
 class FannedOutVisitTest(unittest.TestCase):
@@ -71,3 +72,38 @@ class FannedOutVisitTest(unittest.TestCase):
         self.assertNotEqual(str(self.testbed), repr(self.testbed))
         self.assertIn(str(self.testbed.detector), str(self.testbed))
         self.assertIn(str(self.testbed.groupId), str(self.testbed))
+
+
+class BareVisitTest(unittest.TestCase):
+    """Test the BareVisit class's functionality.
+    """
+    def setUp(self):
+        super().setUp()
+
+        visit_info = dict(
+            groupId="2023-01-23T23:33:14.762",
+            nimages=2,
+            filters="k2022",
+            coordinateSystem=BareVisit.CoordSys.ICRS,
+            position=[134.5454, -65.3261],
+            rotationSystem=BareVisit.RotSys.SKY,
+            cameraAngle=135.0,
+            survey="IMAGINARY",
+            salIndex=42,
+            scriptSalIndex=42,
+            dome=BareVisit.Dome.OPEN,
+            duration=35.0,
+            totalCheckpoints=1,
+        )
+        self.visit = BareVisit(**visit_info)
+        self.fannedOutVisit = FannedOutVisit(
+            instrument="NotACam",
+            detector=42,
+            **visit_info
+        )
+
+    def test_get_bare(self):
+        self.assertEqual(
+            self.fannedOutVisit.get_bare_visit(),
+            dataclasses.asdict(self.visit)
+        )

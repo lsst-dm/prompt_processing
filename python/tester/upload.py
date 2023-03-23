@@ -1,5 +1,3 @@
-__all__ = ["get_last_group", ]
-
 import dataclasses
 import itertools
 import logging
@@ -12,7 +10,7 @@ import time
 import boto3
 
 from activator.raw import Snap, get_raw_path
-from activator.visit import FannedOutVisit
+from activator.visit import FannedOutVisit, SummitVisit
 from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
 
 
@@ -63,12 +61,13 @@ def process_group(kafka_url, visit_infos, uploader):
     for info in visit_infos:
         group = info.groupId
         n_snaps = info.nimages
+        visit = SummitVisit(**info.get_bare_visit())
+        send_next_visit(kafka_url, group, {visit})
         break
     else:
         _log.info("No observations to make; aborting.")
         return
 
-    send_next_visit(kafka_url, group, visit_infos)
     # TODO: need asynchronous code to handle next_visit delay correctly
     for snap in range(n_snaps):
         _log.info(f"Taking group: {group} snap: {snap}")
@@ -90,6 +89,7 @@ def main():
 
     date = time.strftime("%Y%m%d")
 
+    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
     endpoint_url = "https://s3dfrgw.slac.stanford.edu"
     s3 = boto3.resource("s3", endpoint_url=endpoint_url)
     dest_bucket = s3.Bucket("rubin-pp")
@@ -163,7 +163,9 @@ def get_samples(bucket, instrument):
             rotationSystem=FannedOutVisit.RotSys.SKY,
             cameraAngle=hsc_metadata[snap.exp_id]["rot"],
             survey="SURVEY",
-            salIndex=42,
+            # Fan-out uses salIndex to know which instrument and detector config to use.
+            # The exp_id of this test dataset is coded into fan-out's pattern matching.
+            salIndex=snap.exp_id,
             scriptSalIndex=42,
             dome=FannedOutVisit.Dome.OPEN,
             duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),

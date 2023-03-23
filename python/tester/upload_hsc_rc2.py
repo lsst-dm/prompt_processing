@@ -31,7 +31,7 @@ import boto3
 from lsst.daf.butler import Butler
 
 from activator.raw import get_raw_path
-from activator.visit import FannedOutVisit
+from activator.visit import SummitVisit
 from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
 
 
@@ -137,28 +137,24 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
         dataId={"exposure": visit_id, "instrument": "HSC"},
     )
 
-    visits = set()
-    for data_id in refs.dataIds.expanded():
-        visit = FannedOutVisit(
-            instrument="HSC",
-            detector=data_id.records["detector"].id,
+    # all items in refs share the same visit info and one event is to be sent
+    for data_id in refs.dataIds.limit(1).expanded():
+        visit = SummitVisit(
             groupId=group_id,
             nimages=1,
             filters=data_id.records["physical_filter"].name,
-            coordinateSystem=FannedOutVisit.CoordSys.ICRS,
+            coordinateSystem=SummitVisit.CoordSys.ICRS,
             position=[data_id.records["exposure"].tracking_ra, data_id.records["exposure"].tracking_dec],
-            rotationSystem=FannedOutVisit.RotSys.SKY,
+            rotationSystem=SummitVisit.RotSys.SKY,
             cameraAngle=data_id.records["exposure"].sky_angle,
             survey="SURVEY",
-            salIndex=42,
-            scriptSalIndex=42,
-            dome=FannedOutVisit.Dome.OPEN,
+            salIndex=999,
+            scriptSalIndex=999,
+            dome=SummitVisit.Dome.OPEN,
             duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
             totalCheckpoints=1,
         )
-        visits.add(visit)
-
-    send_next_visit(kafka_url, group_id, visits)
+        send_next_visit(kafka_url, group_id, {visit})
 
     return refs
 

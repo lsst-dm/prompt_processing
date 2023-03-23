@@ -21,6 +21,7 @@
 
 __all__ = ["get_last_group", "make_exposure_id", "replace_header_key", "send_next_visit"]
 
+from dataclasses import asdict
 import json
 import logging
 import requests
@@ -150,7 +151,7 @@ def make_hsc_id(group_num, snap):
 
 
 def send_next_visit(url, group, visit_infos):
-    """Simulate the transmission of a ``next_visit`` message.
+    """Simulate the transmission of a ``next_visit`` message to Sasquatch.
 
     Parameters
     ----------
@@ -158,8 +159,8 @@ def send_next_visit(url, group, visit_infos):
         The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
     group : `str`
         The group ID for the message to send.
-    visit_infos : `set` [`activator.Visit`]
-        The visit-detector combinations to be sent; each object may
+    visit_infos : `set` [`activator.SummitVisit`]
+        The ``next_visit`` message to be sent; each object may
         represent multiple snaps.
     """
     _log.info(f"Sending next_visit for group to kafka http proxy: {group}")
@@ -168,8 +169,7 @@ def send_next_visit(url, group, visit_infos):
         _log.debug(f"Sending next_visit for group: {info.groupId} "
                    f"filters: {info.filters} ra: {info.position[0]} dec: {info.position[1]} "
                    f"survey: {info.survey}")
-        message_values = dict(private_efdStamp=0, private_kafkaStamp=0, salIndex=info.salIndex, private_revCode="c9aab3df", private_sndStamp=0.0, private_rcvStamp=0.0, private_seqNum=0, private_identity="ScriptQueue", private_origin=0, scriptSalIndex=info.scriptSalIndex, groupId=info.groupId, coordinateSystem=info.coordinateSystem.value, position=info.position, rotationSystem=info.rotationSystem.value, cameraAngle=info.cameraAngle, filters=info.filters, dome=info.dome.value, duration=info.duration, nimages=info.nimages, survey=info.survey, totalCheckpoints=info.totalCheckpoints)
-        records_level = dict(value=message_values)
+        records_level = dict(value=asdict(info))
         value_schema_level = dict(value_schema_id=1, records=[records_level])
 
         r = requests.post(url, data=json.dumps(value_schema_level), headers=header)
