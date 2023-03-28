@@ -41,7 +41,7 @@ from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
 from activator.visit import Visit
-from activator.middleware_interface import get_central_butler, MiddlewareInterface, \
+from activator.middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface, \
     _filter_datasets, _prepend_collection, _remove_from_chain, _MissingDatasetError
 
 # The short name of the instrument used in the test repo.
@@ -177,6 +177,17 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 .startswith(self.central_repo))
             self.assertEqual(list(butler.collections), [f"{instname}/defaults"])
             self.assertTrue(butler.isWriteable())
+
+    def test_make_local_repo(self):
+        for inst in [instname, "lsst.obs.decam.DarkEnergyCamera"]:
+            with make_local_repo(self.workspace.name, Butler(self.central_repo), inst) as repo_dir:
+                self.assertTrue(os.path.exists(repo_dir))
+                butler = Butler(repo_dir)
+                self.assertEqual([x.dataId for x in butler.registry.queryDimensionRecords("instrument")],
+                                 [DataCoordinate.standardize({"instrument": instname},
+                                                             universe=butler.dimensions)])
+                self.assertIn(f"{instname}/defaults", butler.registry.queryCollections())
+            self.assertFalse(os.path.exists(repo_dir))
 
     def test_init(self):
         """Basic tests of the initialized interface object.

@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["get_central_butler", "MiddlewareInterface"]
+__all__ = ["get_central_butler", "make_local_repo", "MiddlewareInterface"]
 
 import collections.abc
 import datetime
@@ -74,6 +74,53 @@ def get_central_butler(central_repo: str, instrument_class: str):
                   writeable=True,
                   inferDefaults=False,
                   )
+
+
+def make_local_repo(local_storage: str, central_butler: Butler, instrument: str):
+    """Create and configure a new local repository.
+
+    The repository is represented by a temporary directory object, which can be
+    used to manage its lifetime.
+
+    Parameters
+    ----------
+    local_storage : `str`
+        An absolute path to a space where this function can create a local
+        Butler repo.
+    central_butler : `lsst.daf.butler.Butler`
+        Butler repo containing instrument and skymap definitions.
+    instrument : `str`
+        Name of the instrument taking the data, for populating
+        butler collections and dataIds. May be either the fully qualified class
+        name or the short name. Examples: "LsstCam", "lsst.obs.lsst.LsstCam".
+
+    Returns
+    -------
+    repo_dir
+        An object of the same type as returned by `tempfile.TemporaryDirectory`,
+        pointing to the local repo location.
+    """
+    repo_dir = tempfile.TemporaryDirectory(dir=local_storage, prefix="butler-")
+    butler = Butler(Butler.makeRepo(repo_dir.name), writeable=True)
+    _log.info("Created local Butler repo at %s.", repo_dir.name)
+
+    # Run-once repository initialization
+
+    instrument = lsst.obs.base.Instrument.from_string(instrument, central_butler.registry)
+    instrument.register(butler.registry)
+
+    butler.registry.registerCollection(instrument.makeUmbrellaCollectionName(),
+                                       CollectionType.CHAINED)
+    butler.registry.registerCollection(instrument.makeDefaultRawIngestRunName(),
+                                       CollectionType.RUN)
+    output_collection = instrument.makeCollectionName("prompt")
+    butler.registry.registerCollection(output_collection, CollectionType.CHAINED)
+    collections = [instrument.makeUmbrellaCollectionName(),
+                   instrument.makeDefaultRawIngestRunName(),
+                   ]
+    butler.registry.setCollectionChain(output_collection, collections)
+
+    return repo_dir
 
 
 class MiddlewareInterface:
@@ -219,31 +266,15 @@ class MiddlewareInterface:
             An absolute path to a space where the repo can be created.
         """
         # Directory has same lifetime as this object.
-        self._repo = tempfile.TemporaryDirectory(dir=base_path, prefix="butler-")
-        butler = Butler(Butler.makeRepo(self._repo.name), writeable=True)
-        _log.info("Created local Butler repo at %s.", self._repo.name)
-
-        self.instrument.register(butler.registry)
-
-        # Will be populated in prep_butler.
-        butler.registry.registerCollection(self.instrument.makeUmbrellaCollectionName(),
-                                           CollectionType.CHAINED)
-        # Will be populated on ingest.
-        butler.registry.registerCollection(self.instrument.makeDefaultRawIngestRunName(),
-                                           CollectionType.RUN)
-        # Will be populated on pipeline execution.
-        butler.registry.registerCollection(self.output_collection, CollectionType.CHAINED)
-        collections = [self.instrument.makeUmbrellaCollectionName(),
-                       self.instrument.makeDefaultRawIngestRunName(),
-                       ]
-        butler.registry.setCollectionChain(self.output_collection, collections)
+        self._repo = make_local_repo(base_path, self.central_butler, self.instrument.getName())
 
         # Internal Butler keeps a reference to the newly prepared collection.
         # This reference makes visible any inputs for query purposes. Output
         # runs are execution-specific and must be provided explicitly to the
         # appropriate calls.
-        self.butler = Butler(butler=butler,
+        self.butler = Butler(self._repo.name,
                              collections=[self.output_collection],
+                             writeable=True,
                              )
 
     def _init_ingester(self):
