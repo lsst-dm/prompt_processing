@@ -87,12 +87,6 @@ storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
 central_butler = get_central_butler(calib_repo, instrument_name)
 # local_repo is a temporary directory with the same lifetime as this process.
 local_repo = make_local_repo(local_repos, central_butler, instrument_name)
-# Initialize middleware interface.
-mwi = MiddlewareInterface(central_butler,
-                          image_bucket,
-                          instrument_name,
-                          skymap,
-                          local_repo.name)
 
 
 def check_for_snap(
@@ -235,6 +229,13 @@ def next_visit_handler() -> Tuple[str, int]:
             f"Expected {instrument_name}, received {expected_visit.instrument}."
         expid_set = set()
 
+        # Create a fresh MiddlewareInterface object to avoid accidental
+        # "cross-talk" between different visits.
+        mwi = MiddlewareInterface(central_butler,
+                                  image_bucket,
+                                  instrument_name,
+                                  skymap,
+                                  local_repo.name)
         # Copy calibrations for this detector/visit
         mwi.prep_butler(expected_visit)
 

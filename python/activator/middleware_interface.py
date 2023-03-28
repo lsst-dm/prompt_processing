@@ -133,10 +133,9 @@ class MiddlewareInterface:
     ingest the data when it is available, and run the difference imaging
     pipeline, all in that local butler.
 
-    Each instance may be used for processing more than one group-detector
-    combination, designated by the `Visit` parameter to certain methods. There
-    is no guarantee that a processing run may, or may not, share a group,
-    detector, or both with a previous run handled by the same object.
+    Each instance must be used for processing only one group-detector
+    combination. The object may contain state that is unique to a particular
+    processing run.
 
     ``MiddlewareInterface`` objects are not thread- or process-safe. It is up
     to the client to avoid conflicts from multiple objects trying to access the
