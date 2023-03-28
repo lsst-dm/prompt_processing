@@ -138,10 +138,9 @@ class MiddlewareInterface:
     is no guarantee that a processing run may, or may not, share a group,
     detector, or both with a previous run handled by the same object.
 
-    ``MiddlewareInterface`` objects are not thread- or process-safe, and must
-    not share any state with other instances (see ``butler`` in the parameter
-    list). They may, however, share a ``central_butler``, and concurrent
-    operations on this butler are guaranteed to be appropriately synchronized.
+    ``MiddlewareInterface`` objects are not thread- or process-safe. It is up
+    to the client to avoid conflicts from multiple objects trying to access the
+    same local repo.
 
     Parameters
     ----------
@@ -160,9 +159,9 @@ class MiddlewareInterface:
         use of the butler.
     skymap: `str`
         Name of the skymap in the central repo for querying templates.
-    local_storage : `str`
-        An absolute path to a space where this object can create a local
-        Butler repo. The repo is guaranteed to be unique to this object.
+    local_repo : `str`
+        A URI to the local Butler repo, which is assumed to already exist and
+        contain standard collections and the registration of ``instrument``.
     prefix : `str`, optional
         URI scheme followed by ``://``; prepended to ``image_bucket`` when
         constructing URIs to retrieve incoming files. The default is
@@ -179,15 +178,15 @@ class MiddlewareInterface:
     # self._download_store is None if and only if self.image_host is a local URI.
     # self.instrument, self.camera, self.skymap, self._deployment do not change
     #   after __init__.
-    # self._repo is the only reference to its TemporaryDirectory object.
     # self.butler defaults to a chained collection named
-    #   self.output_collection, which contains zero or more output runs,
-    #   pre-made inputs, and raws, in that order. However, self.butler is not
+    #   self.output_collection, which contains zero or more output runs
+    #   and all pipeline inputs, in that order. However, self.butler is not
     #   guaranteed to contain concrete data, or even the dimensions
-    #   corresponding to self.camera and self.skymap.
+    #   corresponding to self.camera and self.skymap. Do not assume that
+    #   self.butler is the only Butler pointing to the local repo.
 
     def __init__(self, central_butler: Butler, image_bucket: str, instrument: str,
-                 skymap: str, local_storage: str,
+                 skymap: str, local_repo: str,
                  prefix: str = "s3://"):
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
@@ -205,7 +204,7 @@ class MiddlewareInterface:
 
         self.output_collection = self.instrument.makeCollectionName("prompt")
 
-        self._init_local_butler(local_storage)
+        self._init_local_butler(local_repo)
         self._init_ingester()
         self._init_visit_definer()
 
@@ -253,26 +252,22 @@ class MiddlewareInterface:
         user_apdb = os.environ.get("USER_APDB", "postgres")
         return f"postgresql://{user_apdb}@{ip_apdb}/{db_apdb}"
 
-    def _init_local_butler(self, base_path: str):
+    def _init_local_butler(self, repo_uri: str):
         """Prepare the local butler to ingest into and process from.
 
         ``self.instrument`` must already exist. ``self.butler`` is correctly
-        initialized after this method returns, and is guaranteed to be unique
-        to this object.
+        initialized after this method returns.
 
         Parameters
         ----------
-        base_path : `str`
-            An absolute path to a space where the repo can be created.
+        repo_uri : `str`
+            A URI to the location of the local repository.
         """
-        # Directory has same lifetime as this object.
-        self._repo = make_local_repo(base_path, self.central_butler, self.instrument.getName())
-
         # Internal Butler keeps a reference to the newly prepared collection.
         # This reference makes visible any inputs for query purposes. Output
         # runs are execution-specific and must be provided explicitly to the
         # appropriate calls.
-        self.butler = Butler(self._repo.name,
+        self.butler = Butler(repo_uri,
                              collections=[self.output_collection],
                              writeable=True,
                              )
@@ -389,9 +384,10 @@ class MiddlewareInterface:
         wcs = self._predict_wcs(detector, visit)
         center, radius = self._detector_bounding_circle(detector, wcs)
 
-        # central repo may have been modified by other MWI instances.
+        # repos may have been modified by other MWI instances.
         # TODO: get a proper synchronization API for Butler
         self.central_butler.registry.refresh()
+        self.butler.registry.refresh()
 
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
@@ -638,6 +634,7 @@ class MiddlewareInterface:
             is prefixed by ``self.output_collection``.
         """
         output_run = self._get_output_run(visit)
+        self.butler.registry.refresh()
         self.butler.registry.registerCollection(output_run, CollectionType.RUN)
         # As of Feb 2023, this moves output_run to the front of the chain if
         # it's already present, but this behavior cannot be relied upon.
@@ -856,6 +853,9 @@ class MiddlewareInterface:
             The collections to transfer from; can be any expression described
             in :ref:`daf_butler_collection_expressions`.
         """
+        # local repo may have been modified by other MWI instances.
+        self.butler.registry.refresh()
+
         try:
             # Need to iterate over datasets at least twice, so list.
             datasets = list(self.butler.registry.queryDatasets(
@@ -904,6 +904,7 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures to be removed.
         """
+        self.butler.registry.refresh()
         raws = self.butler.registry.queryDatasets(
             'raw',
             collections=self.instrument.makeDefaultRawIngestRunName(),
