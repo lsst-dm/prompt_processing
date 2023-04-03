@@ -23,6 +23,7 @@ __all__ = ["get_last_group", "make_exposure_id", "replace_header_key", "send_nex
 
 import json
 import logging
+import requests
 
 from astropy.io import fits
 
@@ -148,27 +149,30 @@ def make_hsc_id(group_num, snap):
     return f"HSCE{exposure_id:08d}", exposure_id
 
 
-def send_next_visit(producer, group, visit_infos):
+def send_next_visit(group, visit_infos):
     """Simulate the transmission of a ``next_visit`` message.
 
     Parameters
     ----------
-    producer : `confluent_kafka.Producer`
-        The client that posts ``next_visit`` messages.
     group : `str`
         The group ID for the message to send.
     visit_infos : `set` [`activator.Visit`]
         The visit-detector combinations to be sent; each object may
         represent multiple snaps.
     """
-    _log.info(f"Sending next_visit for group: {group}")
-    topic = "next-visit-topic"
+    _log.info(f"Sending next_visit for group to kafka http proxy: {group}")
+    header = {"Content-Type": "application/vnd.kafka.avro.v2+json"}
+    url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
     for info in visit_infos:
-        _log.debug(f"Sending next_visit for group: {info.groupId} detector: {info.detector} "
+        _log.debug(f"Sending next_visit for group: {info.groupId} "
                    f"filters: {info.filters} ra: {info.position[0]} dec: {info.position[1]} "
                    f"survey: {info.survey}")
-        data = json.dumps(info.__dict__).encode("utf-8")
-        producer.produce(topic, data)
+        message_values = dict(private_efdStamp=0, private_kafkaStamp=0, salIndex=info.salIndex, private_revCode="c9aab3df", private_sndStamp=0.0, private_rcvStamp=0.0, private_seqNum=0, private_identity="ScriptQueue", private_origin=0, scriptSalIndex=info.scriptSalIndex, groupId=info.groupId, coordinateSystem=info.coordinateSystem.value, position=info.position, rotationSystem=info.rotationSystem.value, cameraAngle=info.cameraAngle, filters=info.filters, dome=info.dome.value, duration=info.duration, nimages=info.nimages, survey=info.survey, totalCheckpoints=info.totalCheckpoints)
+        records_level = dict(value=message_values)
+        value_schema_level = dict(value_schema_id=1, records=[records_level])
+
+        r = requests.post(url, data=json.dumps(value_schema_level), headers=header)
+        _log.debug(r.content)
 
 
 def replace_header_key(file, key, value):

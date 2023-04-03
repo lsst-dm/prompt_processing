@@ -70,7 +70,7 @@ def process_group(producer, visit_infos, uploader):
         _log.info("No observations to make; aborting.")
         return
 
-    send_next_visit(producer, group, visit_infos)
+    send_next_visit(group, visit_infos)
     # TODO: need asynchronous code to handle next_visit delay correctly
     for snap in range(n_snaps):
         _log.info(f"Taking group: {group} snap: {snap}")

@@ -166,7 +166,7 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
         )
         visits.add(visit)
 
-    send_next_visit(producer, group_id, visits)
+    send_next_visit(group_id, visits)
 
     return refs
 
