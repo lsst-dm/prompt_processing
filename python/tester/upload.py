@@ -5,13 +5,11 @@ import itertools
 import logging
 import os
 import random
-import socket
 import sys
 import tempfile
 import time
 
 import boto3
-from confluent_kafka import Producer
 
 from activator.raw import Snap, get_raw_path
 from activator.visit import FannedOutVisit
@@ -46,13 +44,13 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)
 
 
-def process_group(producer, visit_infos, uploader):
+def process_group(kafka_url, visit_infos, uploader):
     """Simulate the observation of a single on-sky pointing.
 
     Parameters
     ----------
-    producer : `confluent_kafka.Producer`
-        The client that posts ``next_visit`` messages.
+    kafka_url : `str`
+        The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
     visit_infos : `set` [`activator.FannedOutVisit`]
         The visit-detector combinations to be observed; each object may
         represent multiple snaps. Assumed to represent a single group, and to
@@ -70,7 +68,7 @@ def process_group(producer, visit_infos, uploader):
         _log.info("No observations to make; aborting.")
         return
 
-    send_next_visit(group, visit_infos)
+    send_next_visit(kafka_url, group, visit_infos)
     # TODO: need asynchronous code to handle next_visit delay correctly
     for snap in range(n_snaps):
         _log.info(f"Taking group: {group} snap: {snap}")
@@ -95,26 +93,20 @@ def main():
     endpoint_url = "https://s3dfrgw.slac.stanford.edu"
     s3 = boto3.resource("s3", endpoint_url=endpoint_url)
     dest_bucket = s3.Bucket("rubin-pp")
-    producer = Producer(
-        {"bootstrap.servers": kafka_cluster, "client.id": socket.gethostname()}
-    )
 
-    try:
-        last_group = get_last_group(dest_bucket, instrument, date)
-        _log.info(f"Last group {last_group}")
+    last_group = get_last_group(dest_bucket, instrument, date)
+    _log.info(f"Last group {last_group}")
 
-        src_bucket = s3.Bucket("rubin-pp-users")
-        raw_pool = get_samples(src_bucket, instrument)
+    src_bucket = s3.Bucket("rubin-pp-users")
+    raw_pool = get_samples(src_bucket, instrument)
 
-        new_group_base = last_group + random.randrange(10, 19)
-        if raw_pool:
-            _log.info(f"Observing real raw files from {instrument}.")
-            upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket,
-                             n_groups, new_group_base)
-        else:
-            _log.error(f"No raw files found for {instrument}, aborting.")
-    finally:
-        producer.flush(30.0)
+    new_group_base = last_group + random.randrange(10, 19)
+    if raw_pool:
+        _log.info(f"Observing real raw files from {instrument}.")
+        upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket,
+                         n_groups, new_group_base)
+    else:
+        _log.error(f"No raw files found for {instrument}, aborting.")
 
 
 def get_samples(bucket, instrument):
@@ -194,13 +186,13 @@ def get_samples(bucket, instrument):
     return result
 
 
-def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_groups, group_base):
+def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n_groups, group_base):
     """Upload visits and files using real raws.
 
     Parameters
     ----------
-    producer : `confluent_kafka.Producer`
-        The client that posts ``next_visit`` messages.
+    kafka_url : `str`
+        The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
     instrument : `str`
         The short name of the instrument carrying out the observation.
     raw_pool : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
@@ -258,7 +250,7 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
                 buffer.seek(0)  # Assumed by upload_fileobj.
                 dest_bucket.upload_fileobj(buffer, filename)
 
-        process_group(producer, visit_infos, upload_from_pool)
+        process_group(kafka_url, visit_infos, upload_from_pool)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
 

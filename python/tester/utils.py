@@ -149,11 +149,13 @@ def make_hsc_id(group_num, snap):
     return f"HSCE{exposure_id:08d}", exposure_id
 
 
-def send_next_visit(group, visit_infos):
+def send_next_visit(url, group, visit_infos):
     """Simulate the transmission of a ``next_visit`` message.
 
     Parameters
     ----------
+    url : `str`
+        The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
     group : `str`
         The group ID for the message to send.
     visit_infos : `set` [`activator.Visit`]
@@ -162,7 +164,6 @@ def send_next_visit(group, visit_infos):
     """
     _log.info(f"Sending next_visit for group to kafka http proxy: {group}")
     header = {"Content-Type": "application/vnd.kafka.avro.v2+json"}
-    url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
     for info in visit_infos:
         _log.debug(f"Sending next_visit for group: {info.groupId} "
                    f"filters: {info.filters} ra: {info.position[0]} dec: {info.position[1]} "

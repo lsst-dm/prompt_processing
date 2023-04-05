@@ -22,13 +22,11 @@
 import logging
 import os
 import random
-import socket
 import sys
 import tempfile
 import time
 
 import boto3
-from confluent_kafka import Producer
 
 from lsst.daf.butler import Butler
 
@@ -59,13 +57,10 @@ def main():
 
     date = time.strftime("%Y%m%d")
 
+    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
     endpoint_url = "https://s3dfrgw.slac.stanford.edu"
     s3 = boto3.resource("s3", endpoint_url=endpoint_url)
     dest_bucket = s3.Bucket("rubin-pp")
-
-    producer = Producer(
-        {"bootstrap.servers": kafka_cluster, "client.id": socket.gethostname()}
-    )
 
     last_group = get_last_group(dest_bucket, "HSC", date)
     group_num = last_group + random.randrange(10, 19)
@@ -73,18 +68,15 @@ def main():
 
     butler = Butler("/repo/main")
     visit_list = get_hsc_visit_list(butler, n_groups)
-    try:
-        for visit in visit_list:
-            group_num += 1
-            _log.info(f"Slewing to group {group_num}, with HSC visit {visit}")
-            time.sleep(SLEW_INTERVAL)
-            refs = prepare_one_visit(producer, str(group_num), butler, visit)
-            _log.info(f"Taking exposure for group {group_num}")
-            time.sleep(EXPOSURE_INTERVAL)
-            _log.info(f"Uploading detector images for group {group_num}")
-            upload_hsc_images(dest_bucket, str(group_num), butler, refs)
-    finally:
-        producer.flush(30.0)
+    for visit in visit_list:
+        group_num += 1
+        _log.info(f"Slewing to group {group_num}, with HSC visit {visit}")
+        time.sleep(SLEW_INTERVAL)
+        refs = prepare_one_visit(kafka_url, str(group_num), butler, visit)
+        _log.info(f"Taking exposure for group {group_num}")
+        time.sleep(EXPOSURE_INTERVAL)
+        _log.info(f"Uploading detector images for group {group_num}")
+        upload_hsc_images(dest_bucket, str(group_num), butler, refs)
 
 
 def get_hsc_visit_list(butler, n_sample):
@@ -115,7 +107,7 @@ def get_hsc_visit_list(butler, n_sample):
     return visits
 
 
-def prepare_one_visit(producer, group_id, butler, visit_id):
+def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     """Extract metadata and send next_visit events for one HSC-RC2 visit
 
     One ``next_visit`` message is sent for each detector, to mimic the
@@ -125,8 +117,8 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
 
     Parameters
     ----------
-    producer : `confluent_kafka.Producer`
-        The client that posts ``next_visit`` messages.
+    kafka_url : `str`
+        The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
     group_id : `str`
         The group ID for the message to send.
     butler : `lsst.daf.butler.Butler`
@@ -166,7 +158,7 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
         )
         visits.add(visit)
 
-    send_next_visit(group_id, visits)
+    send_next_visit(kafka_url, group_id, visits)
 
     return refs
 
