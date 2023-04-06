@@ -34,7 +34,7 @@ import typing
 from lsst.utils import getPackageDir
 from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
-from lsst.ctrl.mpexec import SimplePipelineExecutor
+from lsst.ctrl.mpexec import SeparablePipelineExecutor
 from lsst.daf.butler import Butler, CollectionType
 import lsst.geom
 from lsst.meas.algorithms.htmIndexer import HtmIndexer
@@ -777,17 +777,17 @@ class MiddlewareInterface:
         output_run_butler = Butler(butler=self.butler,
                                    collections=(self._get_init_output_run(visit), ) + self.butler.collections,
                                    run=output_run)
-        executor = SimplePipelineExecutor.from_pipeline(pipeline,
-                                                        where=where,
-                                                        butler=output_run_butler)
-        if len(executor.quantum_graph) == 0:
+        executor = SeparablePipelineExecutor(output_run_butler, clobber_output=False, skip_existing_in=None)
+        qgraph = executor.make_quantum_graph(pipeline, where=where)
+        if len(qgraph) == 0:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.")
-        _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
-        result = executor.run(register_dataset_types=True)
-        _log.info(f"Pipeline successfully run on {len(result)} quanta for "
+        executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
+        _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
+        executor.run_pipeline(qgraph)
+        _log.info(f"Pipeline successfully run on "
                   f"detector {visit.detector} of {exposure_ids}.")
 
     def export_outputs(self, visit: Visit, exposure_ids: set[int]) -> None:

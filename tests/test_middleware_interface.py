@@ -358,10 +358,17 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             mock.return_value = file_data
             self.interface.ingest_image(self.next_visit, filename)
 
-        with unittest.mock.patch("activator.middleware_interface.SimplePipelineExecutor.run") as mock_run:
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
+                as mock_preexec, \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run:
             with self.assertLogs(self.logger_name, level="INFO") as logs:
                 self.interface.run_pipeline(self.next_visit, {1})
-        mock_run.assert_called_once_with(register_dataset_types=True)
+        mock_preexec.assert_called_once()
+        # Pre-execution may have other arguments as needed; no requirement either way.
+        self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
+        mock_run.assert_called_once()
         # Check that we configured the right pipeline.
         self.assertIn("End to end Alert Production pipeline specialized for HiTS-2015",
                       "\n".join(logs.output))
