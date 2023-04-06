@@ -33,7 +33,7 @@ from confluent_kafka import Producer
 from lsst.daf.butler import Butler
 
 from activator.raw import get_raw_path
-from activator.visit import Visit
+from activator.visit import FannedOutVisit
 from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
 
 
@@ -147,20 +147,20 @@ def prepare_one_visit(producer, group_id, butler, visit_id):
 
     visits = set()
     for data_id in refs.dataIds.expanded():
-        visit = Visit(
+        visit = FannedOutVisit(
             instrument="HSC",
             detector=data_id.records["detector"].id,
             groupId=group_id,
             nimages=1,
             filters=data_id.records["physical_filter"].name,
-            coordinateSystem=Visit.CoordSys.ICRS,
+            coordinateSystem=FannedOutVisit.CoordSys.ICRS,
             position=[data_id.records["exposure"].tracking_ra, data_id.records["exposure"].tracking_dec],
-            rotationSystem=Visit.RotSys.SKY,
+            rotationSystem=FannedOutVisit.RotSys.SKY,
             cameraAngle=data_id.records["exposure"].sky_angle,
             survey="SURVEY",
             salIndex=42,
             scriptSalIndex=42,
-            dome=Visit.Dome.OPEN,
+            dome=FannedOutVisit.Dome.OPEN,
             duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
             totalCheckpoints=1,
         )

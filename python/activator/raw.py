@@ -30,7 +30,7 @@ __all__ = ["Snap", "RAW_REGEXP", "get_raw_path"]
 from dataclasses import dataclass
 import re
 
-from .visit import Visit
+from .visit import FannedOutVisit
 
 
 @dataclass(frozen=True)
@@ -68,12 +68,12 @@ class Snap:
         else:
             raise ValueError(f"{oid} could not be parsed into a Snap")
 
-    def is_consistent(self, visit: Visit):
+    def is_consistent(self, visit: FannedOutVisit):
         """Test if this snap could have come from a particular visit.
 
         Parameters
         ----------
-        visit : `activator.visit.Visit`
+        visit : `activator.visit.FannedOutVisit`
             The visit from which snaps were expected.
         """
         return (self.instrument == visit.instrument

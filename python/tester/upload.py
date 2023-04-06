@@ -14,7 +14,7 @@ import boto3
 from confluent_kafka import Producer
 
 from activator.raw import Snap, get_raw_path
-from activator.visit import Visit
+from activator.visit import FannedOutVisit
 from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
 
 
@@ -53,11 +53,11 @@ def process_group(producer, visit_infos, uploader):
     ----------
     producer : `confluent_kafka.Producer`
         The client that posts ``next_visit`` messages.
-    visit_infos : `set` [`activator.Visit`]
+    visit_infos : `set` [`activator.FannedOutVisit`]
         The visit-detector combinations to be observed; each object may
         represent multiple snaps. Assumed to represent a single group, and to
         share instrument, nimages, filters, and survey.
-    uploader : callable [`activator.Visit`, int]
+    uploader : callable [`activator.FannedOutVisit`, int]
         A callable that takes an exposure spec and a snap ID, and uploads the
         visit's data.
     """
@@ -129,7 +129,7 @@ def get_samples(bucket, instrument):
 
     Returns
     -------
-    raws : mapping [`str`, mapping [`int`, mapping [`activator.Visit`, `s3.ObjectSummary`]]]
+    raws : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
         A mapping from group IDs to a mapping of snap ID. The value of the
         innermost mapping is the observation metadata for each detector,
         and a Blob representing the image taken in that detector-snap.
@@ -160,22 +160,23 @@ def get_samples(bucket, instrument):
         # Assume that the unobserved bucket uses the same filename scheme as
         # the observed bucket.
         snap = Snap.from_oid(blob.key)
-        visit = Visit(instrument=instrument,
-                      detector=snap.detector,
-                      groupId=snap.group,
-                      nimages=INSTRUMENTS[instrument].n_snaps,
-                      filters=snap.filter,
-                      coordinateSystem=Visit.CoordSys.ICRS,
-                      position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
-                      rotationSystem=Visit.RotSys.SKY,
-                      cameraAngle=hsc_metadata[snap.exp_id]["rot"],
-                      survey="SURVEY",
-                      salIndex=42,
-                      scriptSalIndex=42,
-                      dome=Visit.Dome.OPEN,
-                      duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
-                      totalCheckpoints=1,
-                      )
+        visit = FannedOutVisit(
+            instrument=instrument,
+            detector=snap.detector,
+            groupId=snap.group,
+            nimages=INSTRUMENTS[instrument].n_snaps,
+            filters=snap.filter,
+            coordinateSystem=FannedOutVisit.CoordSys.ICRS,
+            position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
+            rotationSystem=FannedOutVisit.RotSys.SKY,
+            cameraAngle=hsc_metadata[snap.exp_id]["rot"],
+            survey="SURVEY",
+            salIndex=42,
+            scriptSalIndex=42,
+            dome=FannedOutVisit.Dome.OPEN,
+            duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
+            totalCheckpoints=1,
+        )
         _log.debug(f"File {blob.key} parsed as snap {snap.snap} of visit {visit}.")
         if snap.group in result:
             snap_dict = result[snap.group]
@@ -202,7 +203,7 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
         The client that posts ``next_visit`` messages.
     instrument : `str`
         The short name of the instrument carrying out the observation.
-    raw_pool : mapping [`str`, mapping [`int`, mapping [`activator.Visit`, `s3.ObjectSummary`]]]
+    raw_pool : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
         Available raws as a mapping from group IDs to a mapping of snap ID.
         The value of the innermost mapping is the observation metadata for
         each detector, and a Blob representing the image taken in that
@@ -233,12 +234,12 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
         # snap_dict maps snap_id to {visit: blob}
         snap_dict = {}
         # Copy all the visit-blob dictionaries under each snap_id,
-        # replacing the (immutable) Visit objects to point to group
+        # replacing the (immutable) FannedOutVisit objects to point to group
         # instead of true_group.
         for snap_id, old_visits in raw_pool[true_group].items():
             snap_dict[snap_id] = {dataclasses.replace(true_visit, groupId=group): blob
                                   for true_visit, blob in old_visits.items()}
-        # Gather all the Visit objects found in snap_dict, merging
+        # Gather all the FannedOutVisit objects found in snap_dict, merging
         # duplicates for different snaps of the same detector.
         visit_infos = {info for det_dict in snap_dict.values() for info in det_dict}
 

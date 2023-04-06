@@ -1,11 +1,11 @@
-__all__ = ["Visit"]
+__all__ = ["FannedOutVisit"]
 
 from dataclasses import dataclass, field
 import enum
 
 
 @dataclass(frozen=True, kw_only=True)
-class Visit:
+class FannedOutVisit:
     # Elements must be hashable and JSON-persistable; built-in types
     # recommended. list is not hashable, but gets special treatment because
     # neither Kafka nor JSON deserialize sequences as tuples.
@@ -14,7 +14,7 @@ class Visit:
     # https://ts-xml.lsst.io/sal_interfaces/ScriptQueue.html#nextvisit
     class CoordSys(enum.IntEnum):
         # This is a redeclaration of lsst.ts.idl.enums.Script.MetadataCoordSys,
-        # but we need Visit to work in code that can't import lsst.ts.
+        # but we need FannedOutVisit to work in code that can't import lsst.ts.
         NONE = 1
         ICRS = 2
         OBSERVED = 3

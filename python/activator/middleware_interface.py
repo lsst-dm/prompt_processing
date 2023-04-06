@@ -41,7 +41,7 @@ from lsst.meas.algorithms.htmIndexer import HtmIndexer
 import lsst.obs.base
 import lsst.pipe.base
 
-from .visit import Visit
+from .visit import FannedOutVisit
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -292,14 +292,16 @@ class MiddlewareInterface:
         define_visits_config = lsst.obs.base.DefineVisitsConfig()
         self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
 
-    def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector, visit: Visit) -> lsst.afw.geom.SkyWcs:
+    def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector,
+                     visit: FannedOutVisit
+                     ) -> lsst.afw.geom.SkyWcs:
         """Calculate the expected detector WCS for an incoming observation.
 
         Parameters
         ----------
         detector : `lsst.afw.cameraGeom.Detector`
             The detector for which to generate a WCS.
-        visit : `Visit`
+        visit : `FannedOutVisit`
             Predicted observation metadata for the detector.
 
         Returns
@@ -313,13 +315,13 @@ class MiddlewareInterface:
             Raised if ``visit`` does not have equatorial coordinates and sky
             rotation angle.
         """
-        if visit.coordinateSystem != Visit.CoordSys.ICRS:
-            raise ValueError("Only ICRS coordinates are supported in Visit, "
+        if visit.coordinateSystem != FannedOutVisit.CoordSys.ICRS:
+            raise ValueError("Only ICRS coordinates are supported in FannedOutVisit, "
                              f"got {visit.coordinateSystem!r} instead.")
         boresight_center = lsst.geom.SpherePoint(visit.position[0], visit.position[1], lsst.geom.degrees)
 
-        if visit.rotationSystem != Visit.RotSys.SKY:
-            raise ValueError("Only sky camera rotations are supported in Visit, "
+        if visit.rotationSystem != FannedOutVisit.RotSys.SKY:
+            raise ValueError("Only sky camera rotations are supported in FannedOutVisit, "
                              f"got {visit.rotationSystem!r} instead.")
         orientation = visit.cameraAngle * lsst.geom.degrees
 
@@ -356,7 +358,7 @@ class MiddlewareInterface:
             radii.append(wcs.pixelToSky(corner).separation(center))
         return center, max(radii)
 
-    def prep_butler(self, visit: Visit) -> None:
+    def prep_butler(self, visit: FannedOutVisit) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
 
         After this method returns, the internal butler is guaranteed to contain
@@ -367,7 +369,7 @@ class MiddlewareInterface:
 
         Parameters
         ----------
-        visit : `Visit`
+        visit : `FannedOutVisit`
             Group of snaps from one detector to prepare the butler for.
 
         Raises
@@ -574,14 +576,14 @@ class MiddlewareInterface:
             yield k, len(list(g))
 
     def _get_init_output_run(self,
-                             visit: Visit,
+                             visit: FannedOutVisit,
                              date: datetime.date = datetime.datetime.now(datetime.timezone.utc)) -> str:
         """Generate a deterministic init-output collection name that avoids
         configuration conflicts.
 
         Parameters
         ----------
-        visit : Visit
+        visit : FannedOutVisit
             Group of snaps whose processing goes into the run.
         date : `datetime.date`
             Date of the processing run (not observation!)
@@ -596,14 +598,14 @@ class MiddlewareInterface:
         return self._get_output_run(visit, date)
 
     def _get_output_run(self,
-                        visit: Visit,
+                        visit: FannedOutVisit,
                         date: datetime.date = datetime.datetime.now(datetime.timezone.utc)) -> str:
         """Generate a deterministic collection name that avoids version or
         provenance conflicts.
 
         Parameters
         ----------
-        visit : Visit
+        visit : FannedOutVisit
             Group of snaps whose processing goes into the run.
         date : `datetime.date`
             Date of the processing run (not observation!)
@@ -618,12 +620,12 @@ class MiddlewareInterface:
         return self.instrument.makeCollectionName(
             "prompt", f"output-{date:%Y-%m-%d}", pipeline_name, self._deployment)
 
-    def _prep_collections(self, visit: Visit):
+    def _prep_collections(self, visit: FannedOutVisit):
         """Pre-register output collections in advance of running the pipeline.
 
         Parameters
         ----------
-        visit : Visit
+        visit : FannedOutVisit
             Group of snaps needing an output run.
 
         Returns
@@ -640,13 +642,13 @@ class MiddlewareInterface:
         _prepend_collection(self.butler, self.output_collection, [output_run])
         return output_run
 
-    def _get_pipeline_file(self, visit: Visit) -> str:
+    def _get_pipeline_file(self, visit: FannedOutVisit) -> str:
         """Identify the pipeline to be run, based on the configured instrument
         and details of the visit.
 
         Parameters
         ----------
-        visit : Visit
+        visit : FannedOutVisit
             Group of snaps from one detector to prepare the pipeline for.
 
         Returns
@@ -662,13 +664,13 @@ class MiddlewareInterface:
                             visit.instrument,
                             "ApPipe.yaml")
 
-    def _prep_pipeline(self, visit: Visit) -> lsst.pipe.base.Pipeline:
+    def _prep_pipeline(self, visit: FannedOutVisit) -> lsst.pipe.base.Pipeline:
         """Setup the pipeline to be run, based on the configured instrument and
         details of the incoming visit.
 
         Parameters
         ----------
-        visit : Visit
+        visit : FannedOutVisit
             Group of snaps from one detector to prepare the pipeline for.
 
         Returns
@@ -716,7 +718,7 @@ class MiddlewareInterface:
         local.transfer_from(remote, "copy")
         return local
 
-    def ingest_image(self, visit: Visit, oid: str) -> None:
+    def ingest_image(self, visit: FannedOutVisit, oid: str) -> None:
         """Ingest an image into the temporary butler.
 
         The temporary butler must not already contain a ``raw`` dataset
@@ -726,7 +728,7 @@ class MiddlewareInterface:
 
         Parameters
         ----------
-        visit : Visit
+        visit : FannedOutVisit
             The visit for which the image was taken.
         oid : `str`
             Identifier for incoming image, relative to the image bucket.
@@ -745,7 +747,7 @@ class MiddlewareInterface:
         assert len(result) == 1, "Should have ingested exactly one image."
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
 
-    def run_pipeline(self, visit: Visit, exposure_ids: set[int]) -> None:
+    def run_pipeline(self, visit: FannedOutVisit, exposure_ids: set[int]) -> None:
         """Process the received image(s).
 
         The internal butler must contain all data and all dimensions needed to
@@ -754,7 +756,7 @@ class MiddlewareInterface:
 
         Parameters
         ----------
-        visit : Visit
+        visit : FannedOutVisit
             Group of snaps from one detector to be processed.
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were received.
@@ -790,13 +792,13 @@ class MiddlewareInterface:
         _log.info(f"Pipeline successfully run on "
                   f"detector {visit.detector} of {exposure_ids}.")
 
-    def export_outputs(self, visit: Visit, exposure_ids: set[int]) -> None:
+    def export_outputs(self, visit: FannedOutVisit, exposure_ids: set[int]) -> None:
         """Copy raws and pipeline outputs from processing a set of images back
         to the central Butler.
 
         Parameters
         ----------
-        visit : Visit
+        visit : FannedOutVisit
             The visit whose outputs need to be exported.
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
@@ -834,14 +836,14 @@ class MiddlewareInterface:
         return [dstype for dstype in butler.registry.queryDatasetTypes(...)
                 if "detector" in dstype.dimensions]
 
-    def _export_subset(self, visit: Visit, exposure_ids: set[int],
+    def _export_subset(self, visit: FannedOutVisit, exposure_ids: set[int],
                        dataset_types: typing.Any, in_collections: typing.Any) -> None:
         """Copy datasets associated with a processing run back to the
         central Butler.
 
         Parameters
         ----------
-        visit : Visit
+        visit : FannedOutVisit
             The visit whose outputs need to be exported.
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
@@ -891,14 +893,14 @@ class MiddlewareInterface:
                                                          "skymap", "tract", "patch"},
                                         transfer="copy")
 
-    def clean_local_repo(self, visit: Visit, exposure_ids: set[int]) -> None:
+    def clean_local_repo(self, visit: FannedOutVisit, exposure_ids: set[int]) -> None:
         """Remove local repo content that is only needed for a single visit.
 
         This includes raws and pipeline outputs.
 
         Parameter
         ---------
-        visit : Visit
+        visit : FannedOutVisit
             The visit to be removed.
         exposure_ids : `set` [`int`]
             Identifiers of the exposures to be removed.

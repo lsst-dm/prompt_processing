@@ -22,35 +22,35 @@
 import json
 import unittest
 
-from activator.visit import Visit
+from activator.visit import FannedOutVisit
 
 
-class VisitTest(unittest.TestCase):
-    """Test the Visit class's functionality.
+class FannedOutVisitTest(unittest.TestCase):
+    """Test the FannedOutVisit class's functionality.
     """
     def setUp(self):
         super().setUp()
 
-        self.testbed = Visit(
+        self.testbed = FannedOutVisit(
             instrument="NotACam",
             detector=42,
             groupId="2023-01-23T23:33:14.762",
             nimages=2,
             filters="k2022",
-            coordinateSystem=Visit.CoordSys.ICRS,
+            coordinateSystem=FannedOutVisit.CoordSys.ICRS,
             position=[134.5454, -65.3261],
-            rotationSystem=Visit.RotSys.SKY,
+            rotationSystem=FannedOutVisit.RotSys.SKY,
             cameraAngle=135.0,
             survey="IMAGINARY",
             salIndex=42,
             scriptSalIndex=42,
-            dome=Visit.Dome.OPEN,
+            dome=FannedOutVisit.Dome.OPEN,
             duration=35.0,
             totalCheckpoints=1,
         )
 
     def test_hash(self):
-        # Strictly speaking should test whether Visit fulfills the hash
+        # Strictly speaking should test whether FannedOutVisit fulfills the hash
         # contract, but it's not clear what kinds of differences the default
         # __hash__ might be insensitive to. So just test that the object
         # is hashable.
@@ -59,13 +59,13 @@ class VisitTest(unittest.TestCase):
 
     def test_json(self):
         serialized = json.dumps(self.testbed.__dict__).encode("utf-8")
-        deserialized = Visit(**json.loads(serialized))
+        deserialized = FannedOutVisit(**json.loads(serialized))
         self.assertEqual(deserialized, self.testbed)
         # Test that enums are handled correctly despite being serialized as shorts.
         # isinstance checks are ambigious because IntEnum is-an int.
-        self.assertIs(type(self.testbed.coordinateSystem), Visit.CoordSys)
+        self.assertIs(type(self.testbed.coordinateSystem), FannedOutVisit.CoordSys)
         self.assertIs(type(deserialized.coordinateSystem), int)
-        self.assertIsNot(type(deserialized.coordinateSystem), Visit.CoordSys)
+        self.assertIsNot(type(deserialized.coordinateSystem), FannedOutVisit.CoordSys)
 
     def test_str(self):
         self.assertNotEqual(str(self.testbed), repr(self.testbed))
