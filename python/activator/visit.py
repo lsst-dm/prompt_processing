@@ -41,7 +41,9 @@ class BareVisit:
     position: list[float] = field(compare=False)
     rotationSystem: RotSys      # coordinate system of cameraAngle
     cameraAngle: float          # in degrees
-    filters: str                # physical filter(s)
+    # physical filter(s) name as used in Middleware. It is a combination of filter and
+    # grating joined by a "~". For example, "SDSSi_65mm~empty".
+    filters: str
     dome: Dome
     duration: float             # script execution, not exposure
     nimages: int                # number of snaps expected, 0 if unknown

@@ -393,7 +393,6 @@ class MiddlewareInterface:
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
                 self._export_refcats(export, center, radius)
-                # TODO: Summit filter names may not match Butler names, especially for composite filters.
                 self._export_skymap_and_templates(export, center, detector, wcs, visit.filters)
                 self._export_calibs(export, visit.detector, visit.filters)
                 self._export_collections(export, self.instrument.makeUmbrellaCollectionName())
