@@ -35,7 +35,7 @@ from flask import Flask, request
 
 from .logger import setup_usdf_logger
 from .make_pgpass import make_pgpass
-from .middleware_interface import get_central_butler, MiddlewareInterface
+from .middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface
 from .raw import Snap
 from .visit import Visit
 
@@ -84,12 +84,9 @@ consumer = kafka.Consumer({
 
 storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
 
-# Initialize middleware interface.
-mwi = MiddlewareInterface(get_central_butler(calib_repo, instrument_name),
-                          image_bucket,
-                          instrument_name,
-                          skymap,
-                          local_repos)
+central_butler = get_central_butler(calib_repo, instrument_name)
+# local_repo is a temporary directory with the same lifetime as this process.
+local_repo = make_local_repo(local_repos, central_butler, instrument_name)
 
 
 def check_for_snap(
@@ -232,6 +229,13 @@ def next_visit_handler() -> Tuple[str, int]:
             f"Expected {instrument_name}, received {expected_visit.instrument}."
         expid_set = set()
 
+        # Create a fresh MiddlewareInterface object to avoid accidental
+        # "cross-talk" between different visits.
+        mwi = MiddlewareInterface(central_butler,
+                                  image_bucket,
+                                  instrument_name,
+                                  skymap,
+                                  local_repo.name)
         # Copy calibrations for this detector/visit
         mwi.prep_butler(expected_visit)
 

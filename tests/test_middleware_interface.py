@@ -41,7 +41,7 @@ from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
 from activator.visit import Visit
-from activator.middleware_interface import get_central_butler, MiddlewareInterface, \
+from activator.middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface, \
     _filter_datasets, _prepend_collection, _remove_from_chain, _MissingDatasetError
 
 # The short name of the instrument used in the test repo.
@@ -133,9 +133,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         instrument = "lsst.obs.decam.DarkEnergyCamera"
         self.input_data = os.path.join(data_dir, "input_data")
         # Have to preserve the tempdir, so that it doesn't get cleaned up.
-        self.workspace = tempfile.TemporaryDirectory()
+        self.local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
         self.interface = MiddlewareInterface(central_butler, self.input_data, instrument,
-                                             skymap_name, self.workspace.name,
+                                             skymap_name, self.local_repo.name,
                                              prefix="file://")
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
@@ -164,8 +164,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         # TemporaryDirectory warns on leaks
-        self.interface._repo.cleanup()  # TODO: should MiddlewareInterface have a cleanup method?
-        self.workspace.cleanup()
+        self.local_repo.cleanup()
 
     def test_get_butler(self):
         for butler in [get_central_butler(self.central_repo, "lsst.obs.decam.DarkEnergyCamera"),
@@ -177,6 +176,17 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 .startswith(self.central_repo))
             self.assertEqual(list(butler.collections), [f"{instname}/defaults"])
             self.assertTrue(butler.isWriteable())
+
+    def test_make_local_repo(self):
+        for inst in [instname, "lsst.obs.decam.DarkEnergyCamera"]:
+            with make_local_repo(tempfile.gettempdir(), Butler(self.central_repo), inst) as repo_dir:
+                self.assertTrue(os.path.exists(repo_dir))
+                butler = Butler(repo_dir)
+                self.assertEqual([x.dataId for x in butler.registry.queryDimensionRecords("instrument")],
+                                 [DataCoordinate.standardize({"instrument": instname},
+                                                             universe=butler.dimensions)])
+                self.assertIn(f"{instname}/defaults", butler.registry.queryCollections())
+            self.assertFalse(os.path.exists(repo_dir))
 
     def test_init(self):
         """Basic tests of the initialized interface object.
@@ -348,10 +358,17 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             mock.return_value = file_data
             self.interface.ingest_image(self.next_visit, filename)
 
-        with unittest.mock.patch("activator.middleware_interface.SimplePipelineExecutor.run") as mock_run:
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
+                as mock_preexec, \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run:
             with self.assertLogs(self.logger_name, level="INFO") as logs:
                 self.interface.run_pipeline(self.next_visit, {1})
-        mock_run.assert_called_once_with(register_dataset_types=True)
+        mock_preexec.assert_called_once()
+        # Pre-execution may have other arguments as needed; no requirement either way.
+        self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
+        mock_run.assert_called_once()
         # Check that we configured the right pipeline.
         self.assertIn("End to end Alert Production pipeline specialized for HiTS-2015",
                       "\n".join(logs.output))
@@ -600,10 +617,11 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         instrument = "lsst.obs.decam.DarkEnergyCamera"
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.input_data = os.path.join(data_dir, "input_data")
-        workspace = tempfile.TemporaryDirectory()
+
+        local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
         # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
         # getting garbage-collected.
-        self.addCleanup(tempfile.TemporaryDirectory.cleanup, workspace)
+        self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
         ra = 155.4702849608958
@@ -631,10 +649,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         # Populate repository.
         self.interface = MiddlewareInterface(central_butler, self.input_data, instrument,
-                                             skymap_name, workspace.name,
+                                             skymap_name, local_repo.name,
                                              prefix="file://")
-        # TODO: should MiddlewareInterface have a cleanup method?
-        self.addCleanup(tempfile.TemporaryDirectory.cleanup, self.interface._repo)
         self.interface.prep_butler(self.next_visit)
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
