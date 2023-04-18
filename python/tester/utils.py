@@ -30,7 +30,7 @@ from astropy.io import fits
 
 
 _log = logging.getLogger("lsst." + __name__)
-_log.setLevel(logging.DEBUG)
+_log.setLevel(logging.INFO)
 
 max_exposure = {
     "HSC": 21474800,
