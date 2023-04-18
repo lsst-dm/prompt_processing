@@ -185,6 +185,9 @@ class MiddlewareInterface:
     #   guaranteed to contain concrete data, or even the dimensions
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
+    # self.init_output_run and self.output_run do not change after __init__.
+    #   They need not exist in the local repo, but if they do, they are members
+    #   of self.output_collection.
 
     def __init__(self, central_butler: Butler, image_bucket: str, visit: FannedOutVisit,
                  skymap: str, local_repo: str,
@@ -212,8 +215,11 @@ class MiddlewareInterface:
         self.instrument = lsst.obs.base.Instrument.from_string(visit.instrument, central_butler.registry)
 
         self.output_collection = self.instrument.makeCollectionName("prompt")
+        self.init_output_run = self._get_init_output_run()
+        self.output_run = self._get_output_run()
 
-        self._init_local_butler(local_repo)
+        self._init_local_butler(local_repo, [self.output_collection], self.output_run)
+        self._prep_collections()
         self._init_ingester()
         self._init_visit_definer()
 
@@ -261,23 +267,25 @@ class MiddlewareInterface:
         user_apdb = os.environ.get("USER_APDB", "postgres")
         return f"postgresql://{user_apdb}@{ip_apdb}/{db_apdb}"
 
-    def _init_local_butler(self, repo_uri: str):
+    def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
         """Prepare the local butler to ingest into and process from.
 
-        ``self.instrument`` must already exist. ``self.butler`` is correctly
-        initialized after this method returns.
+        ``self.butler`` is correctly initialized after this method returns.
 
         Parameters
         ----------
         repo_uri : `str`
             A URI to the location of the local repository.
+        output_collections : `list` [`str`]
+            The collection(s) in which to search for inputs and outputs.
+        output_run : `str`
+            The run in which to place new pipeline outputs.
         """
         # Internal Butler keeps a reference to the newly prepared collection.
-        # This reference makes visible any inputs for query purposes. Output
-        # runs are execution-specific and must be provided explicitly to the
-        # appropriate calls.
+        # This reference makes visible any inputs for query purposes.
         self.butler = Butler(repo_uri,
-                             collections=[self.output_collection],
+                             collections=output_collections,
+                             run=output_run,
                              writeable=True,
                              )
 
@@ -603,20 +611,13 @@ class MiddlewareInterface:
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
-
-        Returns
-        -------
-        run : `str`
-            The name of a new run collection to use for outputs. The run name
-            is prefixed by ``self.output_collection``.
         """
-        output_run = self._get_output_run()
         self.butler.registry.refresh()
-        self.butler.registry.registerCollection(output_run, CollectionType.RUN)
+        self.butler.registry.registerCollection(self.init_output_run, CollectionType.RUN)
+        self.butler.registry.registerCollection(self.output_run, CollectionType.RUN)
         # As of Feb 2023, this moves output_run to the front of the chain if
         # it's already present, but this behavior cannot be relied upon.
-        _prepend_collection(self.butler, self.output_collection, [output_run])
-        return output_run
+        _prepend_collection(self.butler, self.output_collection, [self.output_run, self.init_output_run])
 
     def _get_pipeline_file(self) -> str:
         """Identify the pipeline to be run, based on the configured instrument
@@ -733,15 +734,10 @@ class MiddlewareInterface:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.") from e
 
-        output_run = self._prep_collections()
-
         where = f"instrument='{self.visit.instrument}' and detector={self.visit.detector} " \
                 f"and exposure in ({','.join(str(x) for x in exposure_ids)})"
         pipeline = self._prep_pipeline()
-        output_run_butler = Butler(butler=self.butler,
-                                   collections=(self._get_init_output_run(), ) + self.butler.collections,
-                                   run=output_run)
-        executor = SeparablePipelineExecutor(output_run_butler, clobber_output=False, skip_existing_in=None)
+        executor = SeparablePipelineExecutor(self.butler, clobber_output=False, skip_existing_in=None)
         qgraph = executor.make_quantum_graph(pipeline, where=where)
         if len(qgraph) == 0:
             # TODO: a good place for a custom exception?
@@ -768,15 +764,14 @@ class MiddlewareInterface:
                             in_collections=self.instrument.makeDefaultRawIngestRunName(),
                             )
 
-        latest_run = self._get_output_run()
         self._export_subset(exposure_ids,
                             # TODO: find a way to merge datasets like *_config
                             # or *_schema that are duplicated across multiple
                             # workers.
                             self._get_safe_dataset_types(self.butler),
-                            in_collections=latest_run,
+                            in_collections=self.output_run,
                             )
-        _log.info(f"Pipeline products saved to collection '{latest_run}' for "
+        _log.info(f"Pipeline products saved to collection '{self.output_run}' for "
                   f"detector {self.visit.detector} of {exposure_ids}.")
 
     @staticmethod
@@ -871,10 +866,9 @@ class MiddlewareInterface:
         )
         self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
         # Outputs are all in one run, so just drop it.
-        output_run = self._get_output_run()
-        for chain in self.butler.registry.getCollectionParentChains(output_run):
-            _remove_from_chain(self.butler, chain, [output_run])
-        self.butler.removeRuns([output_run], unstore=True)
+        for chain in self.butler.registry.getCollectionParentChains(self.output_run):
+            _remove_from_chain(self.butler, chain, [self.output_run])
+        self.butler.removeRuns([self.output_run], unstore=True)
 
 
 class _MissingDatasetError(RuntimeError):

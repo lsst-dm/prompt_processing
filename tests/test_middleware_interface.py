@@ -686,8 +686,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         """Create a mock pipeline execution that stores a calexp for self.raw_data_id.
         """
         exp = lsst.afw.image.ExposureF(20, 20)
-        run1 = self.interface._prep_collections()
-        run2 = self.second_interface._prep_collections()
         self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
         self.second_processed_data_id = {(k if k != "exposure" else "visit"): v
                                          for k, v in self.second_data_id.items()}
@@ -696,8 +694,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.interface.butler, "calexp", {"instrument", "visit", "detector"},
                                     "ExposureF")
         self.second_interface.butler.registry.refresh()
-        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run1)
-        self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id, run=run2)
+        self.interface.butler.put(exp, "calexp", self.processed_data_id)
+        self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id)
 
     def _count_datasets(self, butler, types, collections):
         return len(set(butler.registry.queryDatasets(types, collections=collections)))
