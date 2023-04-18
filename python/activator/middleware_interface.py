@@ -576,7 +576,7 @@ class MiddlewareInterface:
 
     def _get_init_output_run(self,
                              visit: FannedOutVisit,
-                             date: datetime.date = datetime.datetime.now(datetime.timezone.utc)) -> str:
+                             date: datetime.date | None = None) -> str:
         """Generate a deterministic init-output collection name that avoids
         configuration conflicts.
 
@@ -584,21 +584,24 @@ class MiddlewareInterface:
         ----------
         visit : FannedOutVisit
             Group of snaps whose processing goes into the run.
-        date : `datetime.date`
-            Date of the processing run (not observation!)
+        date : `datetime.date`, optional
+            Date of the processing run (not observation!), defaults to the UTC
+            date this method was called.
 
         Returns
         -------
         run : `str`
             The run in which to place pipeline init-outputs.
         """
+        if date is None:
+            date = datetime.datetime.now(datetime.timezone.utc)
         # Current executor requires that init-outputs be in the same run as
         # outputs. This can be changed once DM-36162 is done.
         return self._get_output_run(visit, date)
 
     def _get_output_run(self,
                         visit: FannedOutVisit,
-                        date: datetime.date = datetime.datetime.now(datetime.timezone.utc)) -> str:
+                        date: datetime.date | None = None) -> str:
         """Generate a deterministic collection name that avoids version or
         provenance conflicts.
 
@@ -606,14 +609,17 @@ class MiddlewareInterface:
         ----------
         visit : FannedOutVisit
             Group of snaps whose processing goes into the run.
-        date : `datetime.date`
-            Date of the processing run (not observation!)
+        date : `datetime.date`, optional
+            Date of the processing run (not observation!), defaults to the UTC
+            date this method was called.
 
         Returns
         -------
         run : `str`
             The run in which to place processing outputs.
         """
+        if date is None:
+            date = datetime.datetime.now(datetime.timezone.utc)
         pipeline_name, _ = os.path.splitext(os.path.basename(self._get_pipeline_file(visit)))
         # Order optimized for S3 bucket -- filter out as many files as soon as possible.
         return self.instrument.makeCollectionName(
