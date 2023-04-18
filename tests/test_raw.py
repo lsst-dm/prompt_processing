@@ -23,7 +23,7 @@ import re
 import unittest
 
 from activator.raw import Snap, RAW_REGEXP, get_raw_path
-from activator.visit import Visit
+from activator.visit import FannedOutVisit
 
 
 class RawTest(unittest.TestCase):
@@ -44,22 +44,22 @@ class RawTest(unittest.TestCase):
         self.snap = 1
         self.exposure = 404
 
-        self.visit = Visit(instrument=self.instrument,
-                           detector=self.detector,
-                           groupId=self.group,
-                           nimages=self.snaps,
-                           filters=self.filter,
-                           coordinateSystem=Visit.CoordSys.ICRS,
-                           position=[self.ra, self.dec],
-                           rotationSystem=Visit.RotSys.SKY,
-                           cameraAngle=self.rot,
-                           survey=self.survey,
-                           salIndex=42,
-                           scriptSalIndex=42,
-                           dome=Visit.Dome.OPEN,
-                           duration=35.0,
-                           totalCheckpoints=1,
-                           )
+        self.visit = FannedOutVisit(instrument=self.instrument,
+                                    detector=self.detector,
+                                    groupId=self.group,
+                                    nimages=self.snaps,
+                                    filters=self.filter,
+                                    coordinateSystem=FannedOutVisit.CoordSys.ICRS,
+                                    position=[self.ra, self.dec],
+                                    rotationSystem=FannedOutVisit.RotSys.SKY,
+                                    cameraAngle=self.rot,
+                                    survey=self.survey,
+                                    salIndex=42,
+                                    scriptSalIndex=42,
+                                    dome=FannedOutVisit.Dome.OPEN,
+                                    duration=35.0,
+                                    totalCheckpoints=1,
+                                    )
 
     def test_writeread(self):
         """Test that raw module can parse the paths it creates.

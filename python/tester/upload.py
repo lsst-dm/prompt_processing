@@ -1,20 +1,16 @@
-__all__ = ["get_last_group", ]
-
 import dataclasses
 import itertools
 import logging
 import os
 import random
-import socket
 import sys
 import tempfile
 import time
 
 import boto3
-from confluent_kafka import Producer
 
 from activator.raw import Snap, get_raw_path
-from activator.visit import Visit
+from activator.visit import FannedOutVisit, SummitVisit
 from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
 
 
@@ -46,18 +42,18 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)
 
 
-def process_group(producer, visit_infos, uploader):
+def process_group(kafka_url, visit_infos, uploader):
     """Simulate the observation of a single on-sky pointing.
 
     Parameters
     ----------
-    producer : `confluent_kafka.Producer`
-        The client that posts ``next_visit`` messages.
-    visit_infos : `set` [`activator.Visit`]
+    kafka_url : `str`
+        The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
+    visit_infos : `set` [`activator.FannedOutVisit`]
         The visit-detector combinations to be observed; each object may
         represent multiple snaps. Assumed to represent a single group, and to
         share instrument, nimages, filters, and survey.
-    uploader : callable [`activator.Visit`, int]
+    uploader : callable [`activator.FannedOutVisit`, int]
         A callable that takes an exposure spec and a snap ID, and uploads the
         visit's data.
     """
@@ -65,12 +61,13 @@ def process_group(producer, visit_infos, uploader):
     for info in visit_infos:
         group = info.groupId
         n_snaps = info.nimages
+        visit = SummitVisit(**info.get_bare_visit())
+        send_next_visit(kafka_url, group, {visit})
         break
     else:
         _log.info("No observations to make; aborting.")
         return
 
-    send_next_visit(producer, group, visit_infos)
     # TODO: need asynchronous code to handle next_visit delay correctly
     for snap in range(n_snaps):
         _log.info(f"Taking group: {group} snap: {snap}")
@@ -92,29 +89,24 @@ def main():
 
     date = time.strftime("%Y%m%d")
 
+    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
     endpoint_url = "https://s3dfrgw.slac.stanford.edu"
     s3 = boto3.resource("s3", endpoint_url=endpoint_url)
     dest_bucket = s3.Bucket("rubin-pp")
-    producer = Producer(
-        {"bootstrap.servers": kafka_cluster, "client.id": socket.gethostname()}
-    )
 
-    try:
-        last_group = get_last_group(dest_bucket, instrument, date)
-        _log.info(f"Last group {last_group}")
+    last_group = get_last_group(dest_bucket, instrument, date)
+    _log.info(f"Last group {last_group}")
 
-        src_bucket = s3.Bucket("rubin-pp-users")
-        raw_pool = get_samples(src_bucket, instrument)
+    src_bucket = s3.Bucket("rubin-pp-users")
+    raw_pool = get_samples(src_bucket, instrument)
 
-        new_group_base = last_group + random.randrange(10, 19)
-        if raw_pool:
-            _log.info(f"Observing real raw files from {instrument}.")
-            upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket,
-                             n_groups, new_group_base)
-        else:
-            _log.error(f"No raw files found for {instrument}, aborting.")
-    finally:
-        producer.flush(30.0)
+    new_group_base = last_group + random.randrange(10, 19)
+    if raw_pool:
+        _log.info(f"Observing real raw files from {instrument}.")
+        upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket,
+                         n_groups, new_group_base)
+    else:
+        _log.error(f"No raw files found for {instrument}, aborting.")
 
 
 def get_samples(bucket, instrument):
@@ -129,7 +121,7 @@ def get_samples(bucket, instrument):
 
     Returns
     -------
-    raws : mapping [`str`, mapping [`int`, mapping [`activator.Visit`, `s3.ObjectSummary`]]]
+    raws : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
         A mapping from group IDs to a mapping of snap ID. The value of the
         innermost mapping is the observation metadata for each detector,
         and a Blob representing the image taken in that detector-snap.
@@ -160,22 +152,25 @@ def get_samples(bucket, instrument):
         # Assume that the unobserved bucket uses the same filename scheme as
         # the observed bucket.
         snap = Snap.from_oid(blob.key)
-        visit = Visit(instrument=instrument,
-                      detector=snap.detector,
-                      groupId=snap.group,
-                      nimages=INSTRUMENTS[instrument].n_snaps,
-                      filters=snap.filter,
-                      coordinateSystem=Visit.CoordSys.ICRS,
-                      position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
-                      rotationSystem=Visit.RotSys.SKY,
-                      cameraAngle=hsc_metadata[snap.exp_id]["rot"],
-                      survey="SURVEY",
-                      salIndex=42,
-                      scriptSalIndex=42,
-                      dome=Visit.Dome.OPEN,
-                      duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
-                      totalCheckpoints=1,
-                      )
+        visit = FannedOutVisit(
+            instrument=instrument,
+            detector=snap.detector,
+            groupId=snap.group,
+            nimages=INSTRUMENTS[instrument].n_snaps,
+            filters=snap.filter,
+            coordinateSystem=FannedOutVisit.CoordSys.ICRS,
+            position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
+            rotationSystem=FannedOutVisit.RotSys.SKY,
+            cameraAngle=hsc_metadata[snap.exp_id]["rot"],
+            survey="SURVEY",
+            # Fan-out uses salIndex to know which instrument and detector config to use.
+            # The exp_id of this test dataset is coded into fan-out's pattern matching.
+            salIndex=snap.exp_id,
+            scriptSalIndex=42,
+            dome=FannedOutVisit.Dome.OPEN,
+            duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
+            totalCheckpoints=1,
+        )
         _log.debug(f"File {blob.key} parsed as snap {snap.snap} of visit {visit}.")
         if snap.group in result:
             snap_dict = result[snap.group]
@@ -193,16 +188,16 @@ def get_samples(bucket, instrument):
     return result
 
 
-def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_groups, group_base):
+def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n_groups, group_base):
     """Upload visits and files using real raws.
 
     Parameters
     ----------
-    producer : `confluent_kafka.Producer`
-        The client that posts ``next_visit`` messages.
+    kafka_url : `str`
+        The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
     instrument : `str`
         The short name of the instrument carrying out the observation.
-    raw_pool : mapping [`str`, mapping [`int`, mapping [`activator.Visit`, `s3.ObjectSummary`]]]
+    raw_pool : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
         Available raws as a mapping from group IDs to a mapping of snap ID.
         The value of the innermost mapping is the observation metadata for
         each detector, and a Blob representing the image taken in that
@@ -233,12 +228,12 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
         # snap_dict maps snap_id to {visit: blob}
         snap_dict = {}
         # Copy all the visit-blob dictionaries under each snap_id,
-        # replacing the (immutable) Visit objects to point to group
+        # replacing the (immutable) FannedOutVisit objects to point to group
         # instead of true_group.
         for snap_id, old_visits in raw_pool[true_group].items():
             snap_dict[snap_id] = {dataclasses.replace(true_visit, groupId=group): blob
                                   for true_visit, blob in old_visits.items()}
-        # Gather all the Visit objects found in snap_dict, merging
+        # Gather all the FannedOutVisit objects found in snap_dict, merging
         # duplicates for different snaps of the same detector.
         visit_infos = {info for det_dict in snap_dict.values() for info in det_dict}
 
@@ -257,7 +252,7 @@ def upload_from_raws(producer, instrument, raw_pool, src_bucket, dest_bucket, n_
                 buffer.seek(0)  # Assumed by upload_fileobj.
                 dest_bucket.upload_fileobj(buffer, filename)
 
-        process_group(producer, visit_infos, upload_from_pool)
+        process_group(kafka_url, visit_infos, upload_from_pool)
         _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
 

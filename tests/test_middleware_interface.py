@@ -40,7 +40,7 @@ from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
-from activator.visit import Visit
+from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface, \
     _filter_datasets, _prepend_collection, _remove_from_chain, _MissingDatasetError
 
@@ -63,7 +63,7 @@ def fake_file_data(filename, dimensions, instrument, visit):
         The full set of dimensions for this butler.
     instrument : `lsst.obs.base.Instrument`
         The instrument the file is supposed to be from.
-    visit : `Visit`
+    visit : `FannedOutVisit`
         Group of snaps from one detector to be processed.
 
     Returns
@@ -143,22 +143,22 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         dec = -4.950050405424033
         # DECam has no rotator; instrument angle is 90 degrees in our system.
         rot = 90.
-        self.next_visit = Visit(instrument=instname,
-                                detector=56,
-                                groupId="1",
-                                nimages=1,
-                                filters=filter,
-                                coordinateSystem=Visit.CoordSys.ICRS,
-                                position=[ra, dec],
-                                rotationSystem=Visit.RotSys.SKY,
-                                cameraAngle=rot,
-                                survey="SURVEY",
-                                salIndex=42,
-                                scriptSalIndex=42,
-                                dome=Visit.Dome.OPEN,
-                                duration=35.0,
-                                totalCheckpoints=1,
-                                )
+        self.next_visit = FannedOutVisit(instrument=instname,
+                                         detector=56,
+                                         groupId="1",
+                                         nimages=1,
+                                         filters=filter,
+                                         coordinateSystem=FannedOutVisit.CoordSys.ICRS,
+                                         position=[ra, dec],
+                                         rotationSystem=FannedOutVisit.RotSys.SKY,
+                                         cameraAngle=rot,
+                                         survey="SURVEY",
+                                         salIndex=42,
+                                         scriptSalIndex=42,
+                                         dome=FannedOutVisit.Dome.OPEN,
+                                         duration=35.0,
+                                         totalCheckpoints=1,
+                                         )
         self.logger_name = "lsst.activator.middleware_interface"
 
     def tearDown(self):
@@ -628,22 +628,22 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         dec = -4.950050405424033
         # DECam has no rotator; instrument angle is 90 degrees in our system.
         rot = 90.
-        self.next_visit = Visit(instrument=instname,
-                                detector=56,
-                                groupId="1",
-                                nimages=1,
-                                filters=filter,
-                                coordinateSystem=Visit.CoordSys.ICRS,
-                                position=[ra, dec],
-                                rotationSystem=Visit.RotSys.SKY,
-                                cameraAngle=rot,
-                                survey="SURVEY",
-                                salIndex=42,
-                                scriptSalIndex=42,
-                                dome=Visit.Dome.OPEN,
-                                duration=35.0,
-                                totalCheckpoints=1,
-                                )
+        self.next_visit = FannedOutVisit(instrument=instname,
+                                         detector=56,
+                                         groupId="1",
+                                         nimages=1,
+                                         filters=filter,
+                                         coordinateSystem=FannedOutVisit.CoordSys.ICRS,
+                                         position=[ra, dec],
+                                         rotationSystem=FannedOutVisit.RotSys.SKY,
+                                         cameraAngle=rot,
+                                         survey="SURVEY",
+                                         salIndex=42,
+                                         scriptSalIndex=42,
+                                         dome=FannedOutVisit.Dome.OPEN,
+                                         duration=35.0,
+                                         totalCheckpoints=1,
+                                         )
         self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.logger_name = "lsst.activator.middleware_interface"
 

@@ -37,7 +37,7 @@ from .logger import setup_usdf_logger
 from .make_pgpass import make_pgpass
 from .middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface
 from .raw import Snap
-from .visit import Visit
+from .visit import FannedOutVisit
 
 PROJECT_ID = "prompt-proto"
 
@@ -131,7 +131,7 @@ def parse_next_visit(http_request):
 
     Returns
     -------
-    next_visit : `activator.visit.Visit`
+    next_visit : `activator.visit.FannedOutVisit`
         The next_visit message contained in the request.
 
     Raises
@@ -147,7 +147,7 @@ def parse_next_visit(http_request):
 
     # Message format is determined by the nextvisit-start deployment.
     data = json.loads(event.data)
-    return Visit(**data)
+    return FannedOutVisit(**data)
 
 
 def _filter_messages(messages):

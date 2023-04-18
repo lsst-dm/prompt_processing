@@ -21,8 +21,10 @@
 
 __all__ = ["get_last_group", "make_exposure_id", "replace_header_key", "send_next_visit"]
 
+from dataclasses import asdict
 import json
 import logging
+import requests
 
 from astropy.io import fits
 
@@ -148,27 +150,30 @@ def make_hsc_id(group_num, snap):
     return f"HSCE{exposure_id:08d}", exposure_id
 
 
-def send_next_visit(producer, group, visit_infos):
-    """Simulate the transmission of a ``next_visit`` message.
+def send_next_visit(url, group, visit_infos):
+    """Simulate the transmission of a ``next_visit`` message to Sasquatch.
 
     Parameters
     ----------
-    producer : `confluent_kafka.Producer`
-        The client that posts ``next_visit`` messages.
+    url : `str`
+        The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
     group : `str`
         The group ID for the message to send.
-    visit_infos : `set` [`activator.Visit`]
-        The visit-detector combinations to be sent; each object may
+    visit_infos : `set` [`activator.SummitVisit`]
+        The ``next_visit`` message to be sent; each object may
         represent multiple snaps.
     """
-    _log.info(f"Sending next_visit for group: {group}")
-    topic = "next-visit-topic"
+    _log.info(f"Sending next_visit for group to kafka http proxy: {group}")
+    header = {"Content-Type": "application/vnd.kafka.avro.v2+json"}
     for info in visit_infos:
-        _log.debug(f"Sending next_visit for group: {info.groupId} detector: {info.detector} "
+        _log.debug(f"Sending next_visit for group: {info.groupId} "
                    f"filters: {info.filters} ra: {info.position[0]} dec: {info.position[1]} "
                    f"survey: {info.survey}")
-        data = json.dumps(info.__dict__).encode("utf-8")
-        producer.produce(topic, data)
+        records_level = dict(value=asdict(info))
+        value_schema_level = dict(value_schema_id=1, records=[records_level])
+
+        r = requests.post(url, data=json.dumps(value_schema_level), headers=header)
+        _log.debug(r.content)
 
 
 def replace_header_key(file, key, value):
