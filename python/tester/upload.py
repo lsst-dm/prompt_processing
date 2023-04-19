@@ -224,7 +224,7 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
 
     for i, true_group in enumerate(itertools.islice(raw_pool, n_groups)):
         group = str(group_base + i)
-        _log.debug(f"Processing group {group} from unobserved {true_group}...")
+        _log.info(f"Processing group {group} from unobserved {true_group}...")
         # snap_dict maps snap_id to {visit: blob}
         snap_dict = {}
         # Copy all the visit-blob dictionaries under each snap_id,
@@ -253,7 +253,6 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
                 dest_bucket.upload_fileobj(buffer, filename)
 
         process_group(kafka_url, visit_infos, upload_from_pool)
-        _log.info("Slewing to next group")
         time.sleep(SLEW_INTERVAL)
 
 

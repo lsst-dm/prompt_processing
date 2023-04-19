@@ -126,17 +126,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def setUp(self):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.central_repo = os.path.join(data_dir, "central_repo")
-        central_butler = Butler(self.central_repo,
-                                collections=[f"{instname}/defaults"],
-                                writeable=False,
-                                inferDefaults=False)
-        instrument = "lsst.obs.decam.DarkEnergyCamera"
+        self.central_butler = Butler(self.central_repo,
+                                     collections=[f"{instname}/defaults"],
+                                     writeable=False,
+                                     inferDefaults=False)
         self.input_data = os.path.join(data_dir, "input_data")
-        # Have to preserve the tempdir, so that it doesn't get cleaned up.
-        self.local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
-        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument,
-                                             skymap_name, self.local_repo.name,
-                                             prefix="file://")
+        self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
         ra = 155.4702849608958
@@ -160,6 +155,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                          totalCheckpoints=1,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
+        self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
+                                             skymap_name, self.local_repo.name,
+                                             prefix="file://")
 
     def tearDown(self):
         super().tearDown()
@@ -259,7 +257,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """
-        self.interface.prep_butler(self.next_visit)
+        self.interface.prep_butler()
 
         # These shards were identified by plotting the objects in each shard
         # on-sky and overplotting the detector corners.
@@ -275,29 +273,36 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         in the local butler" problem that's related to the "can't register
         the skymap in init" problem.
         """
-        self.interface.prep_butler(self.next_visit)
+        self.interface.prep_butler()
 
         # Second visit with everything same except group.
-        self.next_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
-        self.interface.prep_butler(self.next_visit)
+        second_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
+        second_interface = MiddlewareInterface(self.central_butler, self.input_data, second_visit,
+                                               skymap_name, self.local_repo.name,
+                                               prefix="file://")
+
+        second_interface.prep_butler()
         expected_shards = {157394, 157401, 157405}
-        self._check_imports(self.interface.butler, detector=56, expected_shards=expected_shards)
+        self._check_imports(second_interface.butler, detector=56, expected_shards=expected_shards)
 
         # Third visit with different detector and coordinates.
         # Only 5, 10, 56, 60 have valid calibs.
-        self.next_visit = dataclasses.replace(self.next_visit,
-                                              detector=5,
-                                              groupId=str(int(self.next_visit.groupId) + 1),
-                                              # Offset to put detector=5 in same templates.
-                                              position=[self.next_visit.position[0] + 0.2,
-                                                        self.next_visit.position[1] - 1.2],
-                                              )
-        self.interface.prep_butler(self.next_visit)
+        third_visit = dataclasses.replace(second_visit,
+                                          detector=5,
+                                          groupId=str(int(second_visit.groupId) + 1),
+                                          # Offset to put detector=5 in same templates.
+                                          position=[self.next_visit.position[0] + 0.2,
+                                                    self.next_visit.position[1] - 1.2],
+                                          )
+        third_interface = MiddlewareInterface(self.central_butler, self.input_data, third_visit,
+                                              skymap_name, self.local_repo.name,
+                                              prefix="file://")
+        third_interface.prep_butler()
         expected_shards.update({157393, 157395})
-        self._check_imports(self.interface.butler, detector=5, expected_shards=expected_shards)
+        self._check_imports(third_interface.butler, detector=5, expected_shards=expected_shards)
 
     def test_ingest_image(self):
-        self.interface.prep_butler(self.next_visit)  # Ensure raw collections exist.
+        self.interface.prep_butler()  # Ensure raw collections exist.
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
@@ -306,7 +311,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(self.next_visit, filename)
+            self.interface.ingest_image(filename)
 
             datasets = list(self.interface.butler.registry.queryDatasets('raw',
                                                                          collections=[f'{instname}/raw/all']))
@@ -325,7 +330,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         through ingest_image(), we'll want to have a test of "missing file
         ingestion", and this can serve as a starting point.
         """
-        self.interface.prep_butler(self.next_visit)  # Ensure raw collections exist.
+        self.interface.prep_butler()  # Ensure raw collections exist.
         filename = "nonexistentImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
@@ -335,7 +340,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
                 self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"):
             mock.return_value = file_data
-            self.interface.ingest_image(self.next_visit, filename)
+            self.interface.ingest_image(filename)
         # There should not be any raw files in the registry.
         datasets = list(self.interface.butler.registry.queryDatasets('raw',
                                                                      collections=[f'{instname}/raw/all']))
@@ -347,7 +352,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         are all zeroed out.
         """
         # Have to setup the data so that we can create the pipeline executor.
-        self.interface.prep_butler(self.next_visit)
+        self.interface.prep_butler()
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
@@ -356,7 +361,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(self.next_visit, filename)
+            self.interface.ingest_image(filename)
 
         with unittest.mock.patch(
                 "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
@@ -364,7 +369,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run:
             with self.assertLogs(self.logger_name, level="INFO") as logs:
-                self.interface.run_pipeline(self.next_visit, {1})
+                self.interface.run_pipeline({1})
         mock_preexec.assert_called_once()
         # Pre-execution may have other arguments as needed; no requirement either way.
         self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
@@ -378,7 +383,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         (because the exposure ids are wrong), raises.
         """
         # Have to setup the data so that we can create the pipeline executor.
-        self.interface.prep_butler(self.next_visit)
+        self.interface.prep_butler()
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
@@ -387,19 +392,19 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(self.next_visit, filename)
+            self.interface.ingest_image(filename)
 
         with self.assertRaisesRegex(RuntimeError, "No data to process"):
-            self.interface.run_pipeline(self.next_visit, {2})
+            self.interface.run_pipeline({2})
 
     def test_get_output_run(self):
         for date in [datetime.date.today(), datetime.datetime.today()]:
-            out_run = self.interface._get_output_run(self.next_visit, date)
+            out_run = self.interface._get_output_run(date)
             self.assertEqual(out_run,
                              f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
                              "/ApPipe/prompt-proto-service-042"
                              )
-            init_run = self.interface._get_init_output_run(self.next_visit, date)
+            init_run = self.interface._get_init_output_run(date)
             self.assertEqual(init_run,
                              f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
                              "/ApPipe/prompt-proto-service-042"
@@ -437,7 +442,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         cat = lsst.afw.table.SourceCatalog()
         raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
         butler.registry.registerCollection(raw_collection, CollectionType.RUN)
-        out_collection = self.interface._get_output_run(self.next_visit)
+        out_collection = self.interface._get_output_run()
         butler.registry.registerCollection(out_collection, CollectionType.RUN)
         chain = "generic-chain"
         butler.registry.registerCollection(chain, CollectionType.CHAINED)
@@ -450,7 +455,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self._assert_in_collection(butler, "*", "src", processed_data_id)
         self._assert_in_collection(butler, "*", "calexp", processed_data_id)
 
-        self.interface.clean_local_repo(self.next_visit, {raw_data_id["exposure"]})
+        self.interface.clean_local_repo({raw_data_id["exposure"]})
         self._assert_not_in_collection(butler, "*", "raw", raw_data_id)
         self._assert_not_in_collection(butler, "*", "src", processed_data_id)
         self._assert_not_in_collection(butler, "*", "calexp", processed_data_id)
@@ -459,7 +464,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """Test that _filter_datasets provides the correct values.
         """
         # Much easier to create DatasetRefs with a real repo.
-        butler = self.interface.central_butler
+        butler = self.central_butler
         dtype = butler.registry.getDatasetType("cpBias")
         data1 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 5})
         data2 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 25})
@@ -486,7 +491,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         dimensions to define them.
         """
         # Much easier to create DatasetRefs with a real repo.
-        butler = self.interface.central_butler
+        butler = self.central_butler
         dtype = butler.registry.getDatasetType("skyMap")
         data1 = lsst.daf.butler.DatasetRef(dtype, {"skymap": "mymap"})
 
@@ -507,7 +512,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         destination repository.
         """
         # Much easier to create DatasetRefs with a real repo.
-        butler = self.interface.central_butler
+        butler = self.central_butler
         dtype = butler.registry.getDatasetType("cpBias")
         data1 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 42})
 
@@ -614,7 +619,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                 skymap=skymap_name,
                                 collections=[f"{instname}/defaults"],
                                 writeable=True)
-        instrument = "lsst.obs.decam.DarkEnergyCamera"
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.input_data = os.path.join(data_dir, "input_data")
 
@@ -644,31 +648,37 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          duration=35.0,
                                          totalCheckpoints=1,
                                          )
-        self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.logger_name = "lsst.activator.middleware_interface"
 
         # Populate repository.
-        self.interface = MiddlewareInterface(central_butler, self.input_data, instrument,
+        self.interface = MiddlewareInterface(central_butler, self.input_data, self.next_visit,
                                              skymap_name, local_repo.name,
                                              prefix="file://")
-        self.interface.prep_butler(self.next_visit)
+        self.interface.prep_butler()
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         self.raw_data_id, file_data = fake_file_data(filepath,
                                                      self.interface.butler.dimensions,
                                                      self.interface.instrument,
                                                      self.next_visit)
+
+        self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.second_data_id, second_file_data = fake_file_data(filepath,
                                                                self.interface.butler.dimensions,
                                                                self.interface.instrument,
                                                                self.second_visit)
+        self.second_interface = MiddlewareInterface(central_butler, self.input_data, self.second_visit,
+                                                    skymap_name, local_repo.name,
+                                                    prefix="file://")
 
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(self.next_visit, filename)
+            self.interface.ingest_image(filename)
+        with unittest.mock.patch.object(self.second_interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = second_file_data
-            self.interface.ingest_image(self.second_visit, filename)
-        self.interface.define_visits.run([self.raw_data_id, self.second_data_id])
+            self.second_interface.ingest_image(filename)
+        self.interface.define_visits.run([self.raw_data_id])
+        self.second_interface.define_visits.run([self.second_data_id])
 
         self._simulate_run()
 
@@ -676,17 +686,16 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         """Create a mock pipeline execution that stores a calexp for self.raw_data_id.
         """
         exp = lsst.afw.image.ExposureF(20, 20)
-        run1 = self.interface._prep_collections(self.next_visit)
         self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
-        run2 = self.interface._prep_collections(self.second_visit)
         self.second_processed_data_id = {(k if k != "exposure" else "visit"): v
                                          for k, v in self.second_data_id.items()}
         # Dataset types defined for local Butler on pipeline run, but no
         # guarantee this happens in central Butler.
         butler_tests.addDatasetType(self.interface.butler, "calexp", {"instrument", "visit", "detector"},
                                     "ExposureF")
-        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=run1)
-        self.interface.butler.put(exp, "calexp", self.second_processed_data_id, run=run2)
+        self.second_interface.butler.registry.refresh()
+        self.interface.butler.put(exp, "calexp", self.processed_data_id)
+        self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id)
 
     def _count_datasets(self, butler, types, collections):
         return len(set(butler.registry.queryDatasets(types, collections=collections)))
@@ -702,7 +711,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         central_butler.registry.registerCollection("emptyrun", CollectionType.RUN)
         _prepend_collection(central_butler, "refcats", ["emptyrun"])
 
-        self.interface.prep_butler(self.next_visit)
+        self.interface.prep_butler()
 
         self.assertEqual(
             self._count_datasets(self.interface.butler, "gaia", f"{instname}/defaults"),
@@ -712,7 +721,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             self.interface.butler.registry.queryCollections("refcats", flattenChains=True))
 
     def test_export_outputs(self):
-        self.interface.export_outputs(self.next_visit, {self.raw_data_id["exposure"]})
+        self.interface.export_outputs({self.raw_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
         raw_collection = f"{instname}/raw/all"
@@ -736,18 +745,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
             0)
 
-    def test_export_outputs_bad_visit(self):
-        bad_visit = dataclasses.replace(self.next_visit, detector=88)
-        with self.assertRaises(ValueError):
-            self.interface.export_outputs(bad_visit, {self.raw_data_id["exposure"]})
-
     def test_export_outputs_bad_exposure(self):
         with self.assertRaises(ValueError):
-            self.interface.export_outputs(self.next_visit, {88})
+            self.interface.export_outputs({88})
 
     def test_export_outputs_retry(self):
-        self.interface.export_outputs(self.next_visit, {self.raw_data_id["exposure"]})
-        self.interface.export_outputs(self.second_visit, {self.second_data_id["exposure"]})
+        self.interface.export_outputs({self.raw_data_id["exposure"]})
+        self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
         raw_collection = f"{instname}/raw/all"

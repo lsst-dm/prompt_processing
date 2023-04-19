@@ -233,11 +233,11 @@ def next_visit_handler() -> Tuple[str, int]:
         # "cross-talk" between different visits.
         mwi = MiddlewareInterface(central_butler,
                                   image_bucket,
-                                  instrument_name,
+                                  expected_visit,
                                   skymap,
                                   local_repo.name)
         # Copy calibrations for this detector/visit
-        mwi.prep_butler(expected_visit)
+        mwi.prep_butler()
 
         # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
         expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
@@ -252,7 +252,7 @@ def next_visit_handler() -> Tuple[str, int]:
             if oid:
                 raw_info = Snap.from_oid(oid)
                 _log.debug("Found %r already present", raw_info)
-                mwi.ingest_image(expected_visit, oid)
+                mwi.ingest_image(oid)
                 expid_set.add(raw_info.exp_id)
 
         _log.debug(f"Waiting for snaps from {expected_visit}.")
@@ -281,7 +281,7 @@ def next_visit_handler() -> Tuple[str, int]:
                         _log.debug("Received %r", raw_info)
                         if raw_info.is_consistent(expected_visit):
                             # Ingest the snap
-                            mwi.ingest_image(expected_visit, oid)
+                            mwi.ingest_image(oid)
                             expid_set.add(raw_info.exp_id)
                     except ValueError:
                         _log.error(f"Failed to match object id '{oid}'")
@@ -299,12 +299,12 @@ def next_visit_handler() -> Tuple[str, int]:
             if len(expid_set) < expected_visit.nimages:
                 _log.warning(f"Processing {len(expid_set)} snaps, expected {expected_visit.nimages}.")
             _log.info(f"Running pipeline on {expected_visit}.")
-            mwi.run_pipeline(expected_visit, expid_set)
+            mwi.run_pipeline(expid_set)
             # TODO: broadcast alerts here
             # TODO: call export_outputs on success or permanent failure in DM-34141
-            mwi.export_outputs(expected_visit, expid_set)
+            mwi.export_outputs(expid_set)
             # Clean only if export successful.
-            mwi.clean_local_repo(expected_visit, expid_set)
+            mwi.clean_local_repo(expid_set)
             return "Pipeline executed", 200
         else:
             _log.error(f"Timed out waiting for images for {expected_visit}.")
