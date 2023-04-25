@@ -92,13 +92,14 @@ def get_hsc_visit_list(butler, n_sample):
     Returns
     -------
     visits : `list` [`int`]
-        A list of randomly selected visit IDs from the HSC-RC2 dataset
+        A list of randomly selected non-narrow-band visit IDs from the HSC-RC2 dataset
     """
     results = butler.registry.queryDimensionRecords(
         "visit",
         datasets="raw",
         collections="HSC/RC2/defaults",
-        where="instrument='HSC' and exposure.observation_type='science'",
+        where="instrument='HSC' and exposure.observation_type='science' "
+              "and band in ('g', 'r', 'i', 'z', 'y')",
     )
     rc2 = [record.id for record in set(results)]
     if n_sample > len(rc2):
