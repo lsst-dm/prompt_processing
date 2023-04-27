@@ -310,15 +310,7 @@ tester
 ``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` are scripts that simulate the CCS image writer.
 It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
 
-You must have a profile set up for the ``rubin-pp`` bucket (see `Buckets`_, above), and must set the ``KAFKA_CLUSTER`` environment variable.
-Run:
-
-.. code-block:: sh
-
-   kubectl get service -n kafka prompt-processing-kafka-external-bootstrap
-
-and look up the ``EXTERNAL-IP``; set ``KAFKA_CLUSTER=<ip>:9094``.
-The IP address is fixed, so you should only need to look it up once.
+You must have a profile set up for the ``rubin-pp`` bucket (see `Buckets`_, above).
 
 Install the prototype code, and set it up before use:
 
