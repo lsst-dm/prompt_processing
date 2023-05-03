@@ -40,6 +40,8 @@ import os
 import re
 import time
 
+from lsst.obs.lsst import LsstCam, LsstComCam
+from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 from lsst.resources import ResourcePath
 
 from .visit import FannedOutVisit
@@ -80,50 +82,21 @@ _CAMERA_ABBREV = {
 }
 
 # For each LSST Camera, we need the mapping from detector name to detector
-# number and back.  This is officially in obs_lsst, but coding it here is
-# simpler than retrieving a Camera object, most of the contents of which we
-# don't need.
+# number and back.  LATISS and LSST-TS8 are handled specially due to
+# inconsistencies between the obs_lsst CameraGeom and the Camera Control
+# System outputs.
+#
+# Note that the getCamera() method may be replaced in the future.
 
-# First, define the starting point (S00) of each science raft of LSSTCam
-# (these are multiplied by 9 CCDs per raft later).
-_LSSTCAM_RAFTS = {
-    "R01": 0, "R02": 1, "R03": 2,
-    "R10": 3, "R11": 4, "R12": 5, "R13": 6, "R14": 7,
-    "R20": 8, "R21": 9, "R22": 10, "R23": 11, "R24": 12,
-    "R30": 13, "R31": 14, "R32": 15, "R33": 16, "R34": 17,
-    "R41": 18, "R42": 19, "R43": 20,
-}
-# Then add the "S00" sensor for each corner raft (not multiplied).
-_LSSTCAM_CORNER_RAFTS = {
-    "R00": 189, "R04": 193, "R40": 197, "R44": 201
-}
-
-# Then build the camera sensor translation maps.  LATISS has only one sensor.
-# LSSTComCam and LSST-TS8 have 1 raft, named "R22".  LSSTCam has the full set.
-# Sensor numbers start at the raft starting point and increase in the y
-# (second digit) direction before the x (first digit) direction.
+_LSSTCAM = LsstCam.getCamera().getNameMap()
+_LSSTCOMCAM = LsstComCam.getCamera().getNameMap()
 
 _DETECTOR_FROM_RS = {
     "LATISS": {"R00_S00": 0},
-    "LSSTComCam": {f"R22_S{x}{y}": x * 3 + y for x in range(3) for y in range(3)},
+    "LSSTComCam": {name: value.getId() for name, value in _LSSTCOMCAM.items()},
     "LSST-TS8": {f"R22_S{x}{y}": x * 3 + y for x in range(3) for y in range(3)},
-    "LSSTCam": {
-        f"{raft}_S{x}{y}": start * 9 + x * 3 + y
-        for raft, start in _LSSTCAM_RAFTS.items()
-        for x in range(3)
-        for y in range(3)
-    }
+    "LSSTCam": {name: value.getId() for name, value in _LSSTCAM.items()},
 }
-# Add in the corner rafts for LSSTCam only.  These have special naming
-# conventions for Guiders and Wavefront sensors.
-_DETECTOR_FROM_RS["LSSTCam"].update(
-    {
-        f"{raft}_S{x}{y}": _LSSTCAM_CORNER_RAFTS[raft] + (0 if x == "G" else 2) + y
-        for raft in _LSSTCAM_CORNER_RAFTS
-        for x in ("G", "W")
-        for y in range(2)
-    }
-)
 
 # Build the reverse mapping.
 _DETECTOR_FROM_INT = {
@@ -228,7 +201,7 @@ def get_exp_id_from_oid(oid: str) -> int:
         if m:
             # Ignore instrument abbreviation and controller
             _, _, day_obs, seq_num = m["obs_id"].split("_")
-            return int(day_obs) * 100000 + int(seq_num)
+            return LsstBaseTranslator.compute_exposure_id(day_obs, int(seq_num))
 
     raise ValueError(f"{oid} could not be parsed into an exp_id")
 
@@ -289,9 +262,8 @@ def get_raw_path(instrument, detector, group, snap, exposure_id, filter):
             f"-{exposure_id}-{filter}-{detector}.fz"
         )
 
-    day_obs = exposure_id // 100000
-    seq_num = exposure_id % 100000
+    day_obs, seq_num, controller = LsstBaseTranslator.unpack_exposure_id(exposure_id)
     abbrev = _CAMERA_ABBREV[instrument]
     raft_sensor = _DETECTOR_FROM_INT[instrument][detector]
-    obs_id = f"{abbrev}_O_{day_obs}_{seq_num:06d}"
+    obs_id = f"{abbrev}_{controller}_{day_obs}_{seq_num:06d}"
     return f"{instrument}/{day_obs}/{obs_id}/{obs_id}_{raft_sensor}.fits"
