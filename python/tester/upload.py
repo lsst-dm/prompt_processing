@@ -3,13 +3,14 @@ import itertools
 import logging
 import os
 import random
+import re
 import sys
 import tempfile
 import time
 
 import boto3
 
-from activator.raw import Snap, get_raw_path
+from activator.raw import OTHER_REGEXP, get_raw_path
 from activator.visit import FannedOutVisit, SummitVisit
 from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
 
@@ -151,39 +152,42 @@ def get_samples(bucket, instrument):
     for blob in blobs:
         # Assume that the unobserved bucket uses the same filename scheme as
         # the observed bucket.
-        snap = Snap.from_oid(blob.key)
+        snap = re.match(OTHER_REGEXP, blob.key)
+        group = snap["group"]
+        exp_id = int(snap["expid"])
+        snap_num = int(snap["snap"])
         visit = FannedOutVisit(
             instrument=instrument,
-            detector=snap.detector,
-            groupId=snap.group,
+            detector=snap["detector"],
+            groupId=group,
             nimages=INSTRUMENTS[instrument].n_snaps,
-            filters=snap.filter,
+            filters=snap["filter"],
             coordinateSystem=FannedOutVisit.CoordSys.ICRS,
-            position=[hsc_metadata[snap.exp_id]["ra"], hsc_metadata[snap.exp_id]["dec"]],
+            position=[hsc_metadata[exp_id]["ra"], hsc_metadata[exp_id]["dec"]],
             rotationSystem=FannedOutVisit.RotSys.SKY,
-            cameraAngle=hsc_metadata[snap.exp_id]["rot"],
+            cameraAngle=hsc_metadata[exp_id]["rot"],
             survey="SURVEY",
             # Fan-out uses salIndex to know which instrument and detector config to use.
             # The exp_id of this test dataset is coded into fan-out's pattern matching.
-            salIndex=snap.exp_id,
+            salIndex=exp_id,
             scriptSalIndex=42,
             dome=FannedOutVisit.Dome.OPEN,
             duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
             totalCheckpoints=1,
         )
-        _log.debug(f"File {blob.key} parsed as snap {snap.snap} of visit {visit}.")
-        if snap.group in result:
-            snap_dict = result[snap.group]
-            if snap.snap in snap_dict:
-                _log.debug(f"New detector {visit.detector} added to snap {snap.snap} of group {snap.group}.")
-                detector_dict = snap_dict[snap.snap]
+        _log.debug(f"File {blob.key} parsed as snap {snap_num} of visit {visit}.")
+        if group in result:
+            snap_dict = result[group]
+            if snap_num in snap_dict:
+                _log.debug(f"New detector {visit.detector} added to snap {snap_num} of group {group}.")
+                detector_dict = snap_dict[snap_num]
                 detector_dict[visit] = blob
             else:
-                _log.debug(f"New snap {snap.snap} added to group {snap.group}.")
-                snap_dict[snap.snap] = {visit: blob}
+                _log.debug(f"New snap {snap_num} added to group {group}.")
+                snap_dict[snap_num] = {visit: blob}
         else:
-            _log.debug(f"New group {snap.group} registered.")
-            result[snap.group] = {snap.snap: {visit: blob}}
+            _log.debug(f"New group {group} registered.")
+            result[group] = {snap_num: {visit: blob}}
 
     return result
 
