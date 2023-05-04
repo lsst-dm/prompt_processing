@@ -9,6 +9,7 @@ ARG PORT
 ARG CALIB_REPO
 ARG IMAGE_BUCKET
 ARG IMAGE_TIMEOUT
+ARG BUCKET_TOPIC
 WORKDIR $APP_HOME
 COPY python/activator activator/
 COPY pipelines pipelines/
