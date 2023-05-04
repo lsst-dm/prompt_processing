@@ -25,78 +25,245 @@ This module provides tools to convert raw paths into exposure metadata and
 vice versa.
 """
 
-__all__ = ["Snap", "RAW_REGEXP", "get_raw_path"]
+__all__ = [
+    "is_path_consistent",
+    "get_prefix_from_snap",
+    "get_exp_id_from_oid",
+    "get_group_id_from_oid",
+    "LSST_REGEXP",
+    "OTHER_REGEXP",
+    "get_raw_path",
+]
 
-from dataclasses import dataclass
+import json
+import os
 import re
+import time
+
+from lsst.obs.lsst import LsstCam, LsstComCam
+from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
+from lsst.resources import ResourcePath
 
 from .visit import FannedOutVisit
 
+# Format for filenames of LSST camera raws uploaded to image bucket:
+# instrument/dayobs/obsid/obsid_Rraft_Ssensor.(fits, fz, fits.gz)
+LSST_REGEXP = re.compile(
+    r"(?P<instrument>.*?)/(?P<day_obs>\d+)/(?P<obs_id>.*?)/"
+    r"(?P=obs_id)_(?P<raft_sensor>R\d\d_S.\d)(?P<extension>\.f.*)$"
+)
 
-@dataclass(frozen=True)
-class Snap:
-    instrument: str    # short name
-    detector: int
-    group: str         # observatory-specific ID; not the same as visit number
-    snap: int          # exposure number within a group
-    exp_id: int        # Butler-compatible unique exposure ID
-    filter: str        # physical filter
-
-    def __str__(self):
-        """Return a short string that disambiguates the image.
-        """
-        return f"(exposure {self.exp_id}, group {self.group}/{self.snap})"
-
-    @classmethod
-    def from_oid(cls, oid: str):
-        """Construct a Snap from an image bucket's filename.
-
-        Parameters
-        ----------
-        oid : `str`
-            A pathname from which to extract snap information.
-        """
-        m = re.match(RAW_REGEXP, oid)
-        if m:
-            return Snap(instrument=m["instrument"],
-                        detector=int(m["detector"]),
-                        group=m["group"],
-                        snap=int(m["snap"]),
-                        exp_id=int(m["expid"]),
-                        filter=m["filter"],
-                        )
-        else:
-            raise ValueError(f"{oid} could not be parsed into a Snap")
-
-    def is_consistent(self, visit: FannedOutVisit):
-        """Test if this snap could have come from a particular visit.
-
-        Parameters
-        ----------
-        visit : `activator.visit.FannedOutVisit`
-            The visit from which snaps were expected.
-        """
-        return (self.instrument == visit.instrument
-                and self.detector == visit.detector
-                and self.group == visit.groupId
-                # nimages == 0 means "not known in advance"
-                and (self.snap < visit.nimages or visit.nimages == 0)
-                )
-
-
-# Format for filenames of raws uploaded to image bucket:
+# Format for filenames of non-LSST camera raws uploaded to image bucket:
 # instrument/detector/group/snap/expid/filter/*.(fits, fz, fits.gz)
-RAW_REGEXP = re.compile(
+OTHER_REGEXP = re.compile(
     r"(?P<instrument>.*?)/(?P<detector>\d+)/(?P<group>.*?)/(?P<snap>\d+)/(?P<expid>.*?)/(?P<filter>.*?)/"
     r"[^/]+\.f"
 )
 
+################################
+# LSST Specific Initialization #
+################################
+
+# The list of camera names that might be used for LSST
+_LSST_CAMERA_LIST = ("LATISS", "ComCam", "LSSTComCam", "LSSTCam", "TS8", "LSST-TS8")
+
+# Translate from Camera path prefixes to official names.
+_TRANSLATE_INSTRUMENT = {
+    "ComCam": "LSSTComCam",
+    "TS8": "LSST-TS8",
+}
+
+# Abbreviations for cameras.
+_CAMERA_ABBREV = {
+    "LATISS": "AT",
+    "LSSTComCam": "CC",
+    "LSSTCam": "MC",
+    "LSST-TS8": "TS",
+}
+
+# For each LSST Camera, we need the mapping from detector name to detector
+# number and back.  LATISS and LSST-TS8 are handled specially due to
+# inconsistencies between the obs_lsst CameraGeom and the Camera Control
+# System outputs.
+#
+# Note that the getCamera() method may be replaced in the future.
+
+_LSSTCAM = LsstCam.getCamera().getNameMap()
+_LSSTCOMCAM = LsstComCam.getCamera().getNameMap()
+
+_DETECTOR_FROM_RS = {
+    "LATISS": {"R00_S00": 0},
+    "LSSTComCam": {name: value.getId() for name, value in _LSSTCOMCAM.items()},
+    "LSST-TS8": {f"R22_S{x}{y}": x * 3 + y for x in range(3) for y in range(3)},
+    "LSSTCam": {name: value.getId() for name, value in _LSSTCAM.items()},
+}
+
+# Build the reverse mapping.
+_DETECTOR_FROM_INT = {
+    instrument: {
+        detector: raft_sensor
+        for raft_sensor, detector in camera.items()
+    }
+    for instrument, camera in _DETECTOR_FROM_RS.items()
+}
+
+###############################################################################
+
+
+def is_path_consistent(oid: str, visit: FannedOutVisit) -> bool:
+    """Test if this snap could have come from a particular visit.
+
+    Parameters
+    ----------
+    oid : `str`
+        The object store path to the snap image.
+    visit : `activator.visit.FannedOutVisit`
+        The visit from which snaps were expected.
+
+    Returns
+    -------
+    consistent: `bool`
+        True if the snap matches the visit as far as can be determined.
+    """
+    instrument, _ = oid.split("/", maxsplit=1)
+    if instrument not in _LSST_CAMERA_LIST:
+        m = re.match(OTHER_REGEXP, oid)
+        if m:
+            return (
+                m["instrument"] == visit.instrument
+                and int(m["detector"]) == visit.detector
+                and m["group"] == visit.groupId
+                # nimages == 0 means there can be any number of snaps
+                and (int(m["snap"]) < visit.nimages or visit.nimages == 0)
+            )
+    else:
+        instrument = _TRANSLATE_INSTRUMENT.get(instrument, instrument)
+        m = re.match(LSST_REGEXP, oid)
+        if m:
+            detector = _DETECTOR_FROM_RS[instrument][m["raft_sensor"]]
+            return instrument == visit.instrument and detector == visit.detector
+
+    return False
+
+
+def get_prefix_from_snap(
+    instrument: str, group: str, detector: int, snap: int
+) -> str | None:
+    """Compute path prefix for a raw image object from a data id.
+
+    Parameters
+    ----------
+    instrument: `str`
+        The name of the instrument taking the image.
+    group: `str`
+        The group id from the visit, associating the snaps making up the visit.
+    detector: `int`
+        The integer detector id for the image being sought.
+    snap: `int`
+        The snap number within the group for the visit.
+
+    Returns
+    -------
+    prefix: `str` or None
+        The prefix to a path to the corresponding raw image object.  If it
+        can be calculated, then the prefix may be the entire path.  If no
+        prefix can be calculated, None is returned.
+    """
+
+    if instrument not in _LSST_CAMERA_LIST:
+        return f"{instrument}/{detector}/{group}/{snap}/"
+    # TODO DM-39022: use a microservice to determine paths for LSST cameras.
+    return None
+
+
+def get_exp_id_from_oid(oid: str) -> int:
+    """Calculate an exposure id from an image object's pathname.
+
+    Parameters
+    ----------
+    oid : `str`
+        A pathname to an image object.
+
+    Returns
+    -------
+    exp_id: `int`
+        The exposure identifier as an integer.
+    """
+    instrument, _ = oid.split("/", maxsplit=1)
+    if instrument not in _LSST_CAMERA_LIST:
+        m = re.match(OTHER_REGEXP, oid)
+        if m:
+            return int(m["expid"])
+
+    else:
+        instrument = _TRANSLATE_INSTRUMENT.get(instrument, instrument)
+        m = re.match(LSST_REGEXP, oid)
+        if m:
+            # Ignore instrument abbreviation and controller
+            _, _, day_obs, seq_num = m["obs_id"].split("_")
+            return LsstBaseTranslator.compute_exposure_id(day_obs, int(seq_num))
+
+    raise ValueError(f"{oid} could not be parsed into an exp_id")
+
+
+def get_group_id_from_oid(oid: str) -> str:
+    """Calculate a group id from an image object's pathname.
+
+    This is more complex for LSST cameras because the information is not
+    extractable from the oid.  Instead, we have to look at a "sidecar JSON"
+    file to retrieve the group id.
+
+    Parameters
+    ----------
+    oid : `str`
+        A pathname to an image object.
+
+    Returns
+    -------
+    group_id: `str`
+        The group identifier as a string.
+    """
+    instrument, _ = oid.split("/", maxsplit=1)
+    if instrument not in _LSST_CAMERA_LIST:
+        m = re.match(OTHER_REGEXP, oid)
+        if m:
+            return m["group"]
+        raise ValueError(f"{oid} could not be parsed into a group")
+
+    m = re.match(LSST_REGEXP, oid)
+    if not m:
+        raise ValueError(f"{oid} could not be parsed into a group")
+    sidecar = ResourcePath("s3://" + os.environ["IMAGE_BUCKET"]).join(
+        # Can't use updatedExtension because we may have something like .fits.fz
+        oid.removesuffix(m["extension"])
+        + ".json"
+    )
+    # Wait a bit but not too long for the file.
+    # It should normally show up before the image.
+    count = 0
+    while not sidecar.exists():
+        count += 1
+        if count > 20:
+            raise RuntimeError(f"Unable to retrieve JSON sidecar: {sidecar}")
+        time.sleep(0.1)
+
+    with sidecar.open("r") as f:
+        md = json.load(f)
+
+    return md.get("GROUPID", "")
+
 
 def get_raw_path(instrument, detector, group, snap, exposure_id, filter):
-    """The path on which to store raws in the image bucket.
-    """
-    return (
-        f"{instrument}/{detector}/{group}/{snap}/{exposure_id}/{filter}"
-        f"/{instrument}-{group}-{snap}"
-        f"-{exposure_id}-{filter}-{detector}.fz"
-    )
+    """The path on which to store raws in the image bucket."""
+    if instrument not in _LSST_CAMERA_LIST:
+        return (
+            f"{instrument}/{detector}/{group}/{snap}/{exposure_id}/{filter}"
+            f"/{instrument}-{group}-{snap}"
+            f"-{exposure_id}-{filter}-{detector}.fz"
+        )
+
+    day_obs, seq_num, controller = LsstBaseTranslator.unpack_exposure_id(exposure_id)
+    abbrev = _CAMERA_ABBREV[instrument]
+    raft_sensor = _DETECTOR_FROM_INT[instrument][detector]
+    obs_id = f"{abbrev}_{controller}_{day_obs}_{seq_num:06d}"
+    return f"{instrument}/{day_obs}/{obs_id}/{obs_id}_{raft_sensor}.fits"

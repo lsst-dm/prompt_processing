@@ -36,7 +36,12 @@ from flask import Flask, request
 from .logger import setup_usdf_logger
 from .make_pgpass import make_pgpass
 from .middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface
-from .raw import Snap
+from .raw import (
+    get_prefix_from_snap,
+    is_path_consistent,
+    get_exp_id_from_oid,
+    get_group_id_from_oid,
+)
 from .visit import FannedOutVisit
 
 PROJECT_ID = "prompt-proto"
@@ -108,7 +113,9 @@ def check_for_snap(
         was found. If multiple files match, this function logs an error
         but returns one of the files anyway.
     """
-    prefix = f"{instrument}/{detector}/{group}/{snap}/"
+    prefix = get_prefix_from_snap(instrument, group, detector, snap)
+    if not prefix:
+        return None
     _log.debug(f"Checking for '{prefix}'")
     response = storage_client.list_objects_v2(Bucket=image_bucket, Prefix=prefix)
     if response["KeyCount"] == 0:
@@ -250,10 +257,10 @@ def next_visit_handler() -> Tuple[str, int]:
                 expected_visit.detector,
             )
             if oid:
-                raw_info = Snap.from_oid(oid)
-                _log.debug("Found %r already present", raw_info)
+                exp_id = get_exp_id_from_oid(oid)
+                _log.debug("Found %r already present", exp_id)
                 mwi.ingest_image(oid)
-                expid_set.add(raw_info.exp_id)
+                expid_set.add(exp_id)
 
         _log.debug(f"Waiting for snaps from {expected_visit}.")
         start = time.time()
@@ -277,12 +284,14 @@ def next_visit_handler() -> Tuple[str, int]:
             for received in messages:
                 for oid in _parse_bucket_notifications(received.value()):
                     try:
-                        raw_info = Snap.from_oid(oid)
-                        _log.debug("Received %r", raw_info)
-                        if raw_info.is_consistent(expected_visit):
-                            # Ingest the snap
-                            mwi.ingest_image(oid)
-                            expid_set.add(raw_info.exp_id)
+                        if is_path_consistent(oid, expected_visit):
+                            _log.debug("Received %r", oid)
+                            group_id = get_group_id_from_oid(oid)
+                            if group_id == expected_visit.groupId:
+                                exp_id = get_exp_id_from_oid(oid)
+                                # Ingest the snap
+                                mwi.ingest_image(oid)
+                                expid_set.add(exp_id)
                     except ValueError:
                         _log.error(f"Failed to match object id '{oid}'")
                 # Commits are per-group, so this can't interfere with other
