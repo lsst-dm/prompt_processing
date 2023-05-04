@@ -154,7 +154,7 @@ To create or edit the Cloud Run service in the Google Cloud Console:
 
 * There are also five optional parameters:
 
-  * IMAGE_TIMEOUT: timeout in seconds to wait for raw image, default 50 sec.
+  * IMAGE_TIMEOUT: timeout in seconds to wait after expected script completion for raw image arrival, default 20 sec.
   * LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
   * USER_APDB: database user for the APDB, default "postgres"
   * USER_REGISTRY: database user for the registry database, default "postgres"
@@ -228,7 +228,7 @@ It includes the following required environment variables:
 
 The following environment variables are optional:
 
-* IMAGE_TIMEOUT: timeout in seconds to wait for raw image, default 50 sec.
+* IMAGE_TIMEOUT: timeout in seconds to wait after expected script completion for raw image arrival, default 20 sec.
 * LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
 * USER_APDB: database user for the APDB, default "postgres"
 * USER_REGISTRY: database user for the registry database, default "postgres"
