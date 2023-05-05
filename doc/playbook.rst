@@ -154,7 +154,7 @@ To create or edit the Cloud Run service in the Google Cloud Console:
 
 * There are also five optional parameters:
 
-  * IMAGE_TIMEOUT: timeout in seconds to wait for raw image, default 50 sec.
+  * IMAGE_TIMEOUT: timeout in seconds to wait after expected script completion for raw image arrival, default 20 sec.
   * LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
   * USER_APDB: database user for the APDB, default "postgres"
   * USER_REGISTRY: database user for the registry database, default "postgres"
@@ -228,7 +228,7 @@ It includes the following required environment variables:
 
 The following environment variables are optional:
 
-* IMAGE_TIMEOUT: timeout in seconds to wait for raw image, default 50 sec.
+* IMAGE_TIMEOUT: timeout in seconds to wait after expected script completion for raw image arrival, default 20 sec.
 * LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
 * USER_APDB: database user for the APDB, default "postgres"
 * USER_REGISTRY: database user for the registry database, default "postgres"
@@ -310,15 +310,7 @@ tester
 ``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` are scripts that simulate the CCS image writer.
 It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
 
-You must have a profile set up for the ``rubin-pp`` bucket (see `Buckets`_, above), and must set the ``KAFKA_CLUSTER`` environment variable.
-Run:
-
-.. code-block:: sh
-
-   kubectl get service -n kafka prompt-processing-kafka-external-bootstrap
-
-and look up the ``EXTERNAL-IP``; set ``KAFKA_CLUSTER=<ip>:9094``.
-The IP address is fixed, so you should only need to look it up once.
+You must have a profile set up for the ``rubin-pp`` bucket (see `Buckets`_, above).
 
 Install the prototype code, and set it up before use:
 

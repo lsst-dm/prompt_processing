@@ -20,7 +20,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
-import os
 import random
 import sys
 import tempfile
@@ -38,8 +37,6 @@ from tester.utils import get_last_group, make_exposure_id, replace_header_key, s
 EXPOSURE_INTERVAL = 18
 SLEW_INTERVAL = 2
 
-# Kafka server
-kafka_cluster = os.environ["KAFKA_CLUSTER"]
 
 logging.basicConfig(
     format="{levelname} {asctime} {name} - {message}",

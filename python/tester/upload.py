@@ -1,7 +1,6 @@
 import dataclasses
 import itertools
 import logging
-import os
 import random
 import re
 import sys
@@ -30,9 +29,6 @@ INSTRUMENTS = {
 }
 EXPOSURE_INTERVAL = 18
 SLEW_INTERVAL = 2
-
-# Kafka server
-kafka_cluster = os.environ["KAFKA_CLUSTER"]
 
 
 logging.basicConfig(
