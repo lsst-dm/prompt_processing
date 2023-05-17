@@ -629,9 +629,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
 
     def setUp(self):
-        # TODO: test two parallel repos once DM-36051 fixed; can't do it
-        # earlier because the test data has only one raw.
-
         self._create_copied_repo()
         central_butler = Butler(self.central_repo.name,
                                 instrument=instname,
@@ -642,9 +639,11 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.input_data = os.path.join(data_dir, "input_data")
 
         local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
+        second_local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
         # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
         # getting garbage-collected.
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
+        self.addCleanup(tempfile.TemporaryDirectory.cleanup, second_local_repo)
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
         ra = 155.4702849608958
@@ -687,7 +686,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                                self.interface.instrument,
                                                                self.second_visit)
         self.second_interface = MiddlewareInterface(central_butler, self.input_data, self.second_visit,
-                                                    skymap_name, local_repo.name,
+                                                    skymap_name, second_local_repo.name,
                                                     prefix="file://")
 
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
@@ -710,9 +709,12 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          for k, v in self.second_data_id.items()}
         # Dataset types defined for local Butler on pipeline run, but no
         # guarantee this happens in central Butler.
-        butler_tests.addDatasetType(self.interface.butler, "calexp", {"instrument", "visit", "detector"},
+        butler_tests.addDatasetType(self.interface.butler, "calexp",
+                                    {"instrument", "visit", "detector"},
                                     "ExposureF")
-        self.second_interface.butler.registry.refresh()
+        butler_tests.addDatasetType(self.second_interface.butler, "calexp",
+                                    {"instrument", "visit", "detector"},
+                                    "ExposureF")
         self.interface.butler.put(exp, "calexp", self.processed_data_id)
         self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id)
 
@@ -741,14 +743,19 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
     def test_export_outputs(self):
         self.interface.export_outputs({self.raw_data_id["exposure"]})
+        self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
         date = datetime.datetime.now(datetime.timezone.utc)
         export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                             "/ApPipe/prompt-proto-service-042"
-        self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 1)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
+            1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "calexp", export_collection,
+                                         self.second_processed_data_id),
             1)
         # Did not export calibs or other inputs.
         self.assertEqual(
