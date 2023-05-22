@@ -272,10 +272,8 @@ def next_visit_handler() -> Tuple[str, int]:
         _log.debug(f"Waiting for snaps from {expected_visit}.")
         start = time.time()
         while len(expid_set) < expected_snaps:
-            response = consumer.consume(
-                num_messages=189 + 8 + 8,
-                timeout=timeout,
-            )
+            # 2 for JSON and FITS files
+            response = consumer.consume(num_messages=2, timeout=timeout)
             end = time.time()
             messages = _filter_messages(response)
             if len(messages) == 0:
