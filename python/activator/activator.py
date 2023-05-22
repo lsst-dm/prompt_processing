@@ -187,6 +187,8 @@ def _parse_bucket_notifications(payload):
     If one record is invalid, an error is logged but the function tries to
     process the remaining records.
 
+    Do not return notifications from "sidecar" JSON files.
+
     Parameters
     ----------
     payload : `str` or `bytes`
@@ -203,7 +205,9 @@ def _parse_bucket_notifications(payload):
             _log.warning("Unexpected non-creation notification in topic: %s", record)
             continue
         try:
-            yield record["s3"]["object"]["key"]
+            key = record["s3"]["object"]["key"]
+            if not key.endswith(".json"):
+                yield key
         except KeyError as e:
             _log.error("Invalid S3 bucket notification: %s", e)
 
