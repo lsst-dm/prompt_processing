@@ -84,6 +84,7 @@ app = Flask(__name__)
 consumer = kafka.Consumer({
     "bootstrap.servers": kafka_cluster,
     "group.id": kafka_group_id,
+    "auto.offset.reset": "largest",  # default, but make explicit
 })
 
 storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
@@ -273,7 +274,7 @@ def next_visit_handler() -> Tuple[str, int]:
         start = time.time()
         while len(expid_set) < expected_snaps:
             # 2 for JSON and FITS files
-            response = consumer.consume(num_messages=2, timeout=timeout)
+            response = consumer.consume(num_messages=1, timeout=timeout)
             end = time.time()
             messages = _filter_messages(response)
             if len(messages) == 0:
