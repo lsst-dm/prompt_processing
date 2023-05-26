@@ -123,6 +123,10 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
     return repo_dir
 
 
+# Time zone used to define exposures' day_obs value.
+_DAY_OBS_TZ = datetime.timezone(datetime.timedelta(hours=-12), name="day_obs")
+
+
 class MiddlewareInterface:
     """Interface layer between the Butler middleware and the prompt processing
     data handling system, to handle processing individual images.
@@ -572,8 +576,8 @@ class MiddlewareInterface:
         Parameters
         ----------
         date : `datetime.date`, optional
-            Date of the processing run (not observation!), defaults to the UTC
-            date this method was called.
+            Date of the processing run (not observation!), defaults to the
+            day_obs this method was called.
 
         Returns
         -------
@@ -581,7 +585,7 @@ class MiddlewareInterface:
             The run in which to place pipeline init-outputs.
         """
         if date is None:
-            date = datetime.datetime.now(datetime.timezone.utc)
+            date = datetime.datetime.now(_DAY_OBS_TZ)
         # Current executor requires that init-outputs be in the same run as
         # outputs. This can be changed once DM-36162 is done.
         return self._get_output_run(date)
@@ -594,8 +598,8 @@ class MiddlewareInterface:
         Parameters
         ----------
         date : `datetime.date`, optional
-            Date of the processing run (not observation!), defaults to the UTC
-            date this method was called.
+            Date of the processing run (not observation!), defaults to the
+            day_obs this method was called.
 
         Returns
         -------
@@ -603,7 +607,7 @@ class MiddlewareInterface:
             The run in which to place processing outputs.
         """
         if date is None:
-            date = datetime.datetime.now(datetime.timezone.utc)
+            date = datetime.datetime.now(_DAY_OBS_TZ)
         pipeline_name, _ = os.path.splitext(os.path.basename(self._get_pipeline_file()))
         # Order optimized for S3 bucket -- filter out as many files as soon as possible.
         return self.instrument.makeCollectionName(

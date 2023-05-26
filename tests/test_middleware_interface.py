@@ -410,6 +410,25 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                              "/ApPipe/prompt-proto-service-042"
                              )
 
+    def test_get_output_run_default(self):
+        # Workaround for mocking builtin class; see
+        # https://williambert.online/2011/07/how-to-unit-testing-in-django-with-mocking-and-patching/
+        class MockDatetime(datetime.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                # This time will be the same day in CLT/CLST, but the previous day in day_obs.
+                utc = datetime.datetime(2023, 3, 15, 5, 42, 3, tzinfo=datetime.timezone.utc)
+                if tz:
+                    return utc.astimezone(tz)
+                else:
+                    return utc.replace(tzinfo=None)
+
+        with unittest.mock.patch("datetime.datetime", MockDatetime):
+            out_run = self.interface._get_output_run()
+            self.assertIn("output-2023-03-14", out_run)
+            init_run = self.interface._get_init_output_run()
+            self.assertIn("output-2023-03-14", init_run)
+
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
         # Pass iff any dataset matches the query, no need to check them all.
         for dataset in butler.registry.queryDatasets(dataset_type, collections=collection, dataId=data_id):
