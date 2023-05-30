@@ -314,12 +314,14 @@ def next_visit_handler() -> Tuple[str, int]:
             if len(expid_set) < expected_visit.nimages:
                 _log.warning(f"Processing {len(expid_set)} snaps, expected {expected_visit.nimages}.")
             _log.info(f"Running pipeline on {expected_visit}.")
-            mwi.run_pipeline(expid_set)
-            # TODO: broadcast alerts here
-            # TODO: call export_outputs on success or permanent failure in DM-34141
-            mwi.export_outputs(expid_set)
-            # Clean only if export successful.
-            mwi.clean_local_repo(expid_set)
+            try:
+                mwi.run_pipeline(expid_set)
+                # TODO: broadcast alerts here
+                # TODO: call export_outputs on success or permanent failure in DM-34141
+                mwi.export_outputs(expid_set)
+            finally:
+                # TODO: run_pipeline requires a clean run until DM-38041.
+                mwi.clean_local_repo(expid_set)
             return "Pipeline executed", 200
         else:
             _log.error(f"Timed out waiting for images for {expected_visit}.")
