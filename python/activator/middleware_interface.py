@@ -751,6 +751,7 @@ class MiddlewareInterface:
             raise RuntimeError("No data to process.")
         # If this is a fresh (local) repo, then types like calexp,
         # *Diff_diaSrcTable, etc. have not been registered.
+        # TODO: after DM-38041, move pre-execution to one-time repo setup.
         executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
         _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
         executor.run_pipeline(qgraph)
