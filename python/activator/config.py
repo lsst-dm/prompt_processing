@@ -23,6 +23,13 @@
 __all__ = ["PipelinesConfig"]
 
 
+import os
+
+from lsst.utils import getPackageDir
+
+from .visit import FannedOutVisit
+
+
 class PipelinesConfig:
     """A pipeline configuration for the Prompt Processing service.
 
@@ -38,4 +45,24 @@ class PipelinesConfig:
     singleton and objects must be passed explicitly to the code that
     needs them.
     """
-    pass
+
+    def get_pipeline_file(self, visit: FannedOutVisit) -> str:
+        """Identify the pipeline to be run, based on the provided visit.
+
+        Parameters
+        ----------
+        visit : `activator.visit.FannedOutVisit`
+            The visit for which a pipeline must be selected.
+
+        Returns
+        -------
+        pipeline : `str`
+            A path to a configured pipeline file.
+        """
+        # TODO: We hacked the basepath in the Dockerfile so this works both in
+        # development and in service container, but it would be better if there
+        # were a path that's valid in both.
+        return os.path.join(getPackageDir("prompt_prototype"),
+                            "pipelines",
+                            visit.instrument,
+                            "ApPipe.yaml")
