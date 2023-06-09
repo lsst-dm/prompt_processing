@@ -485,9 +485,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Much easier to create DatasetRefs with a real repo.
         butler = self.central_butler
         dtype = butler.registry.getDatasetType("cpBias")
-        data1 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 5})
-        data2 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 25})
-        data3 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 42})
+        data1 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 5}, run="dummy")
+        data2 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 25}, run="dummy")
+        data3 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 42}, run="dummy")
 
         combinations = [{data1, data2}, {data1, data2, data3}]
         # Case where src is empty now covered in test_filter_datasets_nosrc.
@@ -512,7 +512,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Much easier to create DatasetRefs with a real repo.
         butler = self.central_butler
         dtype = butler.registry.getDatasetType("skyMap")
-        data1 = lsst.daf.butler.DatasetRef(dtype, {"skymap": "mymap"})
+        data1 = lsst.daf.butler.DatasetRef(dtype, {"skymap": "mymap"}, run="dummy")
 
         src_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": {data1}})
         existing_butler = unittest.mock.Mock(
@@ -533,7 +533,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Much easier to create DatasetRefs with a real repo.
         butler = self.central_butler
         dtype = butler.registry.getDatasetType("cpBias")
-        data1 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 42})
+        data1 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 42}, run="dummy")
 
         src_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": set()})
         for existing in [set(), {data1}]:
