@@ -40,6 +40,7 @@ from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
+from activator.config import PipelinesConfig
 from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface, \
     _filter_datasets, _prepend_collection, _remove_from_chain, _MissingDatasetError
@@ -50,6 +51,8 @@ instname = "DECam"
 filter = "g DECam SDSS c0001 4720.0 1520.0"
 # The skymap name used in the test repo.
 skymap_name = "deepCoadd_skyMap"
+# A pipelines config that returns the test pipeline.
+pipelines = PipelinesConfig()
 
 
 def fake_file_data(filename, dimensions, instrument, visit):
@@ -156,7 +159,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
         self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
-                                             skymap_name, self.local_repo.name,
+                                             pipelines, skymap_name, self.local_repo.name,
                                              prefix="file://")
 
     def tearDown(self):
@@ -278,7 +281,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Second visit with everything same except group.
         second_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
         second_interface = MiddlewareInterface(self.central_butler, self.input_data, second_visit,
-                                               skymap_name, self.local_repo.name,
+                                               pipelines, skymap_name, self.local_repo.name,
                                                prefix="file://")
 
         second_interface.prep_butler()
@@ -295,7 +298,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                     self.next_visit.position[1] - 1.2],
                                           )
         third_interface = MiddlewareInterface(self.central_butler, self.input_data, third_visit,
-                                              skymap_name, self.local_repo.name,
+                                              pipelines, skymap_name, self.local_repo.name,
                                               prefix="file://")
         third_interface.prep_butler()
         expected_shards.update({157393, 157395})
@@ -670,7 +673,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         # Populate repository.
         self.interface = MiddlewareInterface(central_butler, self.input_data, self.next_visit,
-                                             skymap_name, local_repo.name,
+                                             pipelines, skymap_name, local_repo.name,
                                              prefix="file://")
         self.interface.prep_butler()
         filename = "fakeRawImage.fits"
@@ -686,7 +689,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                                self.interface.instrument,
                                                                self.second_visit)
         self.second_interface = MiddlewareInterface(central_butler, self.input_data, self.second_visit,
-                                                    skymap_name, second_local_repo.name,
+                                                    pipelines, skymap_name, second_local_repo.name,
                                                     prefix="file://")
 
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:

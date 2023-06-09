@@ -33,6 +33,7 @@ import cloudevents.http
 import confluent_kafka as kafka
 from flask import Flask, request
 
+from .config import PipelinesConfig
 from .logger import setup_usdf_logger
 from .make_pgpass import make_pgpass
 from .middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface
@@ -66,6 +67,8 @@ kafka_cluster = os.environ["KAFKA_CLUSTER"]
 kafka_group_id = str(uuid.uuid4())
 # The topic on which to listen to updates to image_bucket
 bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
+# The pipelines to execute and the conditions in which to choose them.
+pipelines = PipelinesConfig()
 
 setup_usdf_logger(
     labels={"instrument": instrument_name},
@@ -245,6 +248,7 @@ def next_visit_handler() -> Tuple[str, int]:
         mwi = MiddlewareInterface(central_butler,
                                   image_bucket,
                                   expected_visit,
+                                  pipelines,
                                   skymap,
                                   local_repo.name)
         # Copy calibrations for this detector/visit
