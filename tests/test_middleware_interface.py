@@ -52,7 +52,7 @@ filter = "g DECam SDSS c0001 4720.0 1520.0"
 # The skymap name used in the test repo.
 skymap_name = "deepCoadd_skyMap"
 # A pipelines config that returns the test pipeline.
-pipelines = PipelinesConfig()
+pipelines = PipelinesConfig('(survey="SURVEY")=${PROMPT_PROTOTYPE_DIR}/pipelines/DECam/ApPipe.yaml')
 
 
 def fake_file_data(filename, dimensions, instrument, visit):

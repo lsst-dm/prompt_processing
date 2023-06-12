@@ -68,7 +68,7 @@ kafka_group_id = str(uuid.uuid4())
 # The topic on which to listen to updates to image_bucket
 bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
 # The pipelines to execute and the conditions in which to choose them.
-pipelines = PipelinesConfig()
+pipelines = PipelinesConfig(os.environ["PIPELINES_CONFIG"])
 
 setup_usdf_logger(
     labels={"instrument": instrument_name},
