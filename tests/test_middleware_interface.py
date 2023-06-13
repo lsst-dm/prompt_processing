@@ -212,9 +212,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         # Check that the right skymap is in the chained output collection.
         self.assertTrue(
-            butler.datasetExists("skyMap",
-                                 skymap=skymap_name,
-                                 collections=self.interface.output_collection)
+            butler.exists("skyMap",
+                          skymap=skymap_name,
+                          full_check=True,
+                          collections=self.interface.output_collection)
         )
 
         # check that we got appropriate refcat shards
@@ -224,35 +225,34 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         self.assertEqual(expected_shards, {x['htm7'] for x in loaded_shards})
         # Check that the right calibs are in the chained output collection.
-        try:
-            self.assertTrue(
-                butler.datasetExists('cpBias', detector=detector, instrument='DECam',
-                                     collections="DECam/calib/20150218T000000Z")
-                # TODO: Have to use the exact run collection, because we can't
-                # query by validity range.
-                # collections=self.interface.output_collection)
-            )
-        except LookupError:
-            self.fail("Bias file missing from local butler.")
-        try:
-            self.assertTrue(
-                butler.datasetExists('cpFlat', detector=detector, instrument='DECam',
-                                     physical_filter=filter,
-                                     collections="DECam/calib/20150218T000000Z")
-                # TODO: Have to use the exact run collection, because we can't
-                # query by validity range.
-                # collections=self.interface.output_collection)
-            )
-        except LookupError:
-            self.fail("Flat file missing from local butler.")
+        self.assertTrue(
+            butler.exists('cpBias', detector=detector, instrument='DECam',
+                          full_check=True,
+                          # TODO: Have to use the exact run collection, because we can't
+                          # query by validity range.
+                          # collections=self.interface.output_collection)
+                          collections="DECam/calib/20150218T000000Z")
+        )
+        self.assertTrue(
+            butler.exists('cpFlat', detector=detector, instrument='DECam',
+                          physical_filter=filter,
+                          full_check=True,
+                          # TODO: Have to use the exact run collection, because we can't
+                          # query by validity range.
+                          # collections=self.interface.output_collection)
+                          collections="DECam/calib/20150218T000000Z")
+        )
 
         # Check that the right templates are in the chained output collection.
         # Need to refresh the butler to get all the dimensions/collections.
         butler.registry.refresh()
         for patch in (464, 465, 509, 510):
-            butler.datasetExists('deepCoadd', tract=0, patch=patch, band="g",
-                                 skymap=skymap_name,
-                                 collections=self.interface.output_collection)
+            self.assertTrue(
+                butler.exists('deepCoadd', tract=0, patch=patch, band="g",
+                              skymap=skymap_name,
+                              full_check=True,
+                              collections=self.interface.output_collection)
+            )
 
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
