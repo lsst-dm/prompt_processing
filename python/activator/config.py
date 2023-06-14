@@ -64,7 +64,8 @@ class PipelinesConfig:
     A config with multiple surveys, and environment variables:
 
     >>> PipelinesConfig('(survey="TestSurvey")=/etc/pipelines/ApPipe.yaml '
-    ...                 '(survey="Camera Test")=${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml ')
+    ...                 '(survey="Camera Test")=${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml '
+    ...                 '(survey="")=${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml ')
     ... # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
     """
@@ -101,7 +102,7 @@ class PipelinesConfig:
             Raised if the string cannot be parsed.
         """
         # Use regex instead of str.split, in case keys or values also have spaces.
-        node = re.compile(r'\s*\(survey="(?P<survey>[\w\s]+)"\)='
+        node = re.compile(r'\s*\(survey="(?P<survey>[\w\s]*)"\)='
                           r'(?P<filename>[-\w./${} ]*[-\w./${}])(?:\s+|$)')
 
         items = {}

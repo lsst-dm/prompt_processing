@@ -66,6 +66,7 @@ class PipelinesConfigTest(unittest.TestCase):
     def test_selection(self):
         config = PipelinesConfig('(survey="TestSurvey")=/etc/pipelines/SingleFrame.yaml '
                                  '(survey="CameraTest")=${AP_PIPE_DIR}/pipelines/Isr.yaml '
+                                 '(survey="")=Default.yaml '
                                  )
         self.assertEqual(
             config.get_pipeline_file(self.visit),
@@ -74,6 +75,10 @@ class PipelinesConfigTest(unittest.TestCase):
         self.assertEqual(
             config.get_pipeline_file(dataclasses.replace(self.visit, survey="CameraTest")),
             os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml"))
+        )
+        self.assertEqual(
+            config.get_pipeline_file(dataclasses.replace(self.visit, survey="")),
+            "Default.yaml"
         )
 
     def test_space(self):
