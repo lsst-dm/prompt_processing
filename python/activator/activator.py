@@ -241,6 +241,10 @@ def next_visit_handler() -> Tuple[str, int]:
             return f"Bad Request: {msg}", 400
         assert expected_visit.instrument == instrument_name, \
             f"Expected {instrument_name}, received {expected_visit.instrument}."
+        if pipelines.get_pipeline_file(expected_visit) is None:
+            _log.info(f"No pipeline configured for {expected_visit}, skipping.")
+            return "No pipeline configured for the received visit.", 422
+
         expid_set = set()
 
         # Create a fresh MiddlewareInterface object to avoid accidental
