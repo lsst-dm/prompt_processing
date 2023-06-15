@@ -27,7 +27,7 @@ import botocore
 from moto import mock_s3
 
 import lsst.daf.butler.tests as butler_tests
-from lsst.obs.base import ExposureIdInfo
+import lsst.meas.base
 from lsst.obs.subaru import HyperSuprimeCam
 
 from activator.raw import get_raw_path
@@ -84,7 +84,7 @@ class TesterUtilsTest(unittest.TestCase):
 
     def test_exposure_id_hsc(self):
         group = "2023011100026"
-        # Need a Butler registry to test ExposureIdInfo
+        # Need a Butler registry to test IdGenerator
         with tempfile.TemporaryDirectory() as repo:
             butler = butler_tests.makeTestRepo(repo)
             HyperSuprimeCam().register(butler.registry)
@@ -101,8 +101,9 @@ class TesterUtilsTest(unittest.TestCase):
         # Above assertion passes if exp_id has 9+ digits, but such IDs aren't valid.
         self.assertEqual(len(str_exp_id[4:]), 8)
         self.assertLessEqual(exp_id, exp_max)
-        # test that ExposureIdInfo.fromDataID does not raise
-        ExposureIdInfo.fromDataId(data_id, "visit_detector")
+        # test that IdGenerator.unpacker_from_config does not raise
+        config = lsst.meas.base.DetectorVisitIdGeneratorConfig()
+        lsst.meas.base.IdGenerator.unpacker_from_config(config, data_id)
 
     def test_exposure_id_hsc_limits(self):
         # Confirm that the exposure ID generator works as long as advertised:

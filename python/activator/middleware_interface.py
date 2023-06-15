@@ -31,7 +31,6 @@ import os.path
 import tempfile
 import typing
 
-from lsst.utils import getPackageDir
 from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
 from lsst.ctrl.mpexec import SeparablePipelineExecutor
@@ -41,6 +40,7 @@ from lsst.meas.algorithms.htmIndexer import HtmIndexer
 import lsst.obs.base
 import lsst.pipe.base
 
+from .config import PipelinesConfig
 from .visit import FannedOutVisit
 
 _log = logging.getLogger("lsst." + __name__)
@@ -156,6 +156,8 @@ class MiddlewareInterface:
         See also ``prefix``.
     visit : `activator.visit.FannedOutVisit`
         The visit-detector combination to be processed by this object.
+    pipelines : `activator.config.PipelinesConfig`
+        Information about which pipelines to run on ``visit``.
     skymap: `str`
         Name of the skymap in the central repo for querying templates.
     local_repo : `str`
@@ -194,7 +196,7 @@ class MiddlewareInterface:
     #   of self.output_collection.
 
     def __init__(self, central_butler: Butler, image_bucket: str, visit: FannedOutVisit,
-                 skymap: str, local_repo: str,
+                 pipelines: PipelinesConfig, skymap: str, local_repo: str,
                  prefix: str = "s3://"):
         self.visit = visit
         if self.visit.coordinateSystem != FannedOutVisit.CoordSys.ICRS:
@@ -217,6 +219,7 @@ class MiddlewareInterface:
             self._download_store = None
         # TODO: how much overhead do we pick up from going through the registry?
         self.instrument = lsst.obs.base.Instrument.from_string(visit.instrument, central_butler.registry)
+        self.pipelines = pipelines
 
         self.output_collection = self.instrument.makeCollectionName("prompt")
         self.init_output_run = self._get_init_output_run()
@@ -632,13 +635,7 @@ class MiddlewareInterface:
         pipeline : `str`
             A path to a configured pipeline file.
         """
-        # TODO: We hacked the basepath in the Dockerfile so this works both in
-        # development and in service container, but it would be better if there
-        # were a path that's valid in both.
-        return os.path.join(getPackageDir("prompt_prototype"),
-                            "pipelines",
-                            self.visit.instrument,
-                            "ApPipe.yaml")
+        return self.pipelines.get_pipeline_file(self.visit)
 
     def _prep_pipeline(self) -> lsst.pipe.base.Pipeline:
         """Setup the pipeline to be run, based on the configured instrument and
@@ -658,8 +655,8 @@ class MiddlewareInterface:
         ap_pipeline_file = self._get_pipeline_file()
         try:
             pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
-        except FileNotFoundError:
-            raise RuntimeError(f"No ApPipe.yaml defined for camera {self.instrument.getName()}")
+        except FileNotFoundError as e:
+            raise RuntimeError from e
 
         try:
             pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
