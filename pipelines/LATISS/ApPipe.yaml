@@ -1,8 +1,7 @@
 description: Alert Production pipeline specialized for LATISS
 
 imports:
-  - location: $DRP_PIPE_DIR/pipelines/LATISS/DRP.yaml
-    include:
-      - isr
-      - characterizeImage
-      - calibrate
+  - location: $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml
+parameters:
+  # Only have deep templates in the central repo
+  coaddName: deep
