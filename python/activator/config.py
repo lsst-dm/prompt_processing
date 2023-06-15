@@ -44,7 +44,8 @@ class PipelinesConfig:
         A string describing pipeline selection criteria. The current format is
         a space-delimited list of mappings, each of which has the format
         ``(survey="<survey>")=<pipeline>``. The pipeline path may contain
-        environment variables. No key or value may contain the "=" character.
+        environment variables, or may be the keyword "None" to mean no pipeline
+        should be run. No key or value may contain the "=" character.
         See examples below.
 
     Notes
@@ -68,6 +69,12 @@ class PipelinesConfig:
     ...                 '(survey="")=${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml ')
     ... # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
+
+    A config that omits a pipeline for non-sky data:
+
+    >>> PipelinesConfig('(survey="TestSurvey")=/etc/pipelines/ApPipe.yaml '
+    ...                 '(survey="Dome Flats")=None ')  # doctest: +ELLIPSIS
+    <config.PipelinesConfig object at 0x...>
     """
 
     def __init__(self, config: str):
@@ -86,12 +93,13 @@ class PipelinesConfig:
             A string describing pipeline selection criteria. The current format
             is a space-delimited list of mappings, each of which has the format
             '(survey="<survey>")=<pipeline>'. The pipeline path may contain
-            environment variables. No key or value may contain the "="
+            environment variables, or may be the keyword "None" to mean no
+            pipeline should be run. No key or value may contain the "="
             character.
 
         Returns
         -------
-        config : mapping [`str`, `str`]
+        config : mapping [`str`, `str` or `None`]
             A mapping from the survey type to the pipeline to run for that
             survey. A more complex key or container type may be needed in the
             future, if other pipeline selection criteria are added.
@@ -109,7 +117,7 @@ class PipelinesConfig:
         pos = 0
         match = node.match(config, pos)
         while match:
-            items[match['survey']] = match['filename']
+            items[match['survey']] = match['filename'] if match['filename'].lower() != "none" else None
 
             pos = match.end()
             match = node.match(config, pos)
@@ -128,10 +136,15 @@ class PipelinesConfig:
 
         Returns
         -------
-        pipeline : `str`
-            A path to a configured pipeline file.
+        pipeline : `str` or `None`
+            A path to a configured pipeline file. A value of `None` means that
+            *no* pipeline should be run on this visit.
         """
         try:
-            return os.path.expandvars(self._mapping[visit.survey])
+            value = self._mapping[visit.survey]
         except KeyError as e:
             raise RuntimeError(f"Unsupported survey: {visit.survey}") from e
+        if value is not None:
+            return os.path.expandvars(value)
+        else:
+            return value

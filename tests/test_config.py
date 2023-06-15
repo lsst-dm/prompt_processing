@@ -108,6 +108,16 @@ class PipelinesConfigTest(unittest.TestCase):
             os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipe lines", "Isr.yaml"))
         )
 
+    def test_none(self):
+        config = PipelinesConfig('(survey="TestSurvey")=None shall pass/pipelines/SingleFrame.yaml '
+                                 '(survey="Camera Test")=None '
+                                 )
+        self.assertEqual(
+            config.get_pipeline_file(self.visit),
+            os.path.normpath(os.path.join("None shall pass", "pipelines", "SingleFrame.yaml"))
+        )
+        self.assertIsNone(config.get_pipeline_file(dataclasses.replace(self.visit, survey="Camera Test")))
+
     def test_nomatch(self):
         config = PipelinesConfig('(survey="TestSurvey")=/etc/pipelines/SingleFrame.yaml '
                                  '(survey="CameraTest")=${AP_PIPE_DIR}/pipelines/Isr.yaml '
