@@ -81,6 +81,20 @@ class PipelinesConfigTest(unittest.TestCase):
             "Default.yaml"
         )
 
+    def test_multiline(self):
+        config = PipelinesConfig('''(survey="TestSurvey")=/etc/pipelines/SingleFrame.yaml
+                                 (survey="CameraTest")=${AP_PIPE_DIR}/pipelines/Isr.yaml
+                                 '''
+                                 )
+        self.assertEqual(
+            config.get_pipeline_file(self.visit),
+            os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))
+        )
+        self.assertEqual(
+            config.get_pipeline_file(dataclasses.replace(self.visit, survey="CameraTest")),
+            os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml"))
+        )
+
     def test_space(self):
         config = PipelinesConfig('(survey="TestSurvey")=/dir with space/pipelines/SingleFrame.yaml '
                                  '(survey="Camera Test")=${AP_PIPE_DIR}/pipe lines/Isr.yaml '
