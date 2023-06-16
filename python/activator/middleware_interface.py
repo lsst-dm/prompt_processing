@@ -480,8 +480,6 @@ class MiddlewareInterface:
         # TODO: do we need to have the coadd name used in the pipeline
         # specified as a class kwarg, so that we only load one here?
         # TODO: alternately, we need to extract it from the pipeline? (best?)
-        # TODO: alternately, can we just assume that there is exactly
-        # one coadd type in the central butler?
         try:
             templates = set(_filter_datasets(
                 self.central_butler, self.butler,
