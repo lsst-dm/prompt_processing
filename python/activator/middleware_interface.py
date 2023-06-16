@@ -192,8 +192,7 @@ class MiddlewareInterface:
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
     # self.init_output_run and self.output_run do not change after __init__.
-    #   They need not exist in the local repo, but if they do, they are members
-    #   of self.output_collection.
+    #   They need not exist in the local repo.
 
     def __init__(self, central_butler: Butler, image_bucket: str, visit: FannedOutVisit,
                  pipelines: PipelinesConfig, skymap: str, local_repo: str,
@@ -739,7 +738,13 @@ class MiddlewareInterface:
             " and visit_system = 0"
         )
         pipeline = self._prep_pipeline()
-        executor = SeparablePipelineExecutor(self.butler, clobber_output=False, skip_existing_in=None)
+        executor = SeparablePipelineExecutor(
+            Butler(butler=self.butler,
+                   collections=[self.output_run, self.init_output_run] + list(self.butler.collections),
+                   run=self.output_run),
+            clobber_output=False,
+            skip_existing_in=None
+        )
         qgraph = executor.make_quantum_graph(pipeline, where=where)
         if len(qgraph) == 0:
             # TODO: a good place for a custom exception?
