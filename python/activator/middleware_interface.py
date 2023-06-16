@@ -186,8 +186,8 @@ class MiddlewareInterface:
     # self.visit, self.instrument, self.camera, self.skymap, self._deployment
     #   do not change after __init__.
     # self.butler defaults to a chained collection named
-    #   self.output_collection, which contains zero or more output runs
-    #   and all pipeline inputs, in that order. However, self.butler is not
+    #   self.output_collection, which contains all pipeline inputs.
+    #   However, self.butler is not
     #   guaranteed to contain concrete data, or even the dimensions
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
@@ -619,9 +619,6 @@ class MiddlewareInterface:
         self.butler.registry.refresh()
         self.butler.registry.registerCollection(self.init_output_run, CollectionType.RUN)
         self.butler.registry.registerCollection(self.output_run, CollectionType.RUN)
-        # As of Feb 2023, this moves output_run to the front of the chain if
-        # it's already present, but this behavior cannot be relied upon.
-        _prepend_collection(self.butler, self.output_collection, [self.output_run, self.init_output_run])
 
     def _get_pipeline_file(self) -> str:
         """Identify the pipeline to be run, based on the configured instrument
