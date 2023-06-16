@@ -54,7 +54,7 @@ class BareVisit:
         """Return a short string that represents the visit but does not
         include complete metadata.
         """
-        return f"(groupId={self.groupId}, salIndex={self.salIndex})"
+        return f"(groupId={self.groupId}, survey={self.survey}, salIndex={self.salIndex})"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -67,7 +67,8 @@ class FannedOutVisit(BareVisit):
         """Return a short string that disambiguates the visit but does not
         include "metadata" fields.
         """
-        return f"(instrument={self.instrument}, groupId={self.groupId}, detector={self.detector})"
+        return f"(instrument={self.instrument}, groupId={self.groupId}, survey={self.survey} " \
+               f"detector={self.detector})"
 
     def get_bare_visit(self):
         """Return visit-level info as a dict"""
