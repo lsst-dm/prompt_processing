@@ -749,7 +749,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
-        date = datetime.datetime.now(datetime.timezone.utc)
+        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                             "/ApPipe/prompt-proto-service-042"
         self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
@@ -778,7 +778,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
-        date = datetime.datetime.now(datetime.timezone.utc)
+        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                             "/ApPipe/prompt-proto-service-042"
         self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
