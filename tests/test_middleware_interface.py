@@ -691,6 +691,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface = MiddlewareInterface(central_butler, self.input_data, self.second_visit,
                                                     pipelines, skymap_name, second_local_repo.name,
                                                     prefix="file://")
+        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
+                          "/ApPipe/prompt-proto-service-042"
 
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
@@ -718,8 +721,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.second_interface.butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
-        self.interface.butler.put(exp, "calexp", self.processed_data_id)
-        self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id)
+        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=self.output_run)
+        self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id, run=self.output_run)
 
     def _count_datasets(self, butler, types, collections):
         return len(set(butler.registry.queryDatasets(types, collections=collections)))
@@ -749,20 +752,17 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
-        export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
-                            "/ApPipe/prompt-proto-service-042"
-        self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
+            self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.processed_data_id),
             1)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", export_collection,
+            self._count_datasets_with_id(central_butler, "calexp", self.output_run,
                                          self.second_processed_data_id),
             1)
         # Did not export calibs or other inputs.
         self.assertEqual(
-            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection),
+            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], self.output_run),
             0)
         # Nothing placed in "input" collections.
         self.assertEqual(
@@ -778,20 +778,17 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
-        export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
-                            "/ApPipe/prompt-proto-service-042"
-        self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
+            self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.processed_data_id),
             1)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", export_collection,
+            self._count_datasets_with_id(central_butler, "calexp", self.output_run,
                                          self.second_processed_data_id),
             1)
         # Did not export calibs or other inputs.
         self.assertEqual(
-            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection),
+            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], self.output_run),
             0)
         # Nothing placed in "input" collections.
         self.assertEqual(

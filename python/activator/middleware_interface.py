@@ -224,7 +224,7 @@ class MiddlewareInterface:
         self.init_output_run = self._get_init_output_run()
         self.output_run = self._get_output_run()
 
-        self._init_local_butler(local_repo, [self.output_collection], self.output_run)
+        self._init_local_butler(local_repo, [self.output_collection], None)
         self._prep_collections()
         self._init_ingester()
         self._init_visit_definer()
