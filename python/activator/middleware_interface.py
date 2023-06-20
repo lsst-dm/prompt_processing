@@ -624,26 +624,21 @@ class MiddlewareInterface:
         """
         return self.pipelines.get_pipeline_file(self.visit)
 
-    def _prep_pipeline(self) -> lsst.pipe.base.Pipeline:
+    def _prep_pipeline(self, pipeline_file) -> lsst.pipe.base.Pipeline:
         """Setup the pipeline to be run, based on the configured instrument and
         details of the incoming visit.
+
+        Parameters
+        ----------
+        pipeline_file : `str`
+            The pipeline file to run.
 
         Returns
         -------
         pipeline : `lsst.pipe.base.Pipeline`
-            The pipeline to run for this object's visit.
-
-        Raises
-        ------
-        RuntimeError
-            Raised if there is no AP pipeline file for this configuration.
-            TODO: could be a good case for a custom exception here.
+            The fully configured pipeline.
         """
-        ap_pipeline_file = self._get_pipeline_file()
-        try:
-            pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
-        except FileNotFoundError as e:
-            raise RuntimeError from e
+        pipeline = lsst.pipe.base.Pipeline.fromFile(pipeline_file)
 
         try:
             pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
@@ -711,6 +706,13 @@ class MiddlewareInterface:
         ----------
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were received.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if the pipeline could not be loaded or configured, or the
+            graph generated.
+            TODO: could be a good case for a custom exception here.
         """
         # TODO: we want to define visits earlier, but we have to ingest a
         # faked raw file and appropriate SSO data during prep (and then
@@ -727,7 +729,10 @@ class MiddlewareInterface:
             f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
             " and visit_system = 0"
         )
-        pipeline = self._prep_pipeline()
+        try:
+            pipeline = self._prep_pipeline(self._get_pipeline_file())
+        except FileNotFoundError as e:
+            raise RuntimeError from e
         init_output_run = self._get_init_output_run(self._day_obs)
         output_run = self._get_output_run(self._day_obs)
         executor = SeparablePipelineExecutor(
