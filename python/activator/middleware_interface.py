@@ -113,12 +113,6 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
                                        CollectionType.CHAINED)
     butler.registry.registerCollection(instrument.makeDefaultRawIngestRunName(),
                                        CollectionType.RUN)
-    output_collection = instrument.makeCollectionName("prompt")
-    butler.registry.registerCollection(output_collection, CollectionType.CHAINED)
-    collections = [instrument.makeUmbrellaCollectionName(),
-                   instrument.makeDefaultRawIngestRunName(),
-                   ]
-    butler.registry.setCollectionChain(output_collection, collections)
 
     return repo_dir
 
@@ -185,9 +179,8 @@ class MiddlewareInterface:
     # self._download_store is None if and only if self.image_host is a local URI.
     # self.visit, self.instrument, self.camera, self.skymap, self._deployment
     #   self._day_obs do not change after __init__.
-    # self.butler defaults to a chained collection named
-    #   self.output_collection, which contains all pipeline inputs.
-    #   However, self.butler is not
+    # self.butler defaults to the "defaults" chained collection, which contains
+    #   all pipeline inputs. However, self.butler is not
     #   guaranteed to contain concrete data, or even the dimensions
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
@@ -218,11 +211,10 @@ class MiddlewareInterface:
         self.instrument = lsst.obs.base.Instrument.from_string(visit.instrument, central_butler.registry)
         self.pipelines = pipelines
 
-        self.output_collection = self.instrument.makeCollectionName("prompt")
         # Guard against a processing run starting on one day and ending the next.
         self._day_obs = datetime.datetime.now(_DAY_OBS_TZ)
 
-        self._init_local_butler(local_repo, [self.output_collection], None)
+        self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self._prep_collections()
         self._init_ingester()
         self._init_visit_definer()
@@ -396,10 +388,13 @@ class MiddlewareInterface:
                                 transfer="copy")
 
         # Temporary workarounds until we have a prompt-processing default top-level collection
-        # in shared repos and then we can organize collections without worrying DRP use cases.
+        # in shared repos, and raw collection in dev repo, and then we can organize collections
+        # without worrying about DRP use cases.
         _prepend_collection(self.butler,
                             self.instrument.makeUmbrellaCollectionName(),
-                            [self._get_template_collection()])
+                            [self._get_template_collection(),
+                             self.instrument.makeDefaultRawIngestRunName(),
+                             ])
 
     def _get_template_collection(self):
         """Get the collection name for templates

@@ -129,8 +129,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def setUp(self):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.central_repo = os.path.join(data_dir, "central_repo")
+        self.umbrella = f"{instname}/defaults"
         self.central_butler = Butler(self.central_repo,
-                                     collections=[f"{instname}/defaults"],
+                                     collections=[self.umbrella],
                                      writeable=False,
                                      inferDefaults=False)
         self.input_data = os.path.join(data_dir, "input_data")
@@ -200,7 +201,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the butler instance is properly configured.
         instruments = list(self.interface.butler.registry.queryDimensionRecords("instrument"))
         self.assertEqual(instname, instruments[0].name)
-        self.assertEqual(set(self.interface.butler.collections), {self.interface.output_collection})
+        self.assertEqual(set(self.interface.butler.collections), {self.umbrella})
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
@@ -218,7 +219,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             butler.exists("skyMap",
                           skymap=skymap_name,
                           full_check=True,
-                          collections=self.interface.output_collection)
+                          collections=self.umbrella)
         )
 
         # check that we got appropriate refcat shards
@@ -233,7 +234,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           full_check=True,
                           # TODO: Have to use the exact run collection, because we can't
                           # query by validity range.
-                          # collections=self.interface.output_collection)
+                          # collections=self.umbrella)
                           collections="DECam/calib/20150218T000000Z")
         )
         self.assertTrue(
@@ -242,7 +243,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           full_check=True,
                           # TODO: Have to use the exact run collection, because we can't
                           # query by validity range.
-                          # collections=self.interface.output_collection)
+                          # collections=self.umbrella)
                           collections="DECam/calib/20150218T000000Z")
         )
 
@@ -254,7 +255,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 butler.exists('deepCoadd', tract=0, patch=patch, band="g",
                               skymap=skymap_name,
                               full_check=True,
-                              collections=self.interface.output_collection)
+                              collections=self.umbrella)
             )
 
     def test_prep_butler(self):
