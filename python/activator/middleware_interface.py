@@ -184,15 +184,13 @@ class MiddlewareInterface:
     # self.image_host is a valid URI with non-empty path and no query or fragment.
     # self._download_store is None if and only if self.image_host is a local URI.
     # self.visit, self.instrument, self.camera, self.skymap, self._deployment
-    #   do not change after __init__.
+    #   self._day_obs do not change after __init__.
     # self.butler defaults to a chained collection named
     #   self.output_collection, which contains all pipeline inputs.
     #   However, self.butler is not
     #   guaranteed to contain concrete data, or even the dimensions
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
-    # self.init_output_run and self.output_run do not change after __init__.
-    #   They need not exist in the local repo.
 
     def __init__(self, central_butler: Butler, image_bucket: str, visit: FannedOutVisit,
                  pipelines: PipelinesConfig, skymap: str, local_repo: str,
@@ -221,8 +219,8 @@ class MiddlewareInterface:
         self.pipelines = pipelines
 
         self.output_collection = self.instrument.makeCollectionName("prompt")
-        self.init_output_run = self._get_init_output_run()
-        self.output_run = self._get_output_run()
+        # Guard against a processing run starting on one day and ending the next.
+        self._day_obs = datetime.datetime.now(_DAY_OBS_TZ)
 
         self._init_local_butler(local_repo, [self.output_collection], None)
         self._prep_collections()
@@ -617,8 +615,8 @@ class MiddlewareInterface:
         """Pre-register output collections in advance of running the pipeline.
         """
         self.butler.registry.refresh()
-        self.butler.registry.registerCollection(self.init_output_run, CollectionType.RUN)
-        self.butler.registry.registerCollection(self.output_run, CollectionType.RUN)
+        self.butler.registry.registerCollection(self._get_init_output_run(self._day_obs), CollectionType.RUN)
+        self.butler.registry.registerCollection(self._get_output_run(self._day_obs), CollectionType.RUN)
 
     def _get_pipeline_file(self) -> str:
         """Identify the pipeline to be run, based on the configured instrument
@@ -735,10 +733,12 @@ class MiddlewareInterface:
             " and visit_system = 0"
         )
         pipeline = self._prep_pipeline()
+        init_output_run = self._get_init_output_run(self._day_obs)
+        output_run = self._get_output_run(self._day_obs)
         executor = SeparablePipelineExecutor(
             Butler(butler=self.butler,
-                   collections=[self.output_run, self.init_output_run] + list(self.butler.collections),
-                   run=self.output_run),
+                   collections=[output_run, init_output_run] + list(self.butler.collections),
+                   run=output_run),
             clobber_output=False,
             skip_existing_in=None
         )
@@ -764,14 +764,15 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
         """
+        output_run = self._get_output_run(self._day_obs)
         self._export_subset(exposure_ids,
                             # TODO: find a way to merge datasets like *_config
                             # or *_schema that are duplicated across multiple
                             # workers.
                             self._get_safe_dataset_types(self.butler),
-                            in_collections=self.output_run,
+                            in_collections=output_run,
                             )
-        _log.info(f"Pipeline products saved to collection '{self.output_run}' for "
+        _log.info(f"Pipeline products saved to collection '{output_run}' for "
                   f"detector {self.visit.detector} of {exposure_ids}.")
 
     @staticmethod
@@ -866,9 +867,10 @@ class MiddlewareInterface:
         )
         self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
         # Outputs are all in one run, so just drop it.
-        for chain in self.butler.registry.getCollectionParentChains(self.output_run):
-            _remove_from_chain(self.butler, chain, [self.output_run])
-        self.butler.removeRuns([self.output_run], unstore=True)
+        output_run = self._get_output_run(self._day_obs)
+        for chain in self.butler.registry.getCollectionParentChains(output_run):
+            _remove_from_chain(self.butler, chain, [output_run])
+        self.butler.removeRuns([output_run], unstore=True)
 
 
 class _MissingDatasetError(RuntimeError):
