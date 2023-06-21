@@ -127,14 +127,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         cls.env_patcher.stop()
 
     def setUp(self):
-        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        self.central_repo = os.path.join(data_dir, "central_repo")
+        self.data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+        self.central_repo = os.path.join(self.data_dir, "central_repo")
         self.umbrella = f"{instname}/defaults"
         self.central_butler = Butler(self.central_repo,
                                      collections=[self.umbrella],
                                      writeable=False,
                                      inferDefaults=False)
-        self.input_data = os.path.join(data_dir, "input_data")
+        self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
@@ -350,11 +350,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                                      collections=[f'{instname}/raw/all']))
         self.assertEqual(datasets, [])
 
-    def test_run_pipeline(self):
-        """Test that running the pipeline uses the correct arguments.
-        We can't run an actual pipeline because raw/calib/refcat/template data
-        are all zeroed out.
-        """
+    def _prepare_run_pipeline(self):
         # Have to setup the data so that we can create the pipeline executor.
         self.interface.prep_butler()
         filename = "fakeRawImage.fits"
@@ -366,6 +362,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
+
+    def test_run_pipeline(self):
+        """Test that running the pipeline uses the correct arguments.
+
+        We can't run an actual pipeline because raw/calib/refcat/template data
+        are all zeroed out.
+        """
+        self._prepare_run_pipeline()
 
         with unittest.mock.patch(
                 "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
@@ -381,6 +385,103 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that we configured the right pipeline.
         self.assertIn("End to end Alert Production pipeline specialized for HiTS-2015",
                       "\n".join(logs.output))
+
+    def _check_run_pipeline_fallback(self, pipe_files, graphs, final_label):
+        """Generic test for different fallback scenarios.
+
+        Parameters
+        ----------
+        pipe_files : sequence [`str`]
+            The list of pipeline files configured for a visit.
+        graphs : sequence [`collections.abc.Sized`]
+            The list of quantum graphs (or suitable mocks) generated for each
+            pipeline. Must have the same length as ``pipe_files``.
+        final_label : `str`
+            The description of the pipeline that should be run, given
+            ``pipe_files`` and ``graphs``.
+        """
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._get_pipeline_files",
+                                 return_value=pipe_files), \
+                unittest.mock.patch(
+                    "activator.middleware_interface.SeparablePipelineExecutor.make_quantum_graph",
+                    side_effect=graphs), \
+                unittest.mock.patch(
+                    "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+                unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+                self.assertLogs(self.logger_name, level="INFO") as logs:
+            self.interface.run_pipeline({1})
+        mock_run.assert_called_once()
+        # Check that we configured the right pipeline.
+        self.assertIn(final_label, "\n".join(logs.output))
+
+    def test_run_pipeline_fallback_1failof2(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml')]
+        graph_list = [[], ["node1", "node2"]]
+        expected = "Test pipeline consisting only of single-frame steps."
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_1failof2_inverse(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml')]
+        graph_list = [["node1", "node2"], []]
+        expected = "End to end Alert Production pipeline specialized for HiTS-2015"
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_2failof2(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml')]
+        graph_list = [[], []]
+        expected = ""
+
+        self._prepare_run_pipeline()
+        with self.assertRaises(RuntimeError):
+            self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_0failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml'),
+                     os.path.join(self.data_dir, 'ISR.yaml')]
+        graph_list = [["node1", "node2"], ["node3", "node4"], ["node5"]]
+        expected = "End to end Alert Production pipeline specialized for HiTS-2015"
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_1failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml'),
+                     os.path.join(self.data_dir, 'ISR.yaml')]
+        graph_list = [[], ["node3", "node4"], ["node5"]]
+        expected = "Test pipeline consisting only of single-frame steps."
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_2failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml'),
+                     os.path.join(self.data_dir, 'ISR.yaml')]
+        graph_list = [[], [], ["node5"]]
+        expected = "Test pipeline consisting only of ISR."
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_2failof3_inverse(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml'),
+                     os.path.join(self.data_dir, 'ISR.yaml')]
+        graph_list = [[], ["node3", "node4"], []]
+        expected = "Test pipeline consisting only of single-frame steps."
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
 
     def test_run_pipeline_bad_visits(self):
         """Test that running a pipeline that results in bad visit definition
