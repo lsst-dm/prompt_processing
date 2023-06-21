@@ -402,13 +402,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.run_pipeline({2})
 
     def test_get_output_run(self):
+        filename = "ApPipe.yaml"
         for date in [datetime.date.today(), datetime.datetime.today()]:
-            out_run = self.interface._get_output_run(date)
+            out_run = self.interface._get_output_run(filename, date)
             self.assertEqual(out_run,
                              f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
                              "/ApPipe/prompt-proto-service-042"
                              )
-            init_run = self.interface._get_init_output_run(date)
+            init_run = self.interface._get_init_output_run(filename, date)
             self.assertEqual(init_run,
                              f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
                              "/ApPipe/prompt-proto-service-042"
@@ -427,10 +428,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 else:
                     return utc.replace(tzinfo=None)
 
+        filename = "ApPipe.yaml"
         with unittest.mock.patch("datetime.datetime", MockDatetime):
-            out_run = self.interface._get_output_run()
+            out_run = self.interface._get_output_run(filename)
             self.assertIn("output-2023-03-14", out_run)
-            init_run = self.interface._get_init_output_run()
+            init_run = self.interface._get_init_output_run(filename)
             self.assertIn("output-2023-03-14", init_run)
 
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
@@ -465,7 +467,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         cat = lsst.afw.table.SourceCatalog()
         raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
         butler.registry.registerCollection(raw_collection, CollectionType.RUN)
-        out_collection = self.interface._get_output_run()
+        out_collection = self.interface._get_output_run("ApPipe.yaml")
         butler.registry.registerCollection(out_collection, CollectionType.RUN)
         chain = "generic-chain"
         butler.registry.registerCollection(chain, CollectionType.CHAINED)

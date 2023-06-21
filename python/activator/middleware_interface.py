@@ -562,12 +562,15 @@ class MiddlewareInterface:
             yield k, len(list(g))
 
     def _get_init_output_run(self,
+                             pipeline_file: str,
                              date: datetime.date | None = None) -> str:
         """Generate a deterministic init-output collection name that avoids
         configuration conflicts.
 
         Parameters
         ----------
+        pipeline_file : `str`
+            The pipeline file that the run will be used for.
         date : `datetime.date`, optional
             Date of the processing run (not observation!), defaults to the
             day_obs this method was called.
@@ -581,15 +584,18 @@ class MiddlewareInterface:
             date = datetime.datetime.now(_DAY_OBS_TZ)
         # Current executor requires that init-outputs be in the same run as
         # outputs. This can be changed once DM-36162 is done.
-        return self._get_output_run(date)
+        return self._get_output_run(pipeline_file, date)
 
     def _get_output_run(self,
+                        pipeline_file: str,
                         date: datetime.date | None = None) -> str:
         """Generate a deterministic collection name that avoids version or
         provenance conflicts.
 
         Parameters
         ----------
+        pipeline_file : `str`
+            The pipeline file that the run will be used for.
         date : `datetime.date`, optional
             Date of the processing run (not observation!), defaults to the
             day_obs this method was called.
@@ -601,7 +607,7 @@ class MiddlewareInterface:
         """
         if date is None:
             date = datetime.datetime.now(_DAY_OBS_TZ)
-        pipeline_name, _ = os.path.splitext(os.path.basename(self._get_pipeline_file()))
+        pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
         # Order optimized for S3 bucket -- filter out as many files as soon as possible.
         return self.instrument.makeCollectionName(
             "prompt", f"output-{date:%Y-%m-%d}", pipeline_name, self._deployment)
@@ -610,8 +616,13 @@ class MiddlewareInterface:
         """Pre-register output collections in advance of running the pipeline.
         """
         self.butler.registry.refresh()
-        self.butler.registry.registerCollection(self._get_init_output_run(self._day_obs), CollectionType.RUN)
-        self.butler.registry.registerCollection(self._get_output_run(self._day_obs), CollectionType.RUN)
+        pipeline_file = self._get_pipeline_file()
+        self.butler.registry.registerCollection(
+            self._get_init_output_run(pipeline_file, self._day_obs),
+            CollectionType.RUN)
+        self.butler.registry.registerCollection(
+            self._get_output_run(pipeline_file, self._day_obs),
+            CollectionType.RUN)
 
     def _get_pipeline_file(self) -> str:
         """Identify the pipeline to be run, based on the configured instrument
@@ -729,12 +740,13 @@ class MiddlewareInterface:
             f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
             " and visit_system = 0"
         )
+        pipeline_file = self._get_pipeline_file()
         try:
-            pipeline = self._prep_pipeline(self._get_pipeline_file())
+            pipeline = self._prep_pipeline(pipeline_file)
         except FileNotFoundError as e:
             raise RuntimeError from e
-        init_output_run = self._get_init_output_run(self._day_obs)
-        output_run = self._get_output_run(self._day_obs)
+        init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
+        output_run = self._get_output_run(pipeline_file, self._day_obs)
         executor = SeparablePipelineExecutor(
             Butler(butler=self.butler,
                    collections=[output_run, init_output_run] + list(self.butler.collections),
@@ -764,7 +776,7 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
         """
-        output_run = self._get_output_run(self._day_obs)
+        output_run = self._get_output_run(self._get_pipeline_file(), self._day_obs)
         self._export_subset(exposure_ids,
                             # TODO: find a way to merge datasets like *_config
                             # or *_schema that are duplicated across multiple
@@ -867,7 +879,7 @@ class MiddlewareInterface:
         )
         self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
         # Outputs are all in one run, so just drop it.
-        output_run = self._get_output_run(self._day_obs)
+        output_run = self._get_output_run(self._get_pipeline_file(), self._day_obs)
         for chain in self.butler.registry.getCollectionParentChains(output_run):
             _remove_from_chain(self.butler, chain, [output_run])
         self.butler.removeRuns([output_run], unstore=True)
