@@ -382,8 +382,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertIn("End to end Alert Production pipeline specialized for HiTS-2015",
                       "\n".join(logs.output))
 
-    def test_run_pipeline_empty_quantum_graph(self):
-        """Test that running a pipeline that results in an empty quantum graph
+    def test_run_pipeline_bad_visits(self):
+        """Test that running a pipeline that results in bad visit definition
         (because the exposure ids are wrong), raises.
         """
         # Have to setup the data so that we can create the pipeline executor.
