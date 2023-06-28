@@ -233,6 +233,9 @@ def next_visit_handler() -> Tuple[str, int]:
     _log.info(f"Starting next_visit_handler for {request}.")
     consumer.subscribe([bucket_topic])
     _log.debug(f"Created subscription to '{bucket_topic}'")
+    # Try to get a message right away to minimize race conditions
+    startup_response = consumer.consume(num_messages=1, timeout=0.001)
+
     try:
         try:
             expected_visit = parse_next_visit(request)
@@ -281,12 +284,15 @@ def next_visit_handler() -> Tuple[str, int]:
         _log.debug(f"Waiting for snaps from {expected_visit}.")
         start = time.time()
         while len(expid_set) < expected_snaps:
-            # 2 for JSON and FITS files
-            response = consumer.consume(num_messages=1, timeout=timeout)
+            if startup_response:
+                response = startup_response
+            else:
+                response = consumer.consume(num_messages=1, timeout=timeout)
             end = time.time()
             messages = _filter_messages(response)
+            response = []
             if len(messages) == 0:
-                if end - start < timeout:
+                if end - start < timeout and not startup_response:
                     _log.debug(f"Empty consume after {end - start}s for {expected_visit}.")
                     continue
                 _log.warning(
@@ -294,6 +300,7 @@ def next_visit_handler() -> Tuple[str, int]:
                     f"after receiving exposures {expid_set}"
                 )
                 break
+            startup_response = []
 
             for received in messages:
                 for oid in _parse_bucket_notifications(received.value()):
