@@ -634,7 +634,7 @@ class MiddlewareInterface:
             A sequence of paths to a configured pipeline file, in order from
             most preferred to least preferred.
         """
-        return [self.pipelines.get_pipeline_file(self.visit)]
+        return self.pipelines.get_pipeline_files(self.visit)
 
     def _prep_pipeline(self, pipeline_file) -> lsst.pipe.base.Pipeline:
         """Setup the pipeline to be run, based on the configured instrument and

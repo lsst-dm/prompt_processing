@@ -99,8 +99,8 @@ class PipelinesConfig:
 
         Returns
         -------
-        config : mapping [`str`, `str` or `None`]
-            A mapping from the survey type to the pipeline to run for that
+        config : mapping [`str`, `list` [`str`]]
+            A mapping from the survey type to the pipeline(s) to run for that
             survey. A more complex key or container type may be needed in the
             future, if other pipeline selection criteria are added.
 
@@ -117,7 +117,7 @@ class PipelinesConfig:
         pos = 0
         match = node.match(config, pos)
         while match:
-            items[match['survey']] = match['filename'] if match['filename'].lower() != "none" else None
+            items[match['survey']] = [match['filename']] if match['filename'].lower() != "none" else []
 
             pos = match.end()
             match = node.match(config, pos)
@@ -126,7 +126,7 @@ class PipelinesConfig:
 
         return items
 
-    def get_pipeline_file(self, visit: FannedOutVisit) -> str:
+    def get_pipeline_files(self, visit: FannedOutVisit) -> str:
         """Identify the pipeline to be run, based on the provided visit.
 
         Parameters
@@ -136,15 +136,12 @@ class PipelinesConfig:
 
         Returns
         -------
-        pipeline : `str` or `None`
-            A path to a configured pipeline file. A value of `None` means that
-            *no* pipeline should be run on this visit.
+        pipeline : `list` [`str`]
+            Path(s) to the configured pipeline file(s). An empty list means
+            that *no* pipeline should be run on this visit.
         """
         try:
-            value = self._mapping[visit.survey]
+            values = self._mapping[visit.survey]
         except KeyError as e:
             raise RuntimeError(f"Unsupported survey: {visit.survey}") from e
-        if value is not None:
-            return os.path.expandvars(value)
-        else:
-            return value
+        return [os.path.expandvars(path) for path in values]
