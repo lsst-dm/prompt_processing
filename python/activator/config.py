@@ -43,9 +43,10 @@ class PipelinesConfig:
     config : `str`
         A string describing pipeline selection criteria. The current format is
         a space-delimited list of mappings, each of which has the format
-        ``(survey="<survey>")=<pipeline>``. The pipeline path may contain
-        environment variables, or may be the keyword "None" to mean no pipeline
-        should be run. No key or value may contain the "=" character.
+        ``(survey="<survey>")=[<pipelines>]``. The zero or more pipelines are
+        comma-delimited, and each pipeline path may contain environment
+        variables. The list may be replaced by the keyword "None" to mean no
+        pipeline should be run. No key or value may contain the "=" character.
         See examples below.
 
     Notes
@@ -57,22 +58,22 @@ class PipelinesConfig:
 
     Examples
     --------
-    A single-survey config:
+    A single-survey, single-pipeline config:
 
-    >>> PipelinesConfig('(survey="TestSurvey")=/etc/pipelines/SingleFrame.yaml')  # doctest: +ELLIPSIS
+    >>> PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/SingleFrame.yaml]')  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
 
-    A config with multiple surveys, and environment variables:
+    A config with multiple surveys and pipelines, and environment variables:
 
-    >>> PipelinesConfig('(survey="TestSurvey")=/etc/pipelines/ApPipe.yaml '
-    ...                 '(survey="Camera Test")=${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml '
-    ...                 '(survey="")=${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml ')
+    >>> PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/ApPipe.yaml, /etc/pipelines/ISR.yaml] '
+    ...                 '(survey="Camera Test")=[${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml] '
+    ...                 '(survey="")=[${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml] ')
     ... # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
 
     A config that omits a pipeline for non-sky data:
 
-    >>> PipelinesConfig('(survey="TestSurvey")=/etc/pipelines/ApPipe.yaml '
+    >>> PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/ApPipe.yaml] '
     ...                 '(survey="Dome Flats")=None ')  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
     """
@@ -91,10 +92,11 @@ class PipelinesConfig:
         ----------
         config : `str`
             A string describing pipeline selection criteria. The current format
-            is a space-delimited list of mappings, each of which has the format
-            '(survey="<survey>")=<pipeline>'. The pipeline path may contain
-            environment variables, or may be the keyword "None" to mean no
-            pipeline should be run. No key or value may contain the "="
+            a space-delimited list of mappings, each of which has the format
+            ``(survey="<survey>")=[<pipelines>]``. The zero or more pipelines
+            are comma-delimited, and each pipeline path may contain environment
+            variables. The list may be replaced by the keyword "None" to mean
+            no pipeline should be run. No key or value may contain the "="
             character.
 
         Returns
@@ -109,15 +111,26 @@ class PipelinesConfig:
         ValueError
             Raised if the string cannot be parsed.
         """
-        # Use regex instead of str.split, in case keys or values also have spaces.
+        # Use regex instead of str.split, in case keys or values also have
+        # spaces.
+        # Allow anything between the [ ] to avoid catastrophic backtracking
+        # when the input is invalid. If pickier matching is needed in the
+        # future, use a separate regex for filelist instead of making node
+        # more complex.
         node = re.compile(r'\s*\(survey="(?P<survey>[\w\s]*)"\)='
-                          r'(?P<filename>[-\w./${} ]*[-\w./${}])(?:\s+|$)')
+                          r'(?:\[(?P<filelist>[^]]*)\]|none)(?:\s+|$)',
+                          re.IGNORECASE)
 
         items = {}
         pos = 0
         match = node.match(config, pos)
         while match:
-            items[match['survey']] = [match['filename']] if match['filename'].lower() != "none" else []
+            if match['filelist'] is not None:
+                filenames = [file.strip() for file in match['filelist'].split(',')] \
+                    if match['filelist'] else []
+                items[match['survey']] = filenames
+            else:
+                items[match['survey']] = []
 
             pos = match.end()
             match = node.match(config, pos)

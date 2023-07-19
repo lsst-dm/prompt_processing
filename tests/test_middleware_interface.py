@@ -51,8 +51,13 @@ instname = "DECam"
 filter = "g DECam SDSS c0001 4720.0 1520.0"
 # The skymap name used in the test repo.
 skymap_name = "deepCoadd_skyMap"
-# A pipelines config that returns the test pipeline.
-pipelines = PipelinesConfig('(survey="SURVEY")=${PROMPT_PROTOTYPE_DIR}/tests/data/ApPipe.yaml')
+# A pipelines config that returns the test pipelines.
+# Unless a test imposes otherwise, the first pipeline should run, and
+# the second should not be attempted.
+pipelines = PipelinesConfig('''(survey="SURVEY")=[${PROMPT_PROTOTYPE_DIR}/tests/data/ApPipe.yaml,
+                                                  ${PROMPT_PROTOTYPE_DIR}/tests/data/SingleFrame.yaml]
+                            '''
+                            )
 
 
 def fake_file_data(filename, dimensions, instrument, visit):
@@ -378,6 +383,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 as mock_run:
             with self.assertLogs(self.logger_name, level="INFO") as logs:
                 self.interface.run_pipeline({1})
+        # Pre-execution and execution should only run once, even if graph
+        # generation is attempted for multiple pipelines.
         mock_preexec.assert_called_once()
         # Pre-execution may have other arguments as needed; no requirement either way.
         self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
