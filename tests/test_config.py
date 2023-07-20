@@ -179,3 +179,11 @@ class PipelinesConfigTest(unittest.TestCase):
             PipelinesConfig('[/etc/pipelines/SingleFrame.yaml] '
                             '(survey="CameraTest")=[${AP_PIPE_DIR}/pipelines/Isr.yaml] '
                             )
+
+    def test_duplicates(self):
+        with self.assertRaises(ValueError):
+            PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/ApPipe.yaml,'
+                            '                       ${AP_PIPE_DIR}/pipelines/ApPipe.yaml]')
+        with self.assertRaises(ValueError):
+            PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/ApPipe.yaml,'
+                            '                       /etc/pipelines/ApPipe.yaml#isr]')

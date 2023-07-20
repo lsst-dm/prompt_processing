@@ -23,6 +23,7 @@
 __all__ = ["PipelinesConfig"]
 
 
+import collections
 import collections.abc
 import os
 import re
@@ -46,7 +47,8 @@ class PipelinesConfig:
         ``(survey="<survey>")=[<pipelines>]``. The zero or more pipelines are
         comma-delimited, and each pipeline path may contain environment
         variables. The list may be replaced by the keyword "None" to mean no
-        pipeline should be run. No key or value may contain the "=" character.
+        pipeline should be run. No key or value may contain the "=" character,
+        and no two pipelines may share the same name.
         See examples below.
 
     Notes
@@ -83,6 +85,9 @@ class PipelinesConfig:
             raise ValueError("Must configure at least one pipeline.")
 
         self._mapping = self._parse_config(config)
+
+        for pipelines in self._mapping.values():
+            self._check_pipelines(pipelines)
 
     @staticmethod
     def _parse_config(config: str) -> collections.abc.Mapping:
@@ -138,6 +143,28 @@ class PipelinesConfig:
             raise ValueError(f"Unexpected text at position {pos}: '{config[pos:]}'.")
 
         return items
+
+    @staticmethod
+    def _check_pipelines(pipelines: collections.abc.Sequence[str]):
+        """Test the correctness of a list of pipelines.
+
+        At present, the only test is that no two pipelines have the same
+        filename, which is used as a pipeline ID elsewhere in the Prompt
+        Processing service.
+
+        Parameters
+        ----------
+        pipelines : sequence [`str`]
+
+        Raises
+        ------
+        ValueError
+            Raised if the pipeline list is invalid.
+        """
+        filenames = collections.Counter(os.path.splitext(os.path.basename(path))[0] for path in pipelines)
+        duplicates = [filename for filename, num in filenames.items() if num > 1]
+        if duplicates:
+            raise ValueError(f"Pipeline names must be unique, found multiple copies of {duplicates}.")
 
     def get_pipeline_files(self, visit: FannedOutVisit) -> str:
         """Identify the pipeline to be run, based on the provided visit.
