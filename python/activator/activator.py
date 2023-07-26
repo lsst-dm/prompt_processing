@@ -244,7 +244,7 @@ def next_visit_handler() -> Tuple[str, int]:
             return f"Bad Request: {msg}", 400
         assert expected_visit.instrument == instrument_name, \
             f"Expected {instrument_name}, received {expected_visit.instrument}."
-        if pipelines.get_pipeline_file(expected_visit) is None:
+        if not pipelines.get_pipeline_files(expected_visit):
             _log.info(f"No pipeline configured for {expected_visit}, skipping.")
             return "No pipeline configured for the received visit.", 422
 

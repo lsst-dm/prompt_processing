@@ -113,12 +113,6 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
                                        CollectionType.CHAINED)
     butler.registry.registerCollection(instrument.makeDefaultRawIngestRunName(),
                                        CollectionType.RUN)
-    output_collection = instrument.makeCollectionName("prompt")
-    butler.registry.registerCollection(output_collection, CollectionType.CHAINED)
-    collections = [instrument.makeUmbrellaCollectionName(),
-                   instrument.makeDefaultRawIngestRunName(),
-                   ]
-    butler.registry.setCollectionChain(output_collection, collections)
 
     return repo_dir
 
@@ -184,16 +178,12 @@ class MiddlewareInterface:
     # self.image_host is a valid URI with non-empty path and no query or fragment.
     # self._download_store is None if and only if self.image_host is a local URI.
     # self.visit, self.instrument, self.camera, self.skymap, self._deployment
-    #   do not change after __init__.
-    # self.butler defaults to a chained collection named
-    #   self.output_collection, which contains zero or more output runs
-    #   and all pipeline inputs, in that order. However, self.butler is not
+    #   self._day_obs do not change after __init__.
+    # self.butler defaults to the "defaults" chained collection, which contains
+    #   all pipeline inputs. However, self.butler is not
     #   guaranteed to contain concrete data, or even the dimensions
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
-    # self.init_output_run and self.output_run do not change after __init__.
-    #   They need not exist in the local repo, but if they do, they are members
-    #   of self.output_collection.
 
     def __init__(self, central_butler: Butler, image_bucket: str, visit: FannedOutVisit,
                  pipelines: PipelinesConfig, skymap: str, local_repo: str,
@@ -221,11 +211,10 @@ class MiddlewareInterface:
         self.instrument = lsst.obs.base.Instrument.from_string(visit.instrument, central_butler.registry)
         self.pipelines = pipelines
 
-        self.output_collection = self.instrument.makeCollectionName("prompt")
-        self.init_output_run = self._get_init_output_run()
-        self.output_run = self._get_output_run()
+        # Guard against a processing run starting on one day and ending the next.
+        self._day_obs = datetime.datetime.now(_DAY_OBS_TZ)
 
-        self._init_local_butler(local_repo, [self.output_collection], self.output_run)
+        self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self._prep_collections()
         self._init_ingester()
         self._init_visit_definer()
@@ -399,10 +388,13 @@ class MiddlewareInterface:
                                 transfer="copy")
 
         # Temporary workarounds until we have a prompt-processing default top-level collection
-        # in shared repos and then we can organize collections without worrying DRP use cases.
+        # in shared repos, and raw collection in dev repo, and then we can organize collections
+        # without worrying about DRP use cases.
         _prepend_collection(self.butler,
                             self.instrument.makeUmbrellaCollectionName(),
-                            [self._get_template_collection()])
+                            [self._get_template_collection(),
+                             self.instrument.makeDefaultRawIngestRunName(),
+                             ])
 
     def _get_template_collection(self):
         """Get the collection name for templates
@@ -480,8 +472,6 @@ class MiddlewareInterface:
         # TODO: do we need to have the coadd name used in the pipeline
         # specified as a class kwarg, so that we only load one here?
         # TODO: alternately, we need to extract it from the pipeline? (best?)
-        # TODO: alternately, can we just assume that there is exactly
-        # one coadd type in the central butler?
         try:
             templates = set(_filter_datasets(
                 self.central_butler, self.butler,
@@ -572,12 +562,15 @@ class MiddlewareInterface:
             yield k, len(list(g))
 
     def _get_init_output_run(self,
+                             pipeline_file: str,
                              date: datetime.date | None = None) -> str:
         """Generate a deterministic init-output collection name that avoids
         configuration conflicts.
 
         Parameters
         ----------
+        pipeline_file : `str`
+            The pipeline file that the run will be used for.
         date : `datetime.date`, optional
             Date of the processing run (not observation!), defaults to the
             day_obs this method was called.
@@ -591,15 +584,18 @@ class MiddlewareInterface:
             date = datetime.datetime.now(_DAY_OBS_TZ)
         # Current executor requires that init-outputs be in the same run as
         # outputs. This can be changed once DM-36162 is done.
-        return self._get_output_run(date)
+        return self._get_output_run(pipeline_file, date)
 
     def _get_output_run(self,
+                        pipeline_file: str,
                         date: datetime.date | None = None) -> str:
         """Generate a deterministic collection name that avoids version or
         provenance conflicts.
 
         Parameters
         ----------
+        pipeline_file : `str`
+            The pipeline file that the run will be used for.
         date : `datetime.date`, optional
             Date of the processing run (not observation!), defaults to the
             day_obs this method was called.
@@ -611,7 +607,7 @@ class MiddlewareInterface:
         """
         if date is None:
             date = datetime.datetime.now(_DAY_OBS_TZ)
-        pipeline_name, _ = os.path.splitext(os.path.basename(self._get_pipeline_file()))
+        pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
         # Order optimized for S3 bucket -- filter out as many files as soon as possible.
         return self.instrument.makeCollectionName(
             "prompt", f"output-{date:%Y-%m-%d}", pipeline_name, self._deployment)
@@ -620,43 +616,41 @@ class MiddlewareInterface:
         """Pre-register output collections in advance of running the pipeline.
         """
         self.butler.registry.refresh()
-        self.butler.registry.registerCollection(self.init_output_run, CollectionType.RUN)
-        self.butler.registry.registerCollection(self.output_run, CollectionType.RUN)
-        # As of Feb 2023, this moves output_run to the front of the chain if
-        # it's already present, but this behavior cannot be relied upon.
-        _prepend_collection(self.butler, self.output_collection, [self.output_run, self.init_output_run])
+        for pipeline_file in self._get_pipeline_files():
+            self.butler.registry.registerCollection(
+                self._get_init_output_run(pipeline_file, self._day_obs),
+                CollectionType.RUN)
+            self.butler.registry.registerCollection(
+                self._get_output_run(pipeline_file, self._day_obs),
+                CollectionType.RUN)
 
-    def _get_pipeline_file(self) -> str:
-        """Identify the pipeline to be run, based on the configured instrument
+    def _get_pipeline_files(self) -> str:
+        """Identify the pipelines to be run, based on the configured instrument
         and visit.
 
         Returns
         -------
-        pipeline : `str`
-            A path to a configured pipeline file.
+        pipelines : sequence [`str`]
+            A sequence of paths to a configured pipeline file, in order from
+            most preferred to least preferred.
         """
-        return self.pipelines.get_pipeline_file(self.visit)
+        return self.pipelines.get_pipeline_files(self.visit)
 
-    def _prep_pipeline(self) -> lsst.pipe.base.Pipeline:
+    def _prep_pipeline(self, pipeline_file) -> lsst.pipe.base.Pipeline:
         """Setup the pipeline to be run, based on the configured instrument and
         details of the incoming visit.
+
+        Parameters
+        ----------
+        pipeline_file : `str`
+            The pipeline file to run.
 
         Returns
         -------
         pipeline : `lsst.pipe.base.Pipeline`
-            The pipeline to run for this object's visit.
-
-        Raises
-        ------
-        RuntimeError
-            Raised if there is no AP pipeline file for this configuration.
-            TODO: could be a good case for a custom exception here.
+            The fully configured pipeline.
         """
-        ap_pipeline_file = self._get_pipeline_file()
-        try:
-            pipeline = lsst.pipe.base.Pipeline.fromFile(ap_pipeline_file)
-        except FileNotFoundError as e:
-            raise RuntimeError from e
+        pipeline = lsst.pipe.base.Pipeline.fromFile(pipeline_file)
 
         try:
             pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
@@ -724,6 +718,13 @@ class MiddlewareInterface:
         ----------
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were received.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if the pipeline could not be loaded or configured, or the
+            graph generated.
+            TODO: could be a good case for a custom exception here.
         """
         # TODO: we want to define visits earlier, but we have to ingest a
         # faked raw file and appropriate SSO data during prep (and then
@@ -740,20 +741,42 @@ class MiddlewareInterface:
             f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
             " and visit_system = 0"
         )
-        pipeline = self._prep_pipeline()
-        executor = SeparablePipelineExecutor(self.butler, clobber_output=False, skip_existing_in=None)
-        qgraph = executor.make_quantum_graph(pipeline, where=where)
-        if len(qgraph) == 0:
+        # Try pipelines in order until one works.
+        for pipeline_file in self._get_pipeline_files():
+            try:
+                pipeline = self._prep_pipeline(pipeline_file)
+            except FileNotFoundError as e:
+                raise RuntimeError from e
+            init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
+            output_run = self._get_output_run(pipeline_file, self._day_obs)
+            executor = SeparablePipelineExecutor(
+                Butler(butler=self.butler,
+                       collections=[output_run, init_output_run] + list(self.butler.collections),
+                       run=output_run),
+                clobber_output=False,
+                skip_existing_in=None
+            )
+            qgraph = executor.make_quantum_graph(pipeline, where=where)
+            if len(qgraph) == 0:
+                # Diagnostic logs are the responsibility of GraphBuilder.
+                _log.error(f"Could not build quantum graph for {pipeline_file}; "
+                           "see previous logs for details.")
+                continue
+            # Past this point, partial execution creates datasets.
+            # Don't retry -- either fail (raise) or break.
+
+            # If this is a fresh (local) repo, then types like calexp,
+            # *Diff_diaSrcTable, etc. have not been registered.
+            # TODO: after DM-38041, move pre-execution to one-time repo setup.
+            executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
+            _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
+            executor.run_pipeline(qgraph)
+            _log.info(f"Pipeline successfully run on "
+                      f"detector {self.visit.detector} of {exposure_ids}.")
+            break
+        else:
             # TODO: a good place for a custom exception?
-            raise RuntimeError("No data to process.")
-        # If this is a fresh (local) repo, then types like calexp,
-        # *Diff_diaSrcTable, etc. have not been registered.
-        # TODO: after DM-38041, move pre-execution to one-time repo setup.
-        executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
-        _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
-        executor.run_pipeline(qgraph)
-        _log.info(f"Pipeline successfully run on "
-                  f"detector {self.visit.detector} of {exposure_ids}.")
+            raise RuntimeError("No pipeline graph could be built.")
 
     def export_outputs(self, exposure_ids: set[int]) -> None:
         """Copy pipeline outputs from processing a set of images back
@@ -764,15 +787,23 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
         """
-        self._export_subset(exposure_ids,
-                            # TODO: find a way to merge datasets like *_config
-                            # or *_schema that are duplicated across multiple
-                            # workers.
-                            self._get_safe_dataset_types(self.butler),
-                            in_collections=self.output_run,
-                            )
-        _log.info(f"Pipeline products saved to collection '{self.output_run}' for "
-                  f"detector {self.visit.detector} of {exposure_ids}.")
+        exported = False
+        # Rather than determining which pipeline was run, just try to export all of them.
+        for pipeline_file in self._get_pipeline_files():
+            output_run = self._get_output_run(pipeline_file, self._day_obs)
+            exports = self._export_subset(exposure_ids,
+                                          # TODO: find a way to merge datasets like *_config
+                                          # or *_schema that are duplicated across multiple
+                                          # workers.
+                                          self._get_safe_dataset_types(self.butler),
+                                          in_collections=output_run,
+                                          )
+            if exports:
+                exported = True
+                _log.info(f"Pipeline products saved to collection '{output_run}' for "
+                          f"detector {self.visit.detector} of {exposure_ids}.")
+        if not exported:
+            raise ValueError(f"No datasets match visit={self.visit} and exposures={exposure_ids}.")
 
     @staticmethod
     def _get_safe_dataset_types(butler):
@@ -806,6 +837,11 @@ class MiddlewareInterface:
         in_collections
             The collections to transfer from; can be any expression described
             in :ref:`daf_butler_collection_expressions`.
+
+        Returns
+        -------
+        datasets : collection [`~lsst.daf.butler.DatasetRef`]
+            The datasets exported (may be empty).
         """
         # local repo may have been modified by other MWI instances.
         self.butler.registry.refresh()
@@ -825,8 +861,6 @@ class MiddlewareInterface:
             ))
         except lsst.daf.butler.registry.DataIdError as e:
             raise ValueError("Invalid visit or exposures.") from e
-        if not datasets:
-            raise ValueError(f"No datasets match visit={self.visit} and exposures={exposure_ids}.")
 
         # central repo may have been modified by other MWI instances.
         # TODO: get a proper synchronization API for Butler
@@ -845,6 +879,8 @@ class MiddlewareInterface:
                                         skip_dimensions={"instrument", "detector",
                                                          "skymap", "tract", "patch"},
                                         transfer="copy")
+
+        return datasets
 
     def clean_local_repo(self, exposure_ids: set[int]) -> None:
         """Remove local repo content that is only needed for a single visit.
@@ -865,10 +901,12 @@ class MiddlewareInterface:
             detector=self.visit.detector,
         )
         self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
-        # Outputs are all in one run, so just drop it.
-        for chain in self.butler.registry.getCollectionParentChains(self.output_run):
-            _remove_from_chain(self.butler, chain, [self.output_run])
-        self.butler.removeRuns([self.output_run], unstore=True)
+        # Outputs are all in their own runs, so just drop them.
+        for pipeline_file in self._get_pipeline_files():
+            output_run = self._get_output_run(pipeline_file, self._day_obs)
+            for chain in self.butler.registry.getCollectionParentChains(output_run):
+                _remove_from_chain(self.butler, chain, [output_run])
+            self.butler.removeRuns([output_run], unstore=True)
 
 
 class _MissingDatasetError(RuntimeError):

@@ -214,6 +214,8 @@ All service configuration is in ``prompt-proto-service.yaml``.
 It includes the following required environment variables:
 
 * RUBIN_INSTRUMENT: the "short" instrument name
+* PIPELINES_CONFIG: a machine-readable string describing which pipeline(s) should be run for which visits.
+  Notation is complex and still in flux; see :file:`../python/activator/config.py` for current documentation and examples.
 * PUBSUB_VERIFICATION_TOKEN: choose an arbitrary string matching the Pub/Sub endpoint URL below.
   This variable is currently unused and may be removed in the future.
 * IMAGE_BUCKET: bucket containing raw images

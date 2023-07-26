@@ -23,6 +23,7 @@
 __all__ = ["PipelinesConfig"]
 
 
+import collections
 import collections.abc
 import os
 import re
@@ -43,9 +44,11 @@ class PipelinesConfig:
     config : `str`
         A string describing pipeline selection criteria. The current format is
         a space-delimited list of mappings, each of which has the format
-        ``(survey="<survey>")=<pipeline>``. The pipeline path may contain
-        environment variables, or may be the keyword "None" to mean no pipeline
-        should be run. No key or value may contain the "=" character.
+        ``(survey="<survey>")=[<pipelines>]``. The zero or more pipelines are
+        comma-delimited, and each pipeline path may contain environment
+        variables. The list may be replaced by the keyword "None" to mean no
+        pipeline should be run. No key or value may contain the "=" character,
+        and no two pipelines may share the same name.
         See examples below.
 
     Notes
@@ -57,22 +60,22 @@ class PipelinesConfig:
 
     Examples
     --------
-    A single-survey config:
+    A single-survey, single-pipeline config:
 
-    >>> PipelinesConfig('(survey="TestSurvey")=/etc/pipelines/SingleFrame.yaml')  # doctest: +ELLIPSIS
+    >>> PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/SingleFrame.yaml]')  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
 
-    A config with multiple surveys, and environment variables:
+    A config with multiple surveys and pipelines, and environment variables:
 
-    >>> PipelinesConfig('(survey="TestSurvey")=/etc/pipelines/ApPipe.yaml '
-    ...                 '(survey="Camera Test")=${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml '
-    ...                 '(survey="")=${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml ')
+    >>> PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/ApPipe.yaml, /etc/pipelines/ISR.yaml] '
+    ...                 '(survey="Camera Test")=[${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml] '
+    ...                 '(survey="")=[${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml] ')
     ... # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
 
     A config that omits a pipeline for non-sky data:
 
-    >>> PipelinesConfig('(survey="TestSurvey")=/etc/pipelines/ApPipe.yaml '
+    >>> PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/ApPipe.yaml] '
     ...                 '(survey="Dome Flats")=None ')  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
     """
@@ -83,6 +86,9 @@ class PipelinesConfig:
 
         self._mapping = self._parse_config(config)
 
+        for pipelines in self._mapping.values():
+            self._check_pipelines(pipelines)
+
     @staticmethod
     def _parse_config(config: str) -> collections.abc.Mapping:
         """Turn a config string into structured config information.
@@ -91,16 +97,17 @@ class PipelinesConfig:
         ----------
         config : `str`
             A string describing pipeline selection criteria. The current format
-            is a space-delimited list of mappings, each of which has the format
-            '(survey="<survey>")=<pipeline>'. The pipeline path may contain
-            environment variables, or may be the keyword "None" to mean no
-            pipeline should be run. No key or value may contain the "="
+            a space-delimited list of mappings, each of which has the format
+            ``(survey="<survey>")=[<pipelines>]``. The zero or more pipelines
+            are comma-delimited, and each pipeline path may contain environment
+            variables. The list may be replaced by the keyword "None" to mean
+            no pipeline should be run. No key or value may contain the "="
             character.
 
         Returns
         -------
-        config : mapping [`str`, `str` or `None`]
-            A mapping from the survey type to the pipeline to run for that
+        config : mapping [`str`, `list` [`str`]]
+            A mapping from the survey type to the pipeline(s) to run for that
             survey. A more complex key or container type may be needed in the
             future, if other pipeline selection criteria are added.
 
@@ -109,15 +116,26 @@ class PipelinesConfig:
         ValueError
             Raised if the string cannot be parsed.
         """
-        # Use regex instead of str.split, in case keys or values also have spaces.
+        # Use regex instead of str.split, in case keys or values also have
+        # spaces.
+        # Allow anything between the [ ] to avoid catastrophic backtracking
+        # when the input is invalid. If pickier matching is needed in the
+        # future, use a separate regex for filelist instead of making node
+        # more complex.
         node = re.compile(r'\s*\(survey="(?P<survey>[\w\s]*)"\)='
-                          r'(?P<filename>[-\w./${} ]*[-\w./${}])(?:\s+|$)')
+                          r'(?:\[(?P<filelist>[^]]*)\]|none)(?:\s+|$)',
+                          re.IGNORECASE)
 
         items = {}
         pos = 0
         match = node.match(config, pos)
         while match:
-            items[match['survey']] = match['filename'] if match['filename'].lower() != "none" else None
+            if match['filelist'] is not None:
+                filenames = [file.strip() for file in match['filelist'].split(',')] \
+                    if match['filelist'] else []
+                items[match['survey']] = filenames
+            else:
+                items[match['survey']] = []
 
             pos = match.end()
             match = node.match(config, pos)
@@ -126,7 +144,29 @@ class PipelinesConfig:
 
         return items
 
-    def get_pipeline_file(self, visit: FannedOutVisit) -> str:
+    @staticmethod
+    def _check_pipelines(pipelines: collections.abc.Sequence[str]):
+        """Test the correctness of a list of pipelines.
+
+        At present, the only test is that no two pipelines have the same
+        filename, which is used as a pipeline ID elsewhere in the Prompt
+        Processing service.
+
+        Parameters
+        ----------
+        pipelines : sequence [`str`]
+
+        Raises
+        ------
+        ValueError
+            Raised if the pipeline list is invalid.
+        """
+        filenames = collections.Counter(os.path.splitext(os.path.basename(path))[0] for path in pipelines)
+        duplicates = [filename for filename, num in filenames.items() if num > 1]
+        if duplicates:
+            raise ValueError(f"Pipeline names must be unique, found multiple copies of {duplicates}.")
+
+    def get_pipeline_files(self, visit: FannedOutVisit) -> str:
         """Identify the pipeline to be run, based on the provided visit.
 
         Parameters
@@ -136,15 +176,12 @@ class PipelinesConfig:
 
         Returns
         -------
-        pipeline : `str` or `None`
-            A path to a configured pipeline file. A value of `None` means that
-            *no* pipeline should be run on this visit.
+        pipeline : `list` [`str`]
+            Path(s) to the configured pipeline file(s). An empty list means
+            that *no* pipeline should be run on this visit.
         """
         try:
-            value = self._mapping[visit.survey]
+            values = self._mapping[visit.survey]
         except KeyError as e:
             raise RuntimeError(f"Unsupported survey: {visit.survey}") from e
-        if value is not None:
-            return os.path.expandvars(value)
-        else:
-            return value
+        return [os.path.expandvars(path) for path in values]

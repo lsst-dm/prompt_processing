@@ -1,0 +1,8 @@
+description: Test pipeline consisting only of single-frame steps.
+
+imports:
+  - location: $PROMPT_PROTOTYPE_DIR/tests/data/ApPipe.yaml
+    include:
+      - isr
+      - characterizeImage
+      - calibrate

@@ -51,8 +51,13 @@ instname = "DECam"
 filter = "g DECam SDSS c0001 4720.0 1520.0"
 # The skymap name used in the test repo.
 skymap_name = "deepCoadd_skyMap"
-# A pipelines config that returns the test pipeline.
-pipelines = PipelinesConfig('(survey="SURVEY")=${PROMPT_PROTOTYPE_DIR}/tests/data/ApPipe.yaml')
+# A pipelines config that returns the test pipelines.
+# Unless a test imposes otherwise, the first pipeline should run, and
+# the second should not be attempted.
+pipelines = PipelinesConfig('''(survey="SURVEY")=[${PROMPT_PROTOTYPE_DIR}/tests/data/ApPipe.yaml,
+                                                  ${PROMPT_PROTOTYPE_DIR}/tests/data/SingleFrame.yaml]
+                            '''
+                            )
 
 
 def fake_file_data(filename, dimensions, instrument, visit):
@@ -127,13 +132,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         cls.env_patcher.stop()
 
     def setUp(self):
-        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        self.central_repo = os.path.join(data_dir, "central_repo")
+        self.data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+        self.central_repo = os.path.join(self.data_dir, "central_repo")
+        self.umbrella = f"{instname}/defaults"
         self.central_butler = Butler(self.central_repo,
-                                     collections=[f"{instname}/defaults"],
+                                     collections=[self.umbrella],
                                      writeable=False,
                                      inferDefaults=False)
-        self.input_data = os.path.join(data_dir, "input_data")
+        self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
@@ -200,7 +206,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the butler instance is properly configured.
         instruments = list(self.interface.butler.registry.queryDimensionRecords("instrument"))
         self.assertEqual(instname, instruments[0].name)
-        self.assertEqual(set(self.interface.butler.collections), {self.interface.output_collection})
+        self.assertEqual(set(self.interface.butler.collections), {self.umbrella})
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
@@ -218,7 +224,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             butler.exists("skyMap",
                           skymap=skymap_name,
                           full_check=True,
-                          collections=self.interface.output_collection)
+                          collections=self.umbrella)
         )
 
         # check that we got appropriate refcat shards
@@ -233,7 +239,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           full_check=True,
                           # TODO: Have to use the exact run collection, because we can't
                           # query by validity range.
-                          # collections=self.interface.output_collection)
+                          # collections=self.umbrella)
                           collections="DECam/calib/20150218T000000Z")
         )
         self.assertTrue(
@@ -242,7 +248,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           full_check=True,
                           # TODO: Have to use the exact run collection, because we can't
                           # query by validity range.
-                          # collections=self.interface.output_collection)
+                          # collections=self.umbrella)
                           collections="DECam/calib/20150218T000000Z")
         )
 
@@ -254,7 +260,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 butler.exists('deepCoadd', tract=0, patch=patch, band="g",
                               skymap=skymap_name,
                               full_check=True,
-                              collections=self.interface.output_collection)
+                              collections=self.umbrella)
             )
 
     def test_prep_butler(self):
@@ -349,11 +355,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                                      collections=[f'{instname}/raw/all']))
         self.assertEqual(datasets, [])
 
-    def test_run_pipeline(self):
-        """Test that running the pipeline uses the correct arguments.
-        We can't run an actual pipeline because raw/calib/refcat/template data
-        are all zeroed out.
-        """
+    def _prepare_run_pipeline(self):
         # Have to setup the data so that we can create the pipeline executor.
         self.interface.prep_butler()
         filename = "fakeRawImage.fits"
@@ -366,6 +368,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             mock.return_value = file_data
             self.interface.ingest_image(filename)
 
+    def test_run_pipeline(self):
+        """Test that running the pipeline uses the correct arguments.
+
+        We can't run an actual pipeline because raw/calib/refcat/template data
+        are all zeroed out.
+        """
+        self._prepare_run_pipeline()
+
         with unittest.mock.patch(
                 "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
                 as mock_preexec, \
@@ -373,6 +383,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 as mock_run:
             with self.assertLogs(self.logger_name, level="INFO") as logs:
                 self.interface.run_pipeline({1})
+        # Pre-execution and execution should only run once, even if graph
+        # generation is attempted for multiple pipelines.
         mock_preexec.assert_called_once()
         # Pre-execution may have other arguments as needed; no requirement either way.
         self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
@@ -381,8 +393,105 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertIn("End to end Alert Production pipeline specialized for HiTS-2015",
                       "\n".join(logs.output))
 
-    def test_run_pipeline_empty_quantum_graph(self):
-        """Test that running a pipeline that results in an empty quantum graph
+    def _check_run_pipeline_fallback(self, pipe_files, graphs, final_label):
+        """Generic test for different fallback scenarios.
+
+        Parameters
+        ----------
+        pipe_files : sequence [`str`]
+            The list of pipeline files configured for a visit.
+        graphs : sequence [`collections.abc.Sized`]
+            The list of quantum graphs (or suitable mocks) generated for each
+            pipeline. Must have the same length as ``pipe_files``.
+        final_label : `str`
+            The description of the pipeline that should be run, given
+            ``pipe_files`` and ``graphs``.
+        """
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._get_pipeline_files",
+                                 return_value=pipe_files), \
+                unittest.mock.patch(
+                    "activator.middleware_interface.SeparablePipelineExecutor.make_quantum_graph",
+                    side_effect=graphs), \
+                unittest.mock.patch(
+                    "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+                unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+                self.assertLogs(self.logger_name, level="INFO") as logs:
+            self.interface.run_pipeline({1})
+        mock_run.assert_called_once()
+        # Check that we configured the right pipeline.
+        self.assertIn(final_label, "\n".join(logs.output))
+
+    def test_run_pipeline_fallback_1failof2(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml')]
+        graph_list = [[], ["node1", "node2"]]
+        expected = "Test pipeline consisting only of single-frame steps."
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_1failof2_inverse(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml')]
+        graph_list = [["node1", "node2"], []]
+        expected = "End to end Alert Production pipeline specialized for HiTS-2015"
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_2failof2(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml')]
+        graph_list = [[], []]
+        expected = ""
+
+        self._prepare_run_pipeline()
+        with self.assertRaises(RuntimeError):
+            self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_0failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml'),
+                     os.path.join(self.data_dir, 'ISR.yaml')]
+        graph_list = [["node1", "node2"], ["node3", "node4"], ["node5"]]
+        expected = "End to end Alert Production pipeline specialized for HiTS-2015"
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_1failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml'),
+                     os.path.join(self.data_dir, 'ISR.yaml')]
+        graph_list = [[], ["node3", "node4"], ["node5"]]
+        expected = "Test pipeline consisting only of single-frame steps."
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_2failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml'),
+                     os.path.join(self.data_dir, 'ISR.yaml')]
+        graph_list = [[], [], ["node5"]]
+        expected = "Test pipeline consisting only of ISR."
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_fallback_2failof3_inverse(self):
+        pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
+                     os.path.join(self.data_dir, 'SingleFrame.yaml'),
+                     os.path.join(self.data_dir, 'ISR.yaml')]
+        graph_list = [[], ["node3", "node4"], []]
+        expected = "Test pipeline consisting only of single-frame steps."
+
+        self._prepare_run_pipeline()
+        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+
+    def test_run_pipeline_bad_visits(self):
+        """Test that running a pipeline that results in bad visit definition
         (because the exposure ids are wrong), raises.
         """
         # Have to setup the data so that we can create the pipeline executor.
@@ -401,13 +510,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.run_pipeline({2})
 
     def test_get_output_run(self):
+        filename = "ApPipe.yaml"
         for date in [datetime.date.today(), datetime.datetime.today()]:
-            out_run = self.interface._get_output_run(date)
+            out_run = self.interface._get_output_run(filename, date)
             self.assertEqual(out_run,
                              f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
                              "/ApPipe/prompt-proto-service-042"
                              )
-            init_run = self.interface._get_init_output_run(date)
+            init_run = self.interface._get_init_output_run(filename, date)
             self.assertEqual(init_run,
                              f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
                              "/ApPipe/prompt-proto-service-042"
@@ -426,10 +536,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 else:
                     return utc.replace(tzinfo=None)
 
+        filename = "ApPipe.yaml"
         with unittest.mock.patch("datetime.datetime", MockDatetime):
-            out_run = self.interface._get_output_run()
+            out_run = self.interface._get_output_run(filename)
             self.assertIn("output-2023-03-14", out_run)
-            init_run = self.interface._get_init_output_run()
+            init_run = self.interface._get_init_output_run(filename)
             self.assertIn("output-2023-03-14", init_run)
 
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
@@ -464,7 +575,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         cat = lsst.afw.table.SourceCatalog()
         raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
         butler.registry.registerCollection(raw_collection, CollectionType.RUN)
-        out_collection = self.interface._get_output_run()
+        out_collection = self.interface._get_output_run("ApPipe.yaml")
         butler.registry.registerCollection(out_collection, CollectionType.RUN)
         chain = "generic-chain"
         butler.registry.registerCollection(chain, CollectionType.CHAINED)
@@ -691,6 +802,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface = MiddlewareInterface(central_butler, self.input_data, self.second_visit,
                                                     pipelines, skymap_name, second_local_repo.name,
                                                     prefix="file://")
+        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
+                          "/ApPipe/prompt-proto-service-042"
 
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
@@ -718,8 +832,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.second_interface.butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
-        self.interface.butler.put(exp, "calexp", self.processed_data_id)
-        self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id)
+        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=self.output_run)
+        self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id, run=self.output_run)
 
     def _count_datasets(self, butler, types, collections):
         return len(set(butler.registry.queryDatasets(types, collections=collections)))
@@ -749,20 +863,17 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
-        export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
-                            "/ApPipe/prompt-proto-service-042"
-        self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
+            self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.processed_data_id),
             1)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", export_collection,
+            self._count_datasets_with_id(central_butler, "calexp", self.output_run,
                                          self.second_processed_data_id),
             1)
         # Did not export calibs or other inputs.
         self.assertEqual(
-            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection),
+            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], self.output_run),
             0)
         # Nothing placed in "input" collections.
         self.assertEqual(
@@ -778,20 +889,17 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
-        export_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
-                            "/ApPipe/prompt-proto-service-042"
-        self.assertEqual(self._count_datasets(central_butler, "calexp", export_collection), 2)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", export_collection, self.processed_data_id),
+            self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.processed_data_id),
             1)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", export_collection,
+            self._count_datasets_with_id(central_butler, "calexp", self.output_run,
                                          self.second_processed_data_id),
             1)
         # Did not export calibs or other inputs.
         self.assertEqual(
-            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], export_collection),
+            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], self.output_run),
             0)
         # Nothing placed in "input" collections.
         self.assertEqual(
