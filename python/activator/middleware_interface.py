@@ -31,6 +31,8 @@ import os.path
 import tempfile
 import typing
 
+import astropy
+
 from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
 from lsst.ctrl.mpexec import SeparablePipelineExecutor
@@ -1010,3 +1012,43 @@ def _remove_from_chain(butler: Butler, chain: str, old_collections: collections.
     for old in set(old_collections).intersection(contents):
         contents.remove(old)
     butler.registry.setCollectionChain(chain, contents, flatten=False)
+
+
+def _filter_calibs_by_date(butler: Butler,
+                           collections: typing.Any,
+                           unfiltered_calibs: collections.abc.Collection[lsst.daf.butler.DatasetRef],
+                           date: datetime.datetime
+                           ) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
+    """Trim a set of calib datasets to those that are valid at a particular time.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The Butler to query for validity data.
+    collections : collection expression
+        The calibration collection(s), or chain(s) containing calibration
+        collections, to query for validity data.
+    unfiltered_calibs : collection [`lsst.daf.butler.DatasetRef`]
+        The calibs to be filtered by validity. May be empty.
+    date : `datetime.datetime`
+        The time at which the calibs must be valid. Must be an
+        aware ``datetime``.
+
+    Returns
+    -------
+    filtered_calibs : iterable [`lsst.daf.butler.DatasetRef`]
+        The subset of ``unfiltered_calibs`` that is valid on ``date``.
+    """
+    dataset_types = {ref.datasetType for ref in unfiltered_calibs}
+    associations = {}
+    for dataset_type in dataset_types:
+        associations.update(
+            (a.ref, a) for a in butler.registry.queryDatasetAssociations(
+                dataset_type, collections, collectionTypes={CollectionType.CALIBRATION}, flattenChains=True
+            )
+        )
+
+    t = astropy.time.Time(date, scale='utc')
+    # DatasetAssociation.timespan guaranteed not None
+    return [ref for ref in unfiltered_calibs
+            if ref in associations and associations[ref].timespan.contains(t)]

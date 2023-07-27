@@ -26,6 +26,7 @@ import tempfile
 import os.path
 import unittest
 import unittest.mock
+import warnings
 
 import astropy.coordinates
 import astropy.units as u
@@ -43,7 +44,7 @@ import lsst.resources
 from activator.config import PipelinesConfig
 from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface, \
-    _filter_datasets, _prepend_collection, _remove_from_chain, _MissingDatasetError
+    _filter_datasets, _prepend_collection, _remove_from_chain, _filter_calibs_by_date, _MissingDatasetError
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -692,6 +693,56 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         butler.registry.setCollectionChain("_remove_base", ["_remove1", "_remove2"])
         _remove_from_chain(butler, "_remove_base", ["_remove2", "_remove3"])
         self.assertEqual(list(butler.registry.getCollectionChain("_remove_base")), ["_remove1"])
+
+    def test_filter_calibs_by_date_early(self):
+        # _filter_calibs_by_date requires a collection, not merely an iterable
+        all_calibs = list(self.central_butler.registry.queryDatasets("cpBias"))
+        early_calibs = list(_filter_calibs_by_date(
+            self.central_butler, "DECam/calib", all_calibs,
+            datetime.datetime(2015, 2, 26, tzinfo=datetime.timezone.utc)
+        ))
+        self.assertEqual(len(early_calibs), 4)
+        for calib in early_calibs:
+            self.assertEqual(calib.run, "DECam/calib/20150218T000000Z")
+
+    def test_filter_calibs_by_date_late(self):
+        # _filter_calibs_by_date requires a collection, not merely an iterable
+        all_calibs = list(self.central_butler.registry.queryDatasets("cpFlat"))
+        late_calibs = list(_filter_calibs_by_date(
+            self.central_butler, "DECam/calib", all_calibs,
+            datetime.datetime(2015, 3, 16, tzinfo=datetime.timezone.utc)
+        ))
+        self.assertEqual(len(late_calibs), 4)
+        for calib in late_calibs:
+            self.assertEqual(calib.run, "DECam/calib/20150313T000000Z")
+
+    def test_filter_calibs_by_date_never(self):
+        # _filter_calibs_by_date requires a collection, not merely an iterable
+        all_calibs = list(self.central_butler.registry.queryDatasets("cpBias"))
+        with warnings.catch_warnings():
+            # Avoid "dubious year" warnings from using a 2050 date
+            warnings.simplefilter("ignore", category=astropy.utils.exceptions.ErfaWarning)
+            future_calibs = list(_filter_calibs_by_date(
+                self.central_butler, "DECam/calib", all_calibs,
+                datetime.datetime(2050, 1, 1, tzinfo=datetime.timezone.utc)
+            ))
+        self.assertEqual(len(future_calibs), 0)
+
+    def test_filter_calibs_by_date_unbounded(self):
+        # _filter_calibs_by_date requires a collection, not merely an iterable
+        all_calibs = set(self.central_butler.registry.queryDatasets(["camera", "crosstalk"]))
+        valid_calibs = set(_filter_calibs_by_date(
+            self.central_butler, "DECam/calib", all_calibs,
+            datetime.datetime(2015, 3, 15, tzinfo=datetime.timezone.utc)
+        ))
+        self.assertEqual(valid_calibs, all_calibs)
+
+    def test_filter_calibs_by_date_empty(self):
+        valid_calibs = set(_filter_calibs_by_date(
+            self.central_butler, "DECam/calib", [],
+            datetime.datetime(2015, 3, 15, tzinfo=datetime.timezone.utc)
+        ))
+        self.assertEqual(len(valid_calibs), 0)
 
 
 class MiddlewareInterfaceWriteableTest(unittest.TestCase):
