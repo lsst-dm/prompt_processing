@@ -95,19 +95,20 @@ Notifications are only sent on this topic for objects with the instrument name a
 USDF
 ----
 
-The bucket ``rubin-pp`` holds incoming raw images.
+The bucket ``rubin:rubin-pp`` holds incoming raw images.
 
-The bucket ``rubin-pp-users`` holds:
+The bucket ``rubin:rubin-pp-users`` holds:
 
-* ``rubin-pp-users/central_repo/`` contains the central repository described in `DMTN-219`_.
+* ``rubin:rubin-pp-users/central_repo/`` contains the central repository described in `DMTN-219`_.
   This repository currently contains a copy of HSC RC2 data, uploaded with ``make_hsc_rc2_export.py`` and ``make_template_export``.
 
-* ``rubin-pp-users/unobserved/`` contains raw files that the upload script(s) can draw from to create incoming raws.
+* ``rubin:rubin-pp-users/unobserved/`` contains raw files that the upload script(s) can draw from to create incoming raws.
 
-``rubin-pp`` has had notifications configured for it; these publish to a Kafka topic.
+``rubin:rubin-pp`` has had notifications configured for it; these publish to a Kafka topic.
 
-The default Rubin users' setup changes how S3 credentials are handled on ``rubin-devl``.
-The best way to set up credentials for either Butler or S3 commands is to run:
+The default Rubin users' setup on ``rubin-devl`` includes an AWS credential file at the environment variable ``AWS_SHARED_CREDENTIALS_FILE`` and a default profile without read permission to the prompt processing buckets.
+A separate credential for prompt processing developers is at  `vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-prompt-processing-dev/s3-buckets>`_ and can be set up as another credential profile for Butler or AWS Command Line Interface.
+One way to set up this profile is with the AWS CLI:
 
 .. code-block:: sh
 
@@ -116,16 +117,27 @@ The best way to set up credentials for either Butler or S3 commands is to run:
 and follow the prompts.
 To use the new credentials with the Butler, set the environment variable ``AWS_PROFILE=rubin-prompt-processing``.
 
-The buckets can be inspected by calling the following from ``rubin-devl``:
+The AWS CLI can be used to inspect non-tenenat buckets:
 
 .. code-block:: sh
 
    alias s3="singularity exec /sdf/sw/s3/aws-cli_latest.sif aws --endpoint-url https://s3dfrgw.slac.stanford.edu s3"
-   s3 --profile rubin-prompt-processing [ls|cp|rm] s3://rubin-pp-users/<path>
+   s3 --profile rubin-prompt-processing [ls|cp|rm] s3://rubin-summit/<path>
 
 .. note::
 
    You must pass the ``--endpoint-url`` argument even if you have ``S3_ENDPOINT_URL`` defined.
+
+The prompt processing buckets are Ceph tenant buckets and require a tenant prefix.
+To inspect them with the MinIO Client ``mc`` tool, first set up an alias (e.g. ``usdf-pp``) and then can use commands:
+
+.. code-block:: sh
+
+    mc alias set usdf-pp https://s3dfrgw.slac.stanford.edu ACCESS_KEY SECRET_KEY
+    mc ls usdf-pp/rubin:rubin-pp
+
+
+For Butler not to complain about the bucket names, set the environment variable ``LSST_DISABLE_BUCKET_VALIDATION=1``.
 
 Prototype Service
 =================
@@ -220,6 +232,7 @@ It includes the following required environment variables:
   This variable is currently unused and may be removed in the future.
 * IMAGE_BUCKET: bucket containing raw images
 * CALIB_REPO: URI to repo containing calibrations (and templates)
+* LSST_DISABLE_BUCKET_VALIDATION: set this so to disable validation of S3 bucket names, allowing Ceph multi-tenant colon-separated names to be used.
 * IP_APDB: IP address or hostname and port of the APDB (see `Databases`_, below)
 * IP_REGISTRY: IP address or hostname and port of the registry database (see `Databases`_)
 * DB_APDB: PostgreSQL database name for the APDB
@@ -312,7 +325,7 @@ tester
 ``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` are scripts that simulate the CCS image writer.
 It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
 
-You must have a profile set up for the ``rubin-pp`` bucket (see `Buckets`_, above).
+You must have a profile set up for the ``rubin:rubin-pp`` bucket (see `Buckets`_, above).
 
 Install the prototype code, and set it up before use:
 
@@ -322,7 +335,7 @@ Install the prototype code, and set it up before use:
     setup -r prompt_prototype
 
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
-They then upload a batch of files representing the snaps of the visit to the ``rubin-pp`` S3 bucket, simulating incoming raw images.
+They then upload a batch of files representing the snaps of the visit to the ``rubin:rubin-pp`` S3 bucket, simulating incoming raw images.
 
 Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
 
@@ -334,7 +347,7 @@ Sample command line:
 
    python upload.py HSC 3
 
-This draw images from 4 groups, in total 10 raw files, stored in the ``rubin-pp-users`` bucket.
+This draw images from 4 groups, in total 10 raw files, stored in the ``rubin:rubin-pp-users`` bucket.
 
 ``python/tester/upload_hsc_rc2.py``: Command line argument is the number of groups of images to send.
 
