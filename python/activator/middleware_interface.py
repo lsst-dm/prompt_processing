@@ -505,6 +505,8 @@ class MiddlewareInterface:
         # TODO: we can't filter by validity range because it's not
         # supported in queryDatasets yet.
         calib_where = f"detector={detector_id} and physical_filter='{filter}'"
+        # private_sndStamp is in TAI, not UTC, but difference shouldn't matter
+        calib_date = datetime.datetime.fromtimestamp(self.visit.private_sndStamp, tz=datetime.timezone.utc)
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
         calibs = set(_filter_datasets(
@@ -512,7 +514,9 @@ class MiddlewareInterface:
             ...,
             collections=self.instrument.makeCalibrationCollectionName(),
             instrument=self.instrument.getName(),
-            where=calib_where))
+            where=calib_where,
+            calib_date=calib_date,
+        ))
         if calibs:
             for dataset_type, n_datasets in self._count_by_type(calibs):
                 _log.debug("Found %d new calib datasets of type '%s'.", n_datasets, dataset_type)
@@ -918,8 +922,11 @@ class _MissingDatasetError(RuntimeError):
     pass
 
 
-def _filter_datasets(src_repo: Butler, dest_repo: Butler,
-                     *args, **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
+def _filter_datasets(src_repo: Butler,
+                     dest_repo: Butler,
+                     *args,
+                     calib_date: datetime.datetime | None = None,
+                     **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
     """Identify datasets in a source repository, filtering out those already
     present in a destination.
 
@@ -932,6 +939,10 @@ def _filter_datasets(src_repo: Butler, dest_repo: Butler,
         The repository in which a dataset must be present.
     dest_repo : `lsst.daf.butler.Butler`
         The repository in which a dataset must not be present.
+    calib_date : `datetime.datetime`, optional
+        If provided, also filter anything other than calibs valid at
+        ``calib_date`` and check that at least one valid calib was found.
+        Any ``datetime`` object must be aware.
     *args, **kwargs
         Parameters for describing the dataset query. They have the same
         meanings as the parameters of `lsst.daf.butler.Registry.queryDatasets`.
@@ -945,7 +956,8 @@ def _filter_datasets(src_repo: Butler, dest_repo: Butler,
     Raises
     ------
     _MissingDatasetError
-        Raised if the query on ``src_repo`` failed to find any datasets.
+        Raised if the query on ``src_repo`` failed to find any datasets, or
+        (if ``calib_date`` is set) if none of them are currently valid.
     """
     try:
         known_datasets = set(dest_repo.registry.queryDatasets(*args, **kwargs))
@@ -960,6 +972,13 @@ def _filter_datasets(src_repo: Butler, dest_repo: Butler,
     # Let exceptions from src_repo query raise: if it fails, that invalidates
     # this operation.
     src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs))
+    if calib_date:
+        src_datasets = _filter_calibs_by_date(
+            src_repo,
+            kwargs["collections"] if "collections" in kwargs else ...,
+            src_datasets,
+            calib_date,
+        )
     if not src_datasets:
         raise _MissingDatasetError(
             "Source repo query with args '{}, {}' found no matches.".format(

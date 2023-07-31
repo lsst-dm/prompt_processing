@@ -163,7 +163,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                          dome=FannedOutVisit.Dome.OPEN,
                                          duration=35.0,
                                          totalCheckpoints=1,
-                                         private_sndStamp=1_674_516_794.0,
+                                         private_sndStamp=1424237298.7165175,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
         self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
@@ -214,7 +214,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
         self.assertEqual(self.interface.rawIngestTask.config.transfer, "copy")
 
-    def _check_imports(self, butler, detector, expected_shards):
+    def _check_imports(self, butler, detector, expected_shards, expected_date):
         """Test that the butler has the expected supporting data.
         """
         self.assertEqual(butler.get('camera',
@@ -242,7 +242,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           # TODO: Have to use the exact run collection, because we can't
                           # query by validity range.
                           # collections=self.umbrella)
-                          collections="DECam/calib/20150218T000000Z")
+                          collections=f"DECam/calib/{expected_date}")
         )
         self.assertTrue(
             butler.exists('cpFlat', detector=detector, instrument='DECam',
@@ -251,7 +251,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           # TODO: Have to use the exact run collection, because we can't
                           # query by validity range.
                           # collections=self.umbrella)
-                          collections="DECam/calib/20150218T000000Z")
+                          collections=f"DECam/calib/{expected_date}")
         )
 
         # Check that the right templates are in the chained output collection.
@@ -275,7 +275,47 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # TODO DM-34112: check these shards again with some plots, once I've
         # determined whether ci_hits2015 actually has enough shards.
         expected_shards = {157394, 157401, 157405}
-        self._check_imports(self.interface.butler, detector=56, expected_shards=expected_shards)
+        self._check_imports(self.interface.butler, detector=56,
+                            expected_shards=expected_shards, expected_date="20150218T000000Z")
+
+    def test_prep_butler_olddate(self):
+        """Test that prep_butler returns only calibs from a particular date range.
+        """
+        self.interface.visit = dataclasses.replace(
+            self.interface.visit,
+            private_sndStamp=datetime.datetime.fromisoformat("20150313T000000Z").timestamp(),
+        )
+        self.interface.prep_butler()
+
+        # These shards were identified by plotting the objects in each shard
+        # on-sky and overplotting the detector corners.
+        # TODO DM-34112: check these shards again with some plots, once I've
+        # determined whether ci_hits2015 actually has enough shards.
+        expected_shards = {157394, 157401, 157405}
+        with self.assertRaises((AssertionError, lsst.daf.butler.registry.MissingCollectionError)):
+            # 20150218T000000Z run should not be imported
+            self._check_imports(self.interface.butler, detector=56,
+                                expected_shards=expected_shards, expected_date="20150218T000000Z")
+        self._check_imports(self.interface.butler, detector=56,
+                            expected_shards=expected_shards, expected_date="20150313T000000Z")
+
+    # TODO: prep_butler doesn't know what kinds of calibs to expect, so can't
+    # tell that there are specifically, e.g., no flats. This test should pass
+    # as-is after DM-40245.
+    @unittest.expectedFailure
+    def test_prep_butler_novalid(self):
+        """Test that prep_butler raises if no calibs are currently valid.
+        """
+        self.interface.visit = dataclasses.replace(
+            self.interface.visit,
+            private_sndStamp=datetime.datetime(2050, 1, 1).timestamp(),
+        )
+
+        with warnings.catch_warnings():
+            # Avoid "dubious year" warnings from using a 2050 date
+            warnings.simplefilter("ignore", category=astropy.utils.exceptions.ErfaWarning)
+            with self.assertRaises(_MissingDatasetError):
+                self.interface.prep_butler()
 
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
@@ -294,7 +334,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         second_interface.prep_butler()
         expected_shards = {157394, 157401, 157405}
-        self._check_imports(second_interface.butler, detector=56, expected_shards=expected_shards)
+        self._check_imports(second_interface.butler, detector=56,
+                            expected_shards=expected_shards, expected_date="20150218T000000Z")
 
         # Third visit with different detector and coordinates.
         # Only 5, 10, 56, 60 have valid calibs.
@@ -310,7 +351,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                               prefix="file://")
         third_interface.prep_butler()
         expected_shards.update({157393, 157395})
-        self._check_imports(third_interface.butler, detector=5, expected_shards=expected_shards)
+        self._check_imports(third_interface.butler, detector=5,
+                            expected_shards=expected_shards, expected_date="20150218T000000Z")
 
     def test_ingest_image(self):
         self.interface.prep_butler()  # Ensure raw collections exist.
@@ -831,7 +873,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          dome=FannedOutVisit.Dome.OPEN,
                                          duration=35.0,
                                          totalCheckpoints=1,
-                                         private_sndStamp=1_674_516_794.0,
+                                         private_sndStamp=1424237298.716517500,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
 
