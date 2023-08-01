@@ -29,6 +29,7 @@ from typing import Optional, Tuple
 import uuid
 
 import boto3
+from botocore.handlers import validate_bucket_name
 import cloudevents.http
 import confluent_kafka as kafka
 from flask import Flask, request
@@ -91,6 +92,7 @@ consumer = kafka.Consumer({
 })
 
 storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
+storage_client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
 central_butler = get_central_butler(calib_repo, instrument_name)
 # local_repo is a temporary directory with the same lifetime as this process.
