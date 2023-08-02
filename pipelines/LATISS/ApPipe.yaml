@@ -2,6 +2,14 @@ description: Alert Production pipeline specialized for LATISS
 
 imports:
   - location: $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml
+    exclude:
+      # TODO: container does not yet support R/B analysis.
+      - rbClassify
 parameters:
   # Only have deep templates in the central repo
   coaddName: deep
+tasks:
+  transformDiaSrcCat:
+    class: lsst.ap.association.TransformDiaSourceCatalogTask
+    config:
+      doIncludeReliability: False  # TODO: container does not yet support R/B analysis
