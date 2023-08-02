@@ -9,4 +9,4 @@ tasks:
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:
-      doSolarSystemAssociation: false
+      doSolarSystemAssociation: false  # No "known objects" catalog for fake visits
