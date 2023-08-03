@@ -6,11 +6,13 @@ on:
       - main
     paths:
       - '.github/workflows/build-service.yml'
+      - 'pipelines/**'
       - 'python/activator/**'
       - 'Dockerfile.activator'
   pull_request:
     paths:
       - '.github/workflows/build-service.yml'
+      - 'pipelines/**'
       - 'python/activator/**'
       - 'Dockerfile.activator'
   workflow_dispatch:
