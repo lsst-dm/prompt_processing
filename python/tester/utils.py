@@ -21,7 +21,9 @@
 
 __all__ = ["get_last_group", "make_exposure_id", "replace_header_key", "send_next_visit"]
 
+import calendar
 from dataclasses import asdict
+import datetime
 import json
 import logging
 import requests
@@ -202,3 +204,28 @@ def replace_header_key(file, key, value):
     finally:
         # Clean up HDUList object *without* closing ``file``.
         hdus.close(closed=False)
+
+
+def day_obs_to_unix_utc(day_obs):
+    """Create a Unix timestamp for a day_obs.
+
+    Parameters
+    ----------
+    day_obs : `int`
+        An 8-digit integer in the form YYYYMMDD representing the day_obs of an
+        observation.
+
+    Returns
+    -------
+    timestamp : `float`
+        The Unix UTC timestamp corresponding to UTC-4 midnight on day_obs.
+    """
+    year = day_obs // 1_00_00
+    month = (day_obs % 1_00_00) // 1_00
+    day = day_obs % 1_00
+    midnight = datetime.datetime(
+        year, month, day,
+        0, 0, 0,
+        tzinfo=datetime.timezone(-datetime.timedelta(hours=4))
+    ) + datetime.timedelta(days=1)  # Day advances at midnight
+    return calendar.timegm(midnight.utctimetuple())

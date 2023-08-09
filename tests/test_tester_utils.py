@@ -19,6 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import calendar
+import datetime
 import tempfile
 import unittest
 
@@ -31,7 +33,7 @@ import lsst.meas.base
 from lsst.obs.subaru import HyperSuprimeCam
 
 from activator.raw import get_raw_path
-from tester.utils import get_last_group, make_exposure_id
+from tester.utils import get_last_group, make_exposure_id, day_obs_to_unix_utc
 
 
 class TesterUtilsTest(unittest.TestCase):
@@ -112,3 +114,19 @@ class TesterUtilsTest(unittest.TestCase):
         self.assertEqual(exp_id, 21309999)
         with self.assertRaises(RuntimeError):
             make_exposure_id("HSC", 2024100100000, 0)
+
+
+class TesterDateHandlingTest(unittest.TestCase):
+    def _check_day_obs(self, year, month, day):
+        midnight = datetime.datetime(year, month, day, 4, 0, 0, tzinfo=datetime.timezone.utc) \
+            + datetime.timedelta(days=1)  # At midnight, day_obs is the previous day
+        day_obs = int(f"{year}{month:02d}{day:02d}")
+        self.assertAlmostEqual(day_obs_to_unix_utc(day_obs), calendar.timegm(midnight.utctimetuple()))
+
+    def test_day_obs_to_unit_utc(self):
+        for (y, m, d) in [(2023, 8, 9),
+                          (2025, 4, 30),
+                          (1998, 12, 31),
+                          (2000, 1, 1),
+                          ]:
+            self._check_day_obs(y, m, d)
