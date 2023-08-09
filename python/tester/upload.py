@@ -59,7 +59,7 @@ def process_group(kafka_url, visit_infos, uploader):
     for info in visit_infos:
         group = info.groupId
         n_snaps = info.nimages
-        visit = SummitVisit(**info.get_bare_visit())
+        visit = SummitVisit(**info.get_bare_visit(), private_sndStamp=info.private_sndStamp)
         send_next_visit(kafka_url, group, {visit})
         break
     else:
@@ -133,16 +133,16 @@ def get_samples(bucket, instrument):
     #     upload time, another is to download the blob and actually read
     #     its header.
     hsc_metadata = {
-        59126: {"ra": 149.28531249999997, "dec": 2.935002777777778, "rot": 270.0},
-        59134: {"ra": 149.45749166666664, "dec": 2.926961111111111, "rot": 270.0},
-        59138: {"ra": 149.45739166666664, "dec": 1.4269472222222224, "rot": 270.0},
-        59142: {"ra": 149.4992083333333, "dec": 2.8853, "rot": 270.0},
-        59150: {"ra": 149.96643749999996, "dec": 2.2202916666666668, "rot": 270.0},
-        59152: {"ra": 149.9247333333333, "dec": 2.1577777777777776, "rot": 270.0},
-        59154: {"ra": 150.22329166666663, "dec": 2.238341666666667, "rot": 270.0},
-        59156: {"ra": 150.26497083333334, "dec": 2.1966694444444443, "rot": 270.0},
-        59158: {"ra": 150.30668333333332, "dec": 2.2591888888888887, "rot": 270.0},
-        59160: {"ra": 150.18157499999998, "dec": 2.2800083333333334, "rot": 270.0},
+        59126: {"ra": 149.28531249999997, "dec": 2.935002777777778, "rot": 270.0, "time": 1457332820.0},
+        59134: {"ra": 149.45749166666664, "dec": 2.926961111111111, "rot": 270.0, "time": 1457333685.0},
+        59138: {"ra": 149.45739166666664, "dec": 1.4269472222222224, "rot": 270.0, "time": 1457334125.0},
+        59142: {"ra": 149.4992083333333, "dec": 2.8853, "rot": 270.0, "time": 1457334559.0},
+        59150: {"ra": 149.96643749999996, "dec": 2.2202916666666668, "rot": 270.0, "time": 1457335427.0},
+        59152: {"ra": 149.9247333333333, "dec": 2.1577777777777776, "rot": 270.0, "time": 1457335765.0},
+        59154: {"ra": 150.22329166666663, "dec": 2.238341666666667, "rot": 270.0, "time": 1457336099.0},
+        59156: {"ra": 150.26497083333334, "dec": 2.1966694444444443, "rot": 270.0, "time": 1457336431.0},
+        59158: {"ra": 150.30668333333332, "dec": 2.2591888888888887, "rot": 270.0, "time": 1457336763.0},
+        59160: {"ra": 150.18157499999998, "dec": 2.2800083333333334, "rot": 270.0, "time": 1457337098.0},
     }
 
     # The pre-made raw files are stored with the "unobserved" prefix
@@ -173,6 +173,7 @@ def get_samples(bucket, instrument):
             dome=FannedOutVisit.Dome.OPEN,
             duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
             totalCheckpoints=1,
+            private_sndStamp=hsc_metadata[exp_id]["time"],
         )
         _log.debug(f"File {blob.key} parsed as snap {snap_num} of visit {visit}.")
         if group in result:

@@ -48,6 +48,7 @@ class FannedOutVisitTest(unittest.TestCase):
             dome=FannedOutVisit.Dome.OPEN,
             duration=35.0,
             totalCheckpoints=1,
+            private_sndStamp=1_674_516_794.0,
         )
 
     def test_hash(self):
@@ -99,6 +100,7 @@ class BareVisitTest(unittest.TestCase):
         self.fannedOutVisit = FannedOutVisit(
             instrument="NotACam",
             detector=42,
+            private_sndStamp=1_674_516_794.0,
             **visit_info
         )
 
