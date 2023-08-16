@@ -69,6 +69,7 @@ class RawBase:
             dome=FannedOutVisit.Dome.OPEN,
             duration=35.0,
             totalCheckpoints=1,
+            private_sndStamp=1_674_516_794.0,
         )
 
     def test_snap(self):

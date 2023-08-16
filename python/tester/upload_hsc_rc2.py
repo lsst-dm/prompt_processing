@@ -32,7 +32,8 @@ from lsst.daf.butler import Butler
 
 from activator.raw import get_raw_path
 from activator.visit import SummitVisit
-from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
+from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit, \
+    day_obs_to_unix_utc
 
 
 EXPOSURE_INTERVAL = 18
@@ -153,6 +154,7 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
             dome=SummitVisit.Dome.OPEN,
             duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
             totalCheckpoints=1,
+            private_sndStamp=day_obs_to_unix_utc(data_id.records["exposure"].day_obs),
         )
         send_next_visit(kafka_url, group_id, {visit})
 

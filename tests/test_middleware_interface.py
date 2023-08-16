@@ -162,6 +162,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                          dome=FannedOutVisit.Dome.OPEN,
                                          duration=35.0,
                                          totalCheckpoints=1,
+                                         private_sndStamp=1_674_516_794.0,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
         self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
@@ -779,6 +780,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          dome=FannedOutVisit.Dome.OPEN,
                                          duration=35.0,
                                          totalCheckpoints=1,
+                                         private_sndStamp=1_674_516_794.0,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
 

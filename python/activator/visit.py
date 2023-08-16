@@ -62,6 +62,7 @@ class FannedOutVisit(BareVisit):
     # Extra information is added by the fan-out service at USDF.
     instrument: str             # short name
     detector: int
+    private_sndStamp: float     # time of visit publication; TAI in unix seconds
 
     def __str__(self):
         """Return a short string that disambiguates the visit but does not
@@ -75,6 +76,7 @@ class FannedOutVisit(BareVisit):
         info = asdict(self)
         info.pop("instrument")
         info.pop("detector")
+        info.pop("private_sndStamp")
         return info
 
 
