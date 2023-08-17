@@ -47,6 +47,9 @@ from .visit import FannedOutVisit
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+# See https://developer.lsst.io/stack/logging.html#logger-trace-verbosity
+_log_trace = logging.getLogger("TRACE1.lsst." + __name__)
+_log_trace.setLevel(logging.CRITICAL)  # Turn off by default.
 
 
 def get_central_butler(central_repo: str, instrument_class: str):
@@ -1068,6 +1071,16 @@ def _filter_calibs_by_date(butler: Butler,
         )
 
     t = astropy.time.Time(date, scale='utc')
+    _log_trace.debug("Looking up calibs for %s in %s.", t, collections)
     # DatasetAssociation.timespan guaranteed not None
-    return [ref for ref in unfiltered_calibs
-            if ref in associations and associations[ref].timespan.contains(t)]
+    filtered_calibs = []
+    for ref in unfiltered_calibs:
+        if ref in associations:
+            if associations[ref].timespan.contains(t):
+                filtered_calibs.append(ref)
+                _log_trace.debug("%s (valid over %s) matches %s.", ref, associations[ref].timespan, t)
+            else:
+                _log_trace.debug("%s (valid over %s) does not match %s.", ref, associations[ref].timespan, t)
+        else:
+            _log_trace.debug("No calib associations for %s.", ref)
+    return filtered_calibs
