@@ -37,6 +37,7 @@ import lsst.afw.image
 import lsst.afw.table
 from lsst.daf.butler import Butler, CollectionType, DataCoordinate
 import lsst.daf.butler.tests as butler_tests
+from lsst.obs.base import Instrument
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
@@ -166,7 +167,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                          private_sndStamp=1424237298.7165175,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
-        self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
+        self.interface = MiddlewareInterface(self.central_butler, self.central_butler,
+                                             self.input_data, self.next_visit,
                                              pipelines, skymap_name, self.local_repo.name,
                                              prefix="file://")
 
@@ -184,7 +186,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 butler.getURI("skyMap", skymap=skymap_name, run="foo", predict=True).ospath
                 .startswith(self.central_repo))
             self.assertEqual(list(butler.collections), [f"{instname}/defaults"])
-            self.assertTrue(butler.isWriteable())
+            self.assertFalse(butler.isWriteable())
 
     def test_make_local_repo(self):
         for inst in [instname, "lsst.obs.decam.DarkEnergyCamera"]:
@@ -334,7 +336,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         # Second visit with everything same except group.
         second_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
-        second_interface = MiddlewareInterface(self.central_butler, self.input_data, second_visit,
+        second_interface = MiddlewareInterface(self.central_butler, self.central_butler,
+                                               self.input_data, second_visit,
                                                pipelines, skymap_name, self.local_repo.name,
                                                prefix="file://")
 
@@ -352,7 +355,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                           position=[self.next_visit.position[0] + 0.2,
                                                     self.next_visit.position[1] - 1.2],
                                           )
-        third_interface = MiddlewareInterface(self.central_butler, self.input_data, third_visit,
+        third_interface = MiddlewareInterface(self.central_butler, self.central_butler,
+                                              self.input_data, third_visit,
                                               pipelines, skymap_name, self.local_repo.name,
                                               prefix="file://")
         third_interface.prep_butler()
@@ -796,9 +800,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 class MiddlewareInterfaceWriteableTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
 
-    This class creates a fresh test repository for writing to. This means test
-    setup takes longer than for MiddlewareInterfaceTest, so it should be
-    used sparingly.
+    This class does not modify the central repo but it creates
+    a test output repository for writing to.
     """
     @classmethod
     def setUpClass(cls):
@@ -818,38 +821,29 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         cls.env_patcher.stop()
 
-    def _create_copied_repo(self):
-        """Create a fresh repository that's a copy of the test data.
+    def _create_output_repo(self):
+        """Create a fresh output repository
 
-        This method sets self.central_repo and arranges cleanup; cleanup would
-        be awkward if this method returned a Butler instead.
+        This method sets self.output_repo and arranges cleanup.
         """
-        # Copy test data to fresh Butler to allow write tests.
-        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        data_repo = os.path.join(data_dir, "central_repo")
-        data_butler = Butler(data_repo, writeable=False)
-        self.central_repo = tempfile.TemporaryDirectory()
+        self.output_repo = tempfile.TemporaryDirectory()
         # TemporaryDirectory warns on leaks
-        self.addCleanup(tempfile.TemporaryDirectory.cleanup, self.central_repo)
+        self.addCleanup(tempfile.TemporaryDirectory.cleanup, self.output_repo)
 
-        # Butler.transfer_from can't easily copy collections, so use
-        # export/import instead.
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as export_file:
-            with data_butler.export(filename=export_file.name) as export:
-                export.saveDatasets(data_butler.registry.queryDatasets(..., collections=...))
-                for collection in data_butler.registry.queryCollections():
-                    export.saveCollection(collection)
-            central_butler = Butler(Butler.makeRepo(self.central_repo.name), writeable=True)
-            central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
+        output_butler = Butler(Butler.makeRepo(self.output_repo.name), writeable=True)
+        instrument = Instrument.from_string("lsst.obs.decam.DarkEnergyCamera")
+        instrument.register(output_butler.registry)
 
     def setUp(self):
-        self._create_copied_repo()
-        central_butler = Butler(self.central_repo.name,
+        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+        data_repo = os.path.join(data_dir, "central_repo")
+        central_butler = Butler(data_repo,
                                 instrument=instname,
                                 skymap=skymap_name,
                                 collections=[f"{instname}/defaults"],
-                                writeable=True)
-        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+                                writeable=False)
+        self._create_output_repo()
+        output_butler = Butler(self.output_repo.name, writeable=True)
         self.input_data = os.path.join(data_dir, "input_data")
 
         local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
@@ -884,7 +878,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.logger_name = "lsst.activator.middleware_interface"
 
         # Populate repository.
-        self.interface = MiddlewareInterface(central_butler, self.input_data, self.next_visit,
+        self.interface = MiddlewareInterface(central_butler, output_butler,
+                                             self.input_data, self.next_visit,
                                              pipelines, skymap_name, local_repo.name,
                                              prefix="file://")
         self.interface.prep_butler()
@@ -900,7 +895,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                                self.interface.butler.dimensions,
                                                                self.interface.instrument,
                                                                self.second_visit)
-        self.second_interface = MiddlewareInterface(central_butler, self.input_data, self.second_visit,
+        self.second_interface = MiddlewareInterface(central_butler, output_butler,
+                                                    self.input_data, self.second_visit,
                                                     pipelines, skymap_name, second_local_repo.name,
                                                     prefix="file://")
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
@@ -959,13 +955,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.interface.export_outputs({self.raw_data_id["exposure"]})
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
-        central_butler = Butler(self.central_repo.name, writeable=False)
-        self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
+        output_butler = Butler(self.output_repo.name, writeable=True)
+        self.assertEqual(self._count_datasets(output_butler, "calexp", self.output_run), 2)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.processed_data_id),
+            self._count_datasets_with_id(output_butler, "calexp", self.output_run, self.processed_data_id),
             1)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", self.output_run,
+            self._count_datasets_with_id(output_butler, "calexp", self.output_run,
                                          self.second_processed_data_id),
             1)
         # Did not export calibs or other inputs.
@@ -986,13 +982,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.interface.export_outputs({self.raw_data_id["exposure"]})
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
-        central_butler = Butler(self.central_repo.name, writeable=False)
-        self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
+        output_butler = Butler(self.output_repo.name, writeable=True)
+        self.assertEqual(self._count_datasets(output_butler, "calexp", self.output_run), 2)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.processed_data_id),
+            self._count_datasets_with_id(output_butler, "calexp", self.output_run, self.processed_data_id),
             1)
         self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", self.output_run,
+            self._count_datasets_with_id(output_butler, "calexp", self.output_run,
                                          self.second_processed_data_id),
             1)
         # Did not export calibs or other inputs.

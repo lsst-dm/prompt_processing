@@ -55,6 +55,8 @@ instrument_name = os.environ["RUBIN_INSTRUMENT"]
 skymap = os.environ["SKYMAP"]
 # URI to the main repository containing calibs and templates
 calib_repo = os.environ["CALIB_REPO"]
+# URI to the butler repository to store outputs
+output_repo = os.environ["OUTPUT_REPO"]
 # S3 Endpoint for Buckets; needed for direct Boto access but not Butler
 s3_endpoint = os.environ["S3_ENDPOINT_URL"]
 # Bucket name (not URI) containing raw images
@@ -96,6 +98,7 @@ try:
     storage_client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
     central_butler = get_central_butler(calib_repo, instrument_name)
+    output_butler = Butler(output_repo, writeable=True, inferDefaults=False)
     # local_repo is a temporary directory with the same lifetime as this process.
     local_repo = make_local_repo(local_repos, central_butler, instrument_name)
 except Exception as e:
@@ -266,6 +269,7 @@ def next_visit_handler() -> Tuple[str, int]:
             # Create a fresh MiddlewareInterface object to avoid accidental
             # "cross-talk" between different visits.
             mwi = MiddlewareInterface(central_butler,
+                                      output_butler,
                                       image_bucket,
                                       expected_visit,
                                       pipelines,

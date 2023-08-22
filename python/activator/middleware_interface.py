@@ -53,7 +53,7 @@ _log_trace.setLevel(logging.CRITICAL)  # Turn off by default.
 
 
 def get_central_butler(central_repo: str, instrument_class: str):
-    """Provide a Butler that can access the given repository and read and write
+    """Provide a Butler that can access the given repository and read
     data for the given instrument.
 
     Parameters
@@ -61,7 +61,7 @@ def get_central_butler(central_repo: str, instrument_class: str):
     central_repo : `str`
         The path or URI to the central repository.
     instrument_class : `str`
-        The name of the instrument whose data will be retrieved or written. May
+        The name of the instrument whose data will be retrieved. May
         be either the fully qualified class name or the short name.
 
     Returns
@@ -76,7 +76,7 @@ def get_central_butler(central_repo: str, instrument_class: str):
     instrument = lsst.obs.base.Instrument.from_string(instrument_class, registry)
     return Butler(central_repo,
                   collections=[instrument.makeUmbrellaCollectionName()],
-                  writeable=True,
+                  writeable=False,
                   inferDefaults=False,
                   )
 
@@ -150,6 +150,9 @@ class MiddlewareInterface:
         Butler repo containing the calibration and other data needed for
         processing images as they are received. This butler must be created
         with the default instrument, skymap, and collections assigned.
+    output_butler : `lsst.daf.butler.Butler`
+        Butler repo to which the processing outputs are written. This
+        Butler must already have the instrument registered.
     image_bucket : `str`
         Storage bucket where images will be written to as they arrive.
         See also ``prefix``.
@@ -190,7 +193,8 @@ class MiddlewareInterface:
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
 
-    def __init__(self, central_butler: Butler, image_bucket: str, visit: FannedOutVisit,
+    def __init__(self, central_butler: Butler, output_butler: Butler,
+                 image_bucket: str, visit: FannedOutVisit,
                  pipelines: PipelinesConfig, skymap: str, local_repo: str,
                  prefix: str = "s3://"):
         self.visit = visit
@@ -206,6 +210,7 @@ class MiddlewareInterface:
         self._apdb_uri = self._make_apdb_uri()
         self._apdb_namespace = os.environ.get("NAMESPACE_APDB", None)
         self.central_butler = central_butler
+        self.output_butler = output_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
         if not self.image_host.startswith("file"):
@@ -787,8 +792,8 @@ class MiddlewareInterface:
             raise RuntimeError("No pipeline graph could be built.")
 
     def export_outputs(self, exposure_ids: set[int]) -> None:
-        """Copy pipeline outputs from processing a set of images back
-        to the central Butler.
+        """Copy pipeline outputs from processing a set of images
+        to the output Butler repo.
 
         Parameters
         ----------
@@ -831,8 +836,7 @@ class MiddlewareInterface:
 
     def _export_subset(self, exposure_ids: set[int],
                        dataset_types: typing.Any, in_collections: typing.Any) -> None:
-        """Copy datasets associated with a processing run back to the
-        central Butler.
+        """Copy datasets associated with a processing run to the output Butler repo.
 
         Parameters
         ----------
@@ -869,9 +873,9 @@ class MiddlewareInterface:
         except lsst.daf.butler.registry.DataIdError as e:
             raise ValueError("Invalid visit or exposures.") from e
 
-        # central repo may have been modified by other MWI instances.
+        # The output repo may have been modified by other MWI instances.
         # TODO: get a proper synchronization API for Butler
-        self.central_butler.registry.refresh()
+        self.output_butler.registry.refresh()
 
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             # MUST NOT export governor dimensions, as this causes deadlocks in
@@ -881,11 +885,11 @@ class MiddlewareInterface:
             # Use import(skip_dimensions) until DM-36062 is fixed.
             with self.butler.export(filename=export_file.name) as export:
                 export.saveDatasets(datasets)
-            self.central_butler.import_(filename=export_file.name,
-                                        directory=self.butler.datastore.root,
-                                        skip_dimensions={"instrument", "detector",
-                                                         "skymap", "tract", "patch"},
-                                        transfer="copy")
+            self.output_butler.import_(filename=export_file.name,
+                                       directory=self.butler.datastore.root,
+                                       skip_dimensions={"instrument", "detector",
+                                                        "skymap", "tract", "patch"},
+                                       transfer="copy")
 
         return datasets
 
