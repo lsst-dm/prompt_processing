@@ -105,6 +105,11 @@ The bucket ``rubin:rubin-pp-users`` holds:
 * ``rubin:rubin-pp-users/unobserved/`` contains raw files that the upload script(s) can draw from to create incoming raws.
 
 ``rubin:rubin-pp`` has had notifications configured for it; these publish to a Kafka topic.
+To check what messages are sent, do port-forward:
+.. code-block:: sh
+    kubectl port-forward svc/kafdrop -n kafka 9000:9000
+
+Then messages can be viewed locally via Kafdrop at `http://127.0.0.1:9000/topic/rubin-prompt-processing`_.
 
 The default Rubin users' setup on ``rubin-devl`` includes an AWS credential file at the environment variable ``AWS_SHARED_CREDENTIALS_FILE`` and a default profile without read permission to the prompt processing buckets.
 A separate credential for prompt processing developers is at  `vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-prompt-processing-dev/s3-buckets>`_ and can be set up as another credential profile for Butler or AWS Command Line Interface.
