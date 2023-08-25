@@ -264,6 +264,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                               full_check=True,
                               collections=self.umbrella)
             )
+        self.assertFalse(
+            butler.exists('goodSeeingCoadd', tract=8604, patch=0, band="g",
+                          skymap=skymap_name,
+                          full_check=True,
+                          collections=self.umbrella)
+        )
 
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
