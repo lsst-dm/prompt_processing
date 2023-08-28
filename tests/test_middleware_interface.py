@@ -946,10 +946,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         """Test that extra collections in the chain will not lead to MissingCollectionError
         even if they do not carry useful data.
         """
-        central_butler = Butler(self.central_repo.name, writeable=True)
-        central_butler.registry.registerCollection("emptyrun", CollectionType.RUN)
-        _prepend_collection(central_butler, "refcats", ["emptyrun"])
-
         self.interface.prep_butler()
 
         self.assertEqual(

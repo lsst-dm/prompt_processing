@@ -25,3 +25,8 @@ find central_repo/DECam/calib/curated -name "*.fits" -execdir sh -c '> "$1"' -- 
 # The camera and skymap files are not emptied out. The records need to be consistent so that
 # the datastore does not complain about size mismatch when reading them.
 sqlite3 central_repo/gen3.sqlite3 'update file_datastore_records set file_size=0 where path != "DECam/calib/unbounded/camera/camera_DECam_DECam_calib_unbounded.fits" and path != "skymaps/skyMap/skyMap_decam_rings_v1_skymaps.pickle";'
+
+# chain an empty run collection just for testing
+# Currently there is not a command line for register-collection; do it in python for now.
+python -c 'from lsst.daf.butler import Butler,CollectionType; butler=Butler("central_repo", writeable=True); butler.registry.registerCollection("emptyrun", CollectionType.RUN)'
+butler collection-chain central_repo refcats refcats/DM-28636,emptyrun
