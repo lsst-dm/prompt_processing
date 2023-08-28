@@ -25,7 +25,7 @@ import json
 import logging
 import unittest
 
-from activator.logger import GCloudStructuredLogFormatter, _parse_log_levels
+from activator.logger import GCloudStructuredLogFormatter, _parse_log_levels, RecordFactoryContextAdapter
 
 
 class ParseLogLevelsTest(unittest.TestCase):
@@ -139,3 +139,120 @@ class GoogleFormatterTest(unittest.TestCase):
         formatter.format(record)
         # If format has no side effects, record.message does not exist.
         self.assertEqual(record.message, msg % args)
+
+
+class AddLogContextTest(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+
+        old_factory = logging.getLogRecordFactory()
+        self.addCleanup(logging.setLogRecordFactory, old_factory)
+        logging.setLogRecordFactory(RecordFactoryContextAdapter(old_factory))
+
+        # Unique logger per test
+        self.log = logging.getLogger(self.id())
+        self.log.propagate = False
+        self.log.setLevel(logging.DEBUG)
+
+    def test_basic_context(self):
+        factory = logging.getLogRecordFactory()
+        with self.assertLogs(self.log, "DEBUG") as recorder:
+            self.log.info("Before add_context")
+            with factory.add_context(color="blue"):
+                self.log.info("This is a log!")
+            with factory.add_context(answer="yes", pid=101):
+                self.log.info("This is a log!")
+            self.log.info("Context-free logging")
+
+            self.assertEqual(len(recorder.records), 4)
+            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+                             [{},
+                              {"color": "blue"},
+                              {"answer": "yes", "pid": 101},
+                              {},
+                              ])
+
+    def test_empty_context(self):
+        factory = logging.getLogRecordFactory()
+        with self.assertLogs(self.log, "DEBUG") as recorder:
+            with factory.add_context():
+                self.log.info("This is a log!")
+            self.log.info("Context-free logging")
+
+            self.assertEqual(len(recorder.records), 2)
+            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+                             [{},
+                              {},
+                              ])
+
+    def test_nested_context(self):
+        factory = logging.getLogRecordFactory()
+        with self.assertLogs(self.log, "DEBUG") as recorder:
+            with factory.add_context(color="blue"):
+                self.log.info("This is a log!")
+                with factory.add_context(pid=42):
+                    self.log.error("Error found")
+                self.log.info("Less context")
+
+            self.assertEqual(len(recorder.records), 3)
+            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+                             [{"color": "blue"},
+                              {"pid": 42, "color": "blue"},
+                              {"color": "blue"},
+                              ])
+
+    def test_overwriting_context(self):
+        factory = logging.getLogRecordFactory()
+        with self.assertLogs(self.log, "DEBUG") as recorder:
+            with factory.add_context(color="blue", pid=42):
+                self.log.info("This is a log!")
+                with factory.add_context(color="red"):
+                    self.log.error("Error found")
+                self.log.info("Less context")
+                with factory.add_context(pid=88, language="jargon"):
+                    self.log.debug("Complex technobabble")
+            self.log.info("Logging complete!")
+
+            self.assertEqual(len(recorder.records), 5)
+            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+                             [{"color": "blue", "pid": 42},
+                              {"color": "red", "pid": 42},
+                              {"color": "blue", "pid": 42},
+                              {"color": "blue", "pid": 88, "language": "jargon"},
+                              {},
+                              ])
+
+    def test_no_clash_context(self):
+        factory = logging.getLogRecordFactory()
+        with self.assertLogs(self.log, "DEBUG") as recorder:
+            with factory.add_context(levelname="TRACE", message="Not a message",
+                                     extra={"message": "Read all about it!"}):
+                self.log.info("This is a log!")
+
+            self.assertEqual(len(recorder.records), 1)
+            self.assertEqual(
+                dict(recorder.records[0].logging_context),
+                {"levelname": "TRACE", "message": "Not a message",
+                 "extra": {"message": "Read all about it!"}}
+            )
+            # Should not overwrite LogRecord's built-in attributes
+            self.assertEqual(recorder.records[0].levelname, "INFO")
+            self.assertEqual(recorder.records[0].message, "This is a log!")
+
+    def test_exception_handling(self):
+        factory = logging.getLogRecordFactory()
+        with self.assertLogs(self.log, "DEBUG") as recorder:
+            with factory.add_context(color="blue"):
+                self.log.info("This is a log!")
+                try:
+                    with factory.add_context(pid=42):
+                        raise RuntimeError("Something failed")
+                except RuntimeError:
+                    # pid=42 should have been removed here
+                    self.log.error("Exception caught")
+
+            self.assertEqual(len(recorder.records), 2)
+            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+                             [{"color": "blue"},
+                              {"color": "blue"},
+                              ])
