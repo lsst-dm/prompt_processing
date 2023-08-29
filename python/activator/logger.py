@@ -83,6 +83,21 @@ def _channel_all_to_pylog():
     logging.captureWarnings(True)
 
 
+def _set_context_logger():
+    """Set up RecordFactoryContextAdapter as the global log factory.
+
+    This allows the use of its context manager inside the activator, and the
+    use of the ``logging_context`` field in formatters.
+
+    Notes
+    -----
+    Because it affects global configuration, this function should be called
+    from the application's main thread. Unexpected behavior may result if it is
+    called from a request handler instead.
+    """
+    logging.setLogRecordFactory(RecordFactoryContextAdapter(logging.getLogRecordFactory()))
+
+
 # TODO: replace with something more extensible, once we know what needs to
 # vary besides the formatter (handler type?).
 def setup_google_logger(labels=None):
@@ -102,6 +117,7 @@ def setup_google_logger(labels=None):
     handler : `logging.Handler`
         The handler used by the root logger.
     """
+    _set_context_logger()
     log_handler = logging.StreamHandler()
     log_handler.setFormatter(GCloudStructuredLogFormatter(labels))
     logging.basicConfig(handlers=[log_handler])
@@ -125,7 +141,9 @@ def setup_usdf_logger(labels=None):
     handler : `logging.Handler`
         The handler used by the root logger.
     """
+    _set_context_logger()
     log_handler = logging.StreamHandler()
+    log_handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(logging_context)s:%(message)s"))
     logging.basicConfig(handlers=[log_handler])
     _channel_all_to_pylog()
     _set_lsst_logging_levels()
@@ -158,7 +176,7 @@ class GCloudStructuredLogFormatter(logging.Formatter):
 
         entry = {
             "severity": record.levelname,
-            "logging.googleapis.com/labels": self._labels,
+            "logging.googleapis.com/labels": self._labels | record.logging_context,
             "message": record.getMessage(),
         }
         return json.dumps(entry)

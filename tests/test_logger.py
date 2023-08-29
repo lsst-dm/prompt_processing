@@ -65,6 +65,11 @@ class GoogleFormatterTest(unittest.TestCase):
         self.output = io.StringIO()
         self.addCleanup(io.StringIO.close, self.output)
 
+        # GCloudStructuredLogFormatter assumes a logging_context field is present.
+        old_factory = logging.getLogRecordFactory()
+        self.addCleanup(logging.setLogRecordFactory, old_factory)
+        logging.setLogRecordFactory(RecordFactoryContextAdapter(old_factory))
+
         log_handler = logging.StreamHandler(self.output)
         log_handler.setFormatter(GCloudStructuredLogFormatter(
             labels={"instrument": "NotACam"},
