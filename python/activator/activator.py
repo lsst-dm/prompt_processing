@@ -250,99 +250,105 @@ def next_visit_handler() -> Tuple[str, int]:
             _log.info(f"No pipeline configured for {expected_visit}, skipping.")
             return "No pipeline configured for the received visit.", 422
 
-        expid_set = set()
+        log_factory = logging.getLogRecordFactory()
+        with log_factory.add_context(group=expected_visit.groupId,
+                                     survey=expected_visit.survey,
+                                     detector=expected_visit.detector,
+                                     ):
+            expid_set = set()
 
-        # Create a fresh MiddlewareInterface object to avoid accidental
-        # "cross-talk" between different visits.
-        mwi = MiddlewareInterface(central_butler,
-                                  image_bucket,
-                                  expected_visit,
-                                  pipelines,
-                                  skymap,
-                                  local_repo.name)
-        # Copy calibrations for this detector/visit
-        mwi.prep_butler()
+            # Create a fresh MiddlewareInterface object to avoid accidental
+            # "cross-talk" between different visits.
+            mwi = MiddlewareInterface(central_butler,
+                                      image_bucket,
+                                      expected_visit,
+                                      pipelines,
+                                      skymap,
+                                      local_repo.name)
+            # Copy calibrations for this detector/visit
+            mwi.prep_butler()
 
-        # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
-        expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
-        # Heuristic: take the upcoming script's duration and multiply by 2 to
-        # include the currently executing script, then add time to transfer
-        # the last image.
-        timeout = expected_visit.duration * 2 + image_timeout
-        # Check to see if any snaps have already arrived
-        for snap in range(expected_snaps):
-            oid = check_for_snap(
-                expected_visit.instrument,
-                expected_visit.groupId,
-                snap,
-                expected_visit.detector,
-            )
-            if oid:
-                exp_id = get_exp_id_from_oid(oid)
-                _log.debug("Found exposure %r already present", exp_id)
-                mwi.ingest_image(oid)
-                expid_set.add(exp_id)
-
-        _log.debug(f"Waiting for snaps from {expected_visit}.")
-        start = time.time()
-        while len(expid_set) < expected_snaps:
-            if startup_response:
-                response = startup_response
-            else:
-                response = consumer.consume(num_messages=1, timeout=timeout)
-            end = time.time()
-            messages = _filter_messages(response)
-            response = []
-            if len(messages) == 0:
-                if end - start < timeout and not startup_response:
-                    _log.debug(f"Empty consume after {end - start}s for {expected_visit}.")
-                    continue
-                _log.warning(
-                    f"Timed out waiting for image in {expected_visit} "
-                    f"after receiving exposures {expid_set}"
+            # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
+            expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
+            # Heuristic: take the upcoming script's duration and multiply by 2 to
+            # include the currently executing script, then add time to transfer
+            # the last image.
+            timeout = expected_visit.duration * 2 + image_timeout
+            # Check to see if any snaps have already arrived
+            for snap in range(expected_snaps):
+                oid = check_for_snap(
+                    expected_visit.instrument,
+                    expected_visit.groupId,
+                    snap,
+                    expected_visit.detector,
                 )
-                break
-            startup_response = []
+                if oid:
+                    exp_id = get_exp_id_from_oid(oid)
+                    _log.debug("Found exposure %r already present", exp_id)
+                    mwi.ingest_image(oid)
+                    expid_set.add(exp_id)
 
-            for received in messages:
-                for oid in _parse_bucket_notifications(received.value()):
+            _log.debug(f"Waiting for snaps from {expected_visit}.")
+            start = time.time()
+            while len(expid_set) < expected_snaps:
+                if startup_response:
+                    response = startup_response
+                else:
+                    response = consumer.consume(num_messages=1, timeout=timeout)
+                end = time.time()
+                messages = _filter_messages(response)
+                response = []
+                if len(messages) == 0:
+                    if end - start < timeout and not startup_response:
+                        _log.debug(f"Empty consume after {end - start}s for {expected_visit}.")
+                        continue
+                    _log.warning(
+                        f"Timed out waiting for image in {expected_visit} "
+                        f"after receiving exposures {expid_set}"
+                    )
+                    break
+                startup_response = []
+
+                for received in messages:
+                    for oid in _parse_bucket_notifications(received.value()):
+                        try:
+                            if is_path_consistent(oid, expected_visit):
+                                _log.debug("Received %r", oid)
+                                group_id = get_group_id_from_oid(oid)
+                                if group_id == expected_visit.groupId:
+                                    exp_id = get_exp_id_from_oid(oid)
+                                    # Ingest the snap
+                                    mwi.ingest_image(oid)
+                                    expid_set.add(exp_id)
+                        except ValueError:
+                            _log.error(f"Failed to match object id '{oid}'")
+                    # Commits are per-group, so this can't interfere with other
+                    # workers. This may wipe messages associated with a next_visit
+                    # that will later be assigned to this worker, but those cases
+                    # should be caught by the "already arrived" check.
+                    consumer.commit(message=received)
+
+            if expid_set:
+                with log_factory.add_context(exposures=expid_set):
+                    # Got at least some snaps; run the pipeline.
+                    # If this is only a partial set, the processed results may still be
+                    # useful for quality purposes.
+                    # If nimages == 0, any positive number of snaps is OK.
+                    if len(expid_set) < expected_visit.nimages:
+                        _log.warning(f"Processing {len(expid_set)} snaps, expected {expected_visit.nimages}.")
+                    _log.info(f"Running pipeline on {expected_visit}.")
                     try:
-                        if is_path_consistent(oid, expected_visit):
-                            _log.debug("Received %r", oid)
-                            group_id = get_group_id_from_oid(oid)
-                            if group_id == expected_visit.groupId:
-                                exp_id = get_exp_id_from_oid(oid)
-                                # Ingest the snap
-                                mwi.ingest_image(oid)
-                                expid_set.add(exp_id)
-                    except ValueError:
-                        _log.error(f"Failed to match object id '{oid}'")
-                # Commits are per-group, so this can't interfere with other
-                # workers. This may wipe messages associated with a next_visit
-                # that will later be assigned to this worker, but those cases
-                # should be caught by the "already arrived" check.
-                consumer.commit(message=received)
-
-        if expid_set:
-            # Got at least some snaps; run the pipeline.
-            # If this is only a partial set, the processed results may still be
-            # useful for quality purposes.
-            # If nimages == 0, any positive number of snaps is OK.
-            if len(expid_set) < expected_visit.nimages:
-                _log.warning(f"Processing {len(expid_set)} snaps, expected {expected_visit.nimages}.")
-            _log.info(f"Running pipeline on {expected_visit}.")
-            try:
-                mwi.run_pipeline(expid_set)
-                # TODO: broadcast alerts here
-                # TODO: call export_outputs on success or permanent failure in DM-34141
-                mwi.export_outputs(expid_set)
-            finally:
-                # TODO: run_pipeline requires a clean run until DM-38041.
-                mwi.clean_local_repo(expid_set)
-            return "Pipeline executed", 200
-        else:
-            _log.error(f"Timed out waiting for images for {expected_visit}.")
-            return "Timed out waiting for images", 500
+                        mwi.run_pipeline(expid_set)
+                        # TODO: broadcast alerts here
+                        # TODO: call export_outputs on success or permanent failure in DM-34141
+                        mwi.export_outputs(expid_set)
+                    finally:
+                        # TODO: run_pipeline requires a clean run until DM-38041.
+                        mwi.clean_local_repo(expid_set)
+                    return "Pipeline executed", 200
+            else:
+                _log.error(f"Timed out waiting for images for {expected_visit}.")
+                return "Timed out waiting for images", 500
     finally:
         consumer.unsubscribe()
         # Want to know when the handler exited for any reason.
