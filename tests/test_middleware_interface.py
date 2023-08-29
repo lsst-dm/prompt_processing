@@ -51,7 +51,7 @@ instname = "DECam"
 # Full name of the physical filter for the test file.
 filter = "g DECam SDSS c0001 4720.0 1520.0"
 # The skymap name used in the test repo.
-skymap_name = "deepCoadd_skyMap"
+skymap_name = "decam_rings_v1"
 # A pipelines config that returns the test pipelines.
 # Unless a test imposes otherwise, the first pipeline should run, and
 # the second should not be attempted.
@@ -231,7 +231,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         # check that we got appropriate refcat shards
         loaded_shards = butler.registry.queryDataIds("htm7",
-                                                     datasets="gaia",
+                                                     datasets="gaia_dr2_20200414",
                                                      collections="refcats")
 
         self.assertEqual(expected_shards, {x['htm7'] for x in loaded_shards})
@@ -257,13 +257,19 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the right templates are in the chained output collection.
         # Need to refresh the butler to get all the dimensions/collections.
         butler.registry.refresh()
-        for patch in (464, 465, 509, 510):
+        for patch in (7, 8):
             self.assertTrue(
-                butler.exists('deepCoadd', tract=0, patch=patch, band="g",
+                butler.exists('goodSeeingCoadd', tract=8604, patch=patch, band="g",
                               skymap=skymap_name,
                               full_check=True,
                               collections=self.umbrella)
             )
+        self.assertFalse(
+            butler.exists('goodSeeingCoadd', tract=8604, patch=0, band="g",
+                          skymap=skymap_name,
+                          full_check=True,
+                          collections=self.umbrella)
+        )
 
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
@@ -947,7 +953,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.interface.prep_butler()
 
         self.assertEqual(
-            self._count_datasets(self.interface.butler, "gaia", f"{instname}/defaults"),
+            self._count_datasets(self.interface.butler, "gaia_dr2_20200414", f"{instname}/defaults"),
             3)
         self.assertIn(
             "emptyrun",
@@ -968,7 +974,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             1)
         # Did not export calibs or other inputs.
         self.assertEqual(
-            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], self.output_run),
+            self._count_datasets(central_butler, ["cpBias", "gaia_dr2_20200414", "skyMap", "*Coadd"],
+                                 self.output_run),
             0)
         # Nothing placed in "input" collections.
         self.assertEqual(
@@ -994,7 +1001,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             1)
         # Did not export calibs or other inputs.
         self.assertEqual(
-            self._count_datasets(central_butler, ["cpBias", "gaia", "skyMap", "*Coadd"], self.output_run),
+            self._count_datasets(central_butler, ["cpBias", "gaia_dr2_20200414", "skyMap", "*Coadd"],
+                                 self.output_run),
             0)
         # Nothing placed in "input" collections.
         self.assertEqual(
