@@ -279,7 +279,7 @@ def next_visit_handler() -> Tuple[str, int]:
             )
             if oid:
                 exp_id = get_exp_id_from_oid(oid)
-                _log.debug("Found %r already present", exp_id)
+                _log.debug("Found exposure %r already present", exp_id)
                 mwi.ingest_image(oid)
                 expid_set.add(exp_id)
 
