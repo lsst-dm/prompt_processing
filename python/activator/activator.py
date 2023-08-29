@@ -288,7 +288,7 @@ def next_visit_handler() -> Tuple[str, int]:
                     mwi.ingest_image(oid)
                     expid_set.add(exp_id)
 
-            _log.debug(f"Waiting for snaps from {expected_visit}.")
+            _log.debug("Waiting for snaps...")
             start = time.time()
             while len(expid_set) < expected_snaps:
                 if startup_response:
@@ -300,11 +300,10 @@ def next_visit_handler() -> Tuple[str, int]:
                 response = []
                 if len(messages) == 0:
                     if end - start < timeout and not startup_response:
-                        _log.debug(f"Empty consume after {end - start}s for {expected_visit}.")
+                        _log.debug(f"Empty consume after {end - start}s.")
                         continue
                     _log.warning(
-                        f"Timed out waiting for image in {expected_visit} "
-                        f"after receiving exposures {expid_set}"
+                        f"Timed out waiting for image after receiving exposures {expid_set}."
                     )
                     break
                 startup_response = []
@@ -336,7 +335,7 @@ def next_visit_handler() -> Tuple[str, int]:
                     # If nimages == 0, any positive number of snaps is OK.
                     if len(expid_set) < expected_visit.nimages:
                         _log.warning(f"Processing {len(expid_set)} snaps, expected {expected_visit.nimages}.")
-                    _log.info(f"Running pipeline on {expected_visit}.")
+                    _log.info("Running pipeline...")
                     try:
                         mwi.run_pipeline(expid_set)
                         # TODO: broadcast alerts here
@@ -347,7 +346,7 @@ def next_visit_handler() -> Tuple[str, int]:
                         mwi.clean_local_repo(expid_set)
                     return "Pipeline executed", 200
             else:
-                _log.error(f"Timed out waiting for images for {expected_visit}.")
+                _log.error("Timed out waiting for images.")
                 return "Timed out waiting for images", 500
     finally:
         consumer.unsubscribe()
