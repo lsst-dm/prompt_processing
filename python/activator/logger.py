@@ -144,7 +144,7 @@ def setup_usdf_logger(labels=None):
     """
     _set_context_logger()
     log_handler = logging.StreamHandler()
-    log_handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(logging_context)s:%(message)s"))
+    log_handler.setFormatter(UsdfJsonFormatter(labels))
     logging.basicConfig(handlers=[log_handler])
     _channel_all_to_pylog()
     _set_lsst_logging_levels()
