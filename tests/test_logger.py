@@ -23,9 +23,11 @@
 import io
 import json
 import logging
+import os
 import unittest
 
-from activator.logger import GCloudStructuredLogFormatter, _parse_log_levels, RecordFactoryContextAdapter
+from activator.logger import GCloudStructuredLogFormatter, UsdfJsonFormatter, \
+    _parse_log_levels, RecordFactoryContextAdapter
 
 
 class ParseLogLevelsTest(unittest.TestCase):
@@ -132,6 +134,28 @@ class GoogleFormatterTest(unittest.TestCase):
                         "INFO", {"instrument": "NotACam"},
                         msgs)
 
+    def test_multiline(self):
+        """Test handling of messages that split across multiple lines.
+        """
+        msg = """This is a multiline
+              message with internal line
+              breaks."""
+        self.log.error(msg)
+        self._check_log(self.output.getvalue().splitlines(),
+                        "ERROR", {"instrument": "NotACam"},
+                        [msg])
+
+    def test_exception(self):
+        """Test that exception messages include the stack trace.
+        """
+        try:
+            raise RuntimeError("I take exception to that!")
+        except RuntimeError as e:
+            self.log.exception(e)
+        shredded = self.output.getvalue().splitlines()
+        self.assertEqual(len(shredded), 1)
+        self.assertIn("Traceback (most recent call last)", shredded[0])
+
     def test_side_effects(self):
         """Test that format still modifies exposure records in the same way
         as Formatter.format.
@@ -141,6 +165,128 @@ class GoogleFormatterTest(unittest.TestCase):
         factory = logging.getLogRecordFactory()
         record = factory(self.id(), logging.INFO, "file.py", 42, msg, args, None)
         formatter = GCloudStructuredLogFormatter()
+        formatter.format(record)
+        # If format has no side effects, record.message does not exist.
+        self.assertEqual(record.message, msg % args)
+
+
+class UsdfJsonFormatterTest(unittest.TestCase):
+    """Test UsdfJsonFormatter with fake log messages.
+    """
+    def setUp(self):
+        super().setUp()
+
+        # Buffer for log output.
+        # Can't use assertLogs, because it inserts its own handler/formatter.
+        self.output = io.StringIO()
+        self.addCleanup(io.StringIO.close, self.output)
+        # self.output = self.enterContext(io.StringIO())
+
+        # UsdfJsonFormatter assumes a logging_context field is present.
+        old_factory = logging.getLogRecordFactory()
+        self.addCleanup(logging.setLogRecordFactory, old_factory)
+        logging.setLogRecordFactory(RecordFactoryContextAdapter(old_factory))
+
+        log_handler = logging.StreamHandler(self.output)
+        log_handler.setFormatter(UsdfJsonFormatter(
+            labels={"instrument": "NotACam"},
+        ))
+        # Unique logger per test
+        self.log = logging.getLogger(self.id())
+        self.log.propagate = False
+        self.log.addHandler(log_handler)
+        self.log.setLevel(logging.DEBUG)
+
+    def _check_log(self, outputs, caller, level, labels, texts):
+        """Check that the log output is formatted correctly.
+
+        Parameters
+        ----------
+        outputs : `list` [`str`]
+            A list of the formatted log messages.
+        caller : `str`
+            The function that called the log.
+        level : `str`
+            The emitted log level.
+        labels : `dict` [`str`, `str`]
+            The labels attached to the log message.
+        texts : `list` [`str`]
+            The expected log messages.
+        """
+        self.assertEqual(len(outputs), len(texts))
+        for output, text in zip(outputs, texts):
+            parsed = json.loads(output)
+            self.assertEqual(parsed["level"], level)
+            self.assertEqual(parsed["message"], text)
+            self.assertEqual(parsed["funcName"], caller)
+            self.assertEqual(parsed["pathname"], __file__)
+            self.assertEqual(parsed["process"], os.getpid())
+            self.assertEqual(parsed["name"], self.id())
+            for key, value in labels.items():
+                self.assertEqual(parsed[key], value)
+
+    def test_direct(self):
+        """Test the translation of verbatim log messages.
+        """
+        msg = "Consider a spherical cow..."
+        self.log.info(msg)
+        self._check_log(self.output.getvalue().splitlines(),
+                        "test_direct", "INFO", {"instrument": "NotACam"},
+                        [msg])
+
+    def test_args(self):
+        """Test the translation of arg-based log messages.
+        """
+        msg = "Consider a %s..."
+        args = "rotund bovine"
+        self.log.warning(msg, args)
+        self._check_log(self.output.getvalue().splitlines(),
+                        "test_args", "WARNING", {"instrument": "NotACam"},
+                        [msg % args])
+
+    def test_quotes(self):
+        """Test handling of messages containing single or double quotes.
+        """
+        msgs = ["Consider a so-called 'spherical cow'.",
+                'Consider a so-called "spherical cow".',
+                ]
+        for msg in msgs:
+            self.log.info(msg)
+        self._check_log(self.output.getvalue().splitlines(),
+                        "test_quotes", "INFO", {"instrument": "NotACam"},
+                        msgs)
+
+    def test_multiline(self):
+        """Test handling of messages that split across multiple lines.
+        """
+        msg = """This is a multiline
+              message with internal line
+              breaks."""
+        self.log.error(msg)
+        self._check_log(self.output.getvalue().splitlines(),
+                        "test_multiline", "ERROR", {"instrument": "NotACam"},
+                        [msg])
+
+    def test_exception(self):
+        """Test that exception messages include the stack trace.
+        """
+        try:
+            raise RuntimeError("I take exception to that!")
+        except RuntimeError as e:
+            self.log.exception(e)
+        shredded = self.output.getvalue().splitlines()
+        self.assertEqual(len(shredded), 1)
+        self.assertIn("Traceback (most recent call last)", shredded[0])
+
+    def test_side_effects(self):
+        """Test that format still modifies exposure records in the same way
+        as Formatter.format.
+        """
+        msg = "Consider a %s..."
+        args = "rotund bovine"
+        factory = logging.getLogRecordFactory()
+        record = factory(self.id(), logging.INFO, "file.py", 42, msg, args, None)
+        formatter = UsdfJsonFormatter()
         formatter.format(record)
         # If format has no side effects, record.message does not exist.
         self.assertEqual(record.message, msg % args)

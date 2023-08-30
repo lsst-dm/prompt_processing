@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["GCloudStructuredLogFormatter", "setup_google_logger", "setup_usdf_logger",
+__all__ = ["GCloudStructuredLogFormatter", "UsdfJsonFormatter", "setup_google_logger", "setup_usdf_logger",
            "RecordFactoryContextAdapter"]
 
 from contextlib import contextmanager
@@ -171,14 +171,62 @@ class GCloudStructuredLogFormatter(logging.Formatter):
             self._labels = {}
 
     def format(self, record):
-        # Call for side effects only; ignore result.
-        super().format(record)
+        # format updates record.message, but the full info is *only* in the return value.
+        msg = super().format(record)
 
         entry = {
             "severity": record.levelname,
             "logging.googleapis.com/labels": self._labels | record.logging_context,
-            "message": record.getMessage(),
+            "message": msg,
         }
+        return json.dumps(entry)
+
+
+class UsdfJsonFormatter(logging.Formatter):
+    """A formatter that can be parsed by the Loki/Grafana system at USDF.
+
+    The formatter's output is a JSON-encoded message with "flattened" metadata
+    to make it easy to inspect with Grafana filters.
+
+    Parameters
+    ----------
+    labels : `dict` [`str`, `str`]
+        Any metadata that should be attached to the log.
+    """
+    def __init__(self, labels=None):
+        super().__init__()
+
+        if labels:
+            self._labels = labels
+        else:
+            self._labels = {}
+
+    def format(self, record):
+        # format updates record.message, but the full info is *only* in the return value.
+        msg = super().format(record)
+
+        # Many LogRecord attributes are only useful for interrogating the
+        # record in Python; filter to what's useful in Grafana.
+        entry = {
+            # formatTime only automatically handles msecs (uuu) with the
+            # default format, and the assumption that they're the last part of
+            # the string is hardcoded. Use manual formatting instead.
+            # RFC3339Nano is the only buit-in promtail format that supports
+            # fractional seconds.
+            "asctime": self.formatTime(record, datefmt='%Y-%m-%dT%H:%M:%S.%(msecs)03d%z')
+            % {"msecs": record.msecs},
+            "funcName": record.funcName,
+            "level": record.levelname,  # "level" auto-parsed by Grafana
+            "lineno": record.lineno,
+            "message": msg,
+            "name": record.name,
+            "pathname": record.pathname,
+            "process": record.process,
+            "thread": record.thread,
+        }
+        entry.update(self._labels)
+        entry.update(record.logging_context)
+
         return json.dumps(entry)
 
 
