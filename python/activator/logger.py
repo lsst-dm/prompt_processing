@@ -22,6 +22,7 @@
 __all__ = ["GCloudStructuredLogFormatter", "UsdfJsonFormatter", "setup_google_logger", "setup_usdf_logger",
            "RecordFactoryContextAdapter"]
 
+import collections.abc
 from contextlib import contextmanager
 import json
 import logging
@@ -179,7 +180,7 @@ class GCloudStructuredLogFormatter(logging.Formatter):
             "logging.googleapis.com/labels": self._labels | record.logging_context,
             "message": msg,
         }
-        return json.dumps(entry)
+        return json.dumps(entry, default=_encode_json_extras)
 
 
 class UsdfJsonFormatter(logging.Formatter):
@@ -227,7 +228,27 @@ class UsdfJsonFormatter(logging.Formatter):
         entry.update(self._labels)
         entry.update(record.logging_context)
 
-        return json.dumps(entry)
+        return json.dumps(entry, default=_encode_json_extras)
+
+
+def _encode_json_extras(obj):
+    """Encode objects that are not JSON-serializable by default.
+
+    Parameters
+    ----------
+    obj
+        The object to encode. Assumed to not be JSON-serializable.
+
+    Returns
+    -------
+    encodable
+        A JSON-serializable object equivalent to ``obj``.
+    """
+    # Store collections as arrays
+    if isinstance(obj, collections.abc.Collection):
+        return list(obj)
+    else:
+        raise TypeError(f"{obj.__class__} is not JSON seriablizable")
 
 
 class RecordFactoryContextAdapter:

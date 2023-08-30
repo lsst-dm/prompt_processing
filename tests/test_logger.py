@@ -156,6 +156,34 @@ class GoogleFormatterTest(unittest.TestCase):
         self.assertEqual(len(shredded), 1)
         self.assertIn("Traceback (most recent call last)", shredded[0])
 
+    def test_context(self):
+        """Test handling of messages that have free-form context.
+        """
+        msg = "Consider a spherical exposure."
+        exposures = {1, 2, 3}
+        visit = 42
+        ratio = 3.5
+        group = "group A"
+        settings = {"option": True}
+        with logging.getLogRecordFactory().add_context(
+            exposures=exposures,
+            visit=visit,
+            ratio=ratio,
+            group=group,
+            settings=settings,
+        ):
+            self.log.info(msg)
+        self._check_log(self.output.getvalue().splitlines(),
+                        "INFO",
+                        {"instrument": "NotACam",
+                         "exposures": list(exposures),
+                         "visit": visit,
+                         "ratio": ratio,
+                         "group": group,
+                         "settings": settings,
+                         },
+                        [msg])
+
     def test_side_effects(self):
         """Test that format still modifies exposure records in the same way
         as Formatter.format.
@@ -277,6 +305,34 @@ class UsdfJsonFormatterTest(unittest.TestCase):
         shredded = self.output.getvalue().splitlines()
         self.assertEqual(len(shredded), 1)
         self.assertIn("Traceback (most recent call last)", shredded[0])
+
+    def test_context(self):
+        """Test handling of messages that have free-form context.
+        """
+        msg = "Consider a spherical exposure."
+        exposures = {1, 2, 3}
+        visit = 42
+        ratio = 3.5
+        group = "group A"
+        settings = {"option": True}
+        with logging.getLogRecordFactory().add_context(
+            exposures=exposures,
+            visit=visit,
+            ratio=ratio,
+            group=group,
+            settings=settings,
+        ):
+            self.log.info(msg)
+        self._check_log(self.output.getvalue().splitlines(),
+                        "test_context", "INFO",
+                        {"instrument": "NotACam",
+                         "exposures": list(exposures),
+                         "visit": visit,
+                         "ratio": ratio,
+                         "group": group,
+                         "settings": settings,
+                         },
+                        [msg])
 
     def test_side_effects(self):
         """Test that format still modifies exposure records in the same way
