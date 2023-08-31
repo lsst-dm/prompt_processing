@@ -24,6 +24,7 @@ __all__ = ["check_for_snap", "next_visit_handler"]
 import json
 import logging
 import os
+import sys
 import time
 from typing import Optional, Tuple
 import uuid
@@ -78,25 +79,30 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
-# Write PostgreSQL credentials.
-# This MUST be done before creating a Butler or accessing the APDB.
-make_pgpass()
+try:
+    # Write PostgreSQL credentials.
+    # This MUST be done before creating a Butler or accessing the APDB.
+    make_pgpass()
 
+    app = Flask(__name__)
 
-app = Flask(__name__)
+    consumer = kafka.Consumer({
+        "bootstrap.servers": kafka_cluster,
+        "group.id": kafka_group_id,
+        "auto.offset.reset": "largest",  # default, but make explicit
+    })
 
-consumer = kafka.Consumer({
-    "bootstrap.servers": kafka_cluster,
-    "group.id": kafka_group_id,
-    "auto.offset.reset": "largest",  # default, but make explicit
-})
+    storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
+    storage_client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
-storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
-storage_client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
-
-central_butler = get_central_butler(calib_repo, instrument_name)
-# local_repo is a temporary directory with the same lifetime as this process.
-local_repo = make_local_repo(local_repos, central_butler, instrument_name)
+    central_butler = get_central_butler(calib_repo, instrument_name)
+    # local_repo is a temporary directory with the same lifetime as this process.
+    local_repo = make_local_repo(local_repos, central_butler, instrument_name)
+except Exception as e:
+    _log.critical("Failed to start worker; aborting.")
+    _log.exception(e)
+    # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
+    sys.exit(3)
 
 
 def check_for_snap(
