@@ -6,10 +6,11 @@ setupRequired(base)
 setupRequired(sconsUtils)
 setupRequired(utils)         # Used by scripts in bin.src
 
-# Used by middleware_interface module due to hard-coded pipeline references.
+# Used by pipelines
 setupRequired(ap_pipe)
-# Borrow LATISS configs from drp_pipe
-setupRequired(drp_pipe)
+setupRequired(obs_lsst)
+
+# Used by middleware_interface
 setupRequired(daf_butler)
 setupRequired(ctrl_mpexec)
 setupRequired(geom)

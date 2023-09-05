@@ -19,11 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["GCloudStructuredLogFormatter", "setup_google_logger", "setup_usdf_logger"]
+__all__ = ["GCloudStructuredLogFormatter", "UsdfJsonFormatter", "setup_google_logger", "setup_usdf_logger",
+           "RecordFactoryContextAdapter"]
 
+import collections.abc
+from contextlib import contextmanager
 import json
 import logging
 import os
+import threading
 
 import lsst.daf.butler as daf_butler
 
@@ -80,6 +84,21 @@ def _channel_all_to_pylog():
     logging.captureWarnings(True)
 
 
+def _set_context_logger():
+    """Set up RecordFactoryContextAdapter as the global log factory.
+
+    This allows the use of its context manager inside the activator, and the
+    use of the ``logging_context`` field in formatters.
+
+    Notes
+    -----
+    Because it affects global configuration, this function should be called
+    from the application's main thread. Unexpected behavior may result if it is
+    called from a request handler instead.
+    """
+    logging.setLogRecordFactory(RecordFactoryContextAdapter(logging.getLogRecordFactory()))
+
+
 # TODO: replace with something more extensible, once we know what needs to
 # vary besides the formatter (handler type?).
 def setup_google_logger(labels=None):
@@ -99,6 +118,7 @@ def setup_google_logger(labels=None):
     handler : `logging.Handler`
         The handler used by the root logger.
     """
+    _set_context_logger()
     log_handler = logging.StreamHandler()
     log_handler.setFormatter(GCloudStructuredLogFormatter(labels))
     logging.basicConfig(handlers=[log_handler])
@@ -122,7 +142,9 @@ def setup_usdf_logger(labels=None):
     handler : `logging.Handler`
         The handler used by the root logger.
     """
+    _set_context_logger()
     log_handler = logging.StreamHandler()
+    log_handler.setFormatter(UsdfJsonFormatter(labels))
     logging.basicConfig(handlers=[log_handler])
     _channel_all_to_pylog()
     _set_lsst_logging_levels()
@@ -150,12 +172,166 @@ class GCloudStructuredLogFormatter(logging.Formatter):
             self._labels = {}
 
     def format(self, record):
-        # Call for side effects only; ignore result.
-        super().format(record)
+        # format updates record.message, but the full info is *only* in the return value.
+        msg = super().format(record)
 
         entry = {
             "severity": record.levelname,
-            "logging.googleapis.com/labels": self._labels,
-            "message": record.getMessage(),
+            "logging.googleapis.com/labels": self._labels | record.logging_context,
+            "message": msg,
         }
-        return json.dumps(entry)
+        return json.dumps(entry, default=_encode_json_extras)
+
+
+class UsdfJsonFormatter(logging.Formatter):
+    """A formatter that can be parsed by the Loki/Grafana system at USDF.
+
+    The formatter's output is a JSON-encoded message with "flattened" metadata
+    to make it easy to inspect with Grafana filters.
+
+    Parameters
+    ----------
+    labels : `dict` [`str`, `str`]
+        Any metadata that should be attached to the log.
+    """
+    def __init__(self, labels=None):
+        super().__init__()
+
+        if labels:
+            self._labels = labels
+        else:
+            self._labels = {}
+
+    def format(self, record):
+        # format updates record.message, but the full info is *only* in the return value.
+        msg = super().format(record)
+
+        # Many LogRecord attributes are only useful for interrogating the
+        # record in Python; filter to what's useful in Grafana.
+        entry = {
+            # formatTime only automatically handles msecs (uuu) with the
+            # default format, and the assumption that they're the last part of
+            # the string is hardcoded. Use manual formatting instead.
+            # RFC3339Nano is the only buit-in promtail format that supports
+            # fractional seconds.
+            "asctime": self.formatTime(record, datefmt='%Y-%m-%dT%H:%M:%S.%(msecs)03d%z')
+            % {"msecs": record.msecs},
+            "funcName": record.funcName,
+            "level": record.levelname,  # "level" auto-parsed by Grafana
+            "lineno": record.lineno,
+            "message": msg,
+            "name": record.name,
+            "pathname": record.pathname,
+            "process": record.process,
+            "thread": record.thread,
+        }
+        entry.update(self._labels)
+        entry.update(record.logging_context)
+
+        return json.dumps(entry, default=_encode_json_extras)
+
+
+def _encode_json_extras(obj):
+    """Encode objects that are not JSON-serializable by default.
+
+    Parameters
+    ----------
+    obj
+        The object to encode. Assumed to not be JSON-serializable.
+
+    Returns
+    -------
+    encodable
+        A JSON-serializable object equivalent to ``obj``.
+    """
+    # Store collections as arrays
+    if isinstance(obj, collections.abc.Collection):
+        return list(obj)
+    else:
+        raise TypeError(f"{obj.__class__} is not JSON seriablizable")
+
+
+class RecordFactoryContextAdapter:
+    """A log record factory that adds contextual data to another factory.
+
+    This factory adds a ``logging_context`` mapping to the log record. The
+    mapping is empty by default, and can be managed with the `add_context`
+    context manager. Formatters that can handle the contents of this field
+    must be configured separately.
+
+    Parameters
+    ----------
+    factory : callable
+        A log record factory (satisfying the interface described under
+        `logging.setLogRecordFactory`) to which to add context.
+
+    Notes
+    -----
+    This class is designed to be passed to `logging.setLogRecordFactory`, and
+    therefore be shared among all threads of an application. However, all
+    context is held in thread-local state, so the class is thread-safe in the
+    sense that most application code can act as if each thread had its own
+    factory object.
+    """
+    def __init__(self, factory):
+        self._old_factory = factory
+        # Record factories must be shared to be useful; keep all nontrivial
+        # state in a `local` object to emulate a thread-specific factory.
+        self._store = threading.local()
+        self._store.context = {}
+
+    def __call__(self, *args, **kwargs):
+        """Create a log record from the provided arguments.
+
+        See `logging.setLogRecordFactory` for the parameters.
+
+        Returns
+        -------
+        record : `logging.LogRecord`
+            A log record containing a ``logging_context`` mapping. The mapping
+            maps strings to arbitrary values, as determined by any enclosing
+            calls to `add_context`.
+        """
+        record = self._old_factory(*args, **kwargs)
+        # _store.context is mutable; make sure record can't be changed after the fact.
+        record.logging_context = self._store.context.copy()
+        return record
+
+    @contextmanager
+    def add_context(self, **context):
+        """A context manager that adds contextual data to all logging calls
+        inside it.
+
+        This manager adds key-value pairs to the ``logging_context`` mapping in
+        this factory's log records.
+
+        Parameters
+        ----------
+        context
+            The keys and values to be added to ``logging_context``.
+
+        Notes
+        -----
+        This method is thread-safe (``logging_context`` is thread-confined,
+        even if ``self`` is shared).
+
+        Examples
+        --------
+        >>> import logging, sys
+        >>> logging.basicConfig(stream=sys.stdout,
+        ...                     format="%(logging_context)s: %(levelname)s: %(message)s")
+        >>> # The following line is not thread-safe, for simplicity.
+        >>> logging.setLogRecordFactory(RecordFactoryContextAdapter(logging.getLogRecordFactory()))
+        >>> with logging.getLogRecordFactory().add_context(visit=101, detector=42):
+        ...     logging.error("Does not compute!")
+        {'visit': 101, 'detector': 42}: ERROR: Does not compute!
+        """
+        _old_context = self._store.context.copy()
+        try:
+            self._store.context.update(**context)
+            yield
+        finally:
+            # This replacement is safe because self._store cannot have been
+            # changed by other threads. Changes can only have been made by
+            # nested context managers, which have already been rolled back.
+            self._store.context = _old_context

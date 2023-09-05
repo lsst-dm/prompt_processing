@@ -780,8 +780,7 @@ class MiddlewareInterface:
             executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
             _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
             executor.run_pipeline(qgraph)
-            _log.info(f"Pipeline successfully run on "
-                      f"detector {self.visit.detector} of {exposure_ids}.")
+            _log.info("Pipeline successfully run.")
             break
         else:
             # TODO: a good place for a custom exception?
@@ -809,8 +808,7 @@ class MiddlewareInterface:
                                           )
             if exports:
                 exported = True
-                _log.info(f"Pipeline products saved to collection '{output_run}' for "
-                          f"detector {self.visit.detector} of {exposure_ids}.")
+                _log.info(f"Pipeline products saved to collection '{output_run}'.")
         if not exported:
             raise ValueError(f"No datasets match visit={self.visit} and exposures={exposure_ids}.")
 
