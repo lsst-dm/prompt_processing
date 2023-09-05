@@ -31,9 +31,12 @@ file for importing to the test central prompt processing repository.
 import argparse
 import logging
 import sys
+import tempfile
 
 import lsst.daf.butler as daf_butler
 from lsst.utils.timer import time_this
+
+from activator.middleware_interface import _filter_datasets
 
 
 def _make_parser():
@@ -42,6 +45,14 @@ def _make_parser():
         "--src-repo",
         required=True,
         help="The location of the repository from which datasets are exported.",
+    )
+    parser.add_argument(
+        "--target-repo",
+        required=False,
+        help="The location of the repository to which datasets are exported. "
+             "Datasets already existing in the target repo will not be "
+             "exported from the source repo. If no target repo is given, all "
+             "selected datasets in the source repo will be exported.",
     )
     return parser
 
@@ -52,21 +63,35 @@ def main():
     args = _make_parser().parse_args()
     src_butler = daf_butler.Butler(args.src_repo)
 
-    with time_this(msg="Datasets and collections exported", level=logging.INFO):
-        _export_for_copy(src_butler)
+    with tempfile.TemporaryDirectory() as temp_repo:
+        if args.target_repo:
+            target_butler = daf_butler.Butler(args.target_repo, writeable=False)
+        else:
+            # If no target_butler is given, create an empty one.
+            config = daf_butler.Butler.makeRepo(temp_repo)
+            target_butler = daf_butler.Butler(config)
+
+        with time_this(msg="Datasets and collections exported", level=logging.INFO):
+            _export_for_copy(src_butler, target_butler)
 
 
-def _export_for_copy(butler):
+def _export_for_copy(butler, target_butler):
     """Export selected data to make copies in another butler repo.
 
     Parameters
     ----------
     butler : `lsst.daf.butler.Butler`
         The source Butler from which datasets are exported.
+    target_butler : `lsst.daf.butler.Butler`
+        The target Butler to which datasets are exported. It is checked
+        to avoid exporting existing datasets. No checks are done to
+        verify if datasets are really identical.
     """
     with butler.export(format="yaml") as contents:
         logging.debug("Selecting deepCoadd datasets")
-        records = butler.registry.queryDatasets(
+        records = _filter_datasets(
+            butler,
+            target_butler,
             datasetType="deepCoadd",
             collections="LATISS/runs/AUXTEL_DRP_IMAGING_2023-07AB-05AB/"
                         "w_2023_19/PREOPS-3598/20230726T202836Z",
@@ -74,18 +99,27 @@ def _export_for_copy(butler):
         contents.saveDatasets(records)
 
         logging.debug("Selecting refcats datasets")
-        records = butler.registry.queryDatasets(datasetType=..., collections="refcats")
+        records = _filter_datasets(
+            butler, target_butler, datasetType=..., collections="refcats*"
+        )
         contents.saveDatasets(records)
 
         logging.debug("Selecting skymaps dataset")
-        records = butler.registry.queryDatasets(
-            datasetType="skyMap", collections="skymaps", dataId={"skymap": "latiss_v1"}
+        records = _filter_datasets(
+            butler, target_butler, datasetType="skyMap", collections="skymaps"
         )
         contents.saveDatasets(records)
 
         logging.debug("Selecting datasets in LATISS/calib")
-        records = butler.registry.queryDatasets(
-            datasetType=..., collections="LATISS/calib"
+        records = _filter_datasets(
+            butler,
+            target_butler,
+            datasetType=...,
+            # Workaround: use a matching expression rather than a specific
+            # string "LATISS/calib" for the collection argument, so to avoid
+            # MissingCollectionError when the collection does not exist in
+            # the target repo.
+            collections="*LATISS/calib",
         )
         contents.saveDatasets(records)
 
@@ -100,7 +134,11 @@ def _export_for_copy(butler):
             "LATISS/calib/DM-39505",
             "LATISS/templates",
         ]:
-            contents.saveCollection(collection)
+            try:
+                target_butler.registry.queryCollections(collection)
+            except daf_butler.registry.MissingCollectionError:
+                # MissingCollectionError is raised if the collection does not exist in target_butler.
+                contents.saveCollection(collection)
 
 
 if __name__ == "__main__":
