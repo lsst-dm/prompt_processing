@@ -53,11 +53,13 @@ def _make_parser():
                         help="The config file to use for the new repository. Defaults to etc/db_butler.yaml.")
     parser.add_argument("--export-file", default="export.yaml",
                         help="The export file containing the repository contents. Defaults to ./export.yaml.")
+    parser.add_argument("--instrument",
+                        help="The short name of the instrument (HSC, LATISS, etc).")
     parser.add_argument("--hsc-rc2", action="store_true", help="Extra fix up for HSC-RC2 dataset.")
     return parser
 
 
-def _add_chains(butler):
+def _add_chains(butler, instrument_name):
     """Create collections to serve as a uniform interface.
 
     Parameters
@@ -69,6 +71,8 @@ def _add_chains(butler):
         - standard skymap collection
         - templates/*
         - refcats/*
+    instrument_name : `str`
+        The short name of the instrument.
     """
     butler.registry.registerCollection("templates", type=CollectionType.CHAINED)
     butler.registry.setCollectionChain(
@@ -82,8 +86,7 @@ def _add_chains(butler):
         list(butler.registry.queryCollections("refcats/*", collectionTypes=CollectionType.RUN))
     )
 
-    instrument = Instrument.fromName(list(butler.registry.queryDataIds("instrument"))[0]["instrument"],
-                                     butler.registry)
+    instrument = Instrument.fromName(instrument_name, butler.registry)
     defaults = instrument.makeUmbrellaCollectionName()
     butler.registry.registerCollection(defaults, type=CollectionType.CHAINED)
     calib_collection = instrument.makeCalibrationCollectionName()
@@ -146,7 +149,7 @@ def main():
         butler = Butler(config, writeable=True)
     with time_this(msg="Import", level=logging.INFO):
         butler.import_(directory=args.src_repo, filename=args.export_file, transfer="auto")
-    _add_chains(butler)
+    _add_chains(butler, args.instrument)
     if args.hsc_rc2:
         _hsc_rc2(butler)
 
