@@ -175,38 +175,58 @@ def upload_hsc_images(dest_bucket, group_id, butler, refs):
     refs : iterable of `lsst.daf.butler.DatasetRef`
         The datasets to upload
     """
-    exposure_key, exposure_header, exposure_num = make_exposure_id("HSC", int(group_id), 0)
     with tempfile.TemporaryDirectory() as temp_dir:
-        # Each ref is done separately because butler.retrieveArtifacts does not preserve the order.
         for ref in refs:
-            dest_key = get_raw_path(
-                "HSC",
-                ref.dataId["detector"],
-                group_id,
-                0,
-                exposure_num,
-                ref.dataId["physical_filter"],
-            )
-            transferred = butler.retrieveArtifacts(
-                [ref],
-                transfer="copy",
-                preserve_path=False,
-                destination=temp_dir,
-            )
-            if len(transferred) != 1:
-                _log.error(
-                    f"{ref} has multitple artifacts and cannot be handled by current implementation"
-                )
-                continue
+            _upload_one_image(dest_bucket, temp_dir, group_id, butler, ref)
 
-            path = transferred[0].path
-            _log.debug(
-                f"Raw file for {ref.dataId} was copied from Butler to {path}"
-            )
-            with open(path, "r+b") as temp_file:
-                replace_header_key(temp_file, exposure_key, exposure_header)
-            dest_bucket.upload_file(path, dest_key)
-            _log.debug(f"{dest_key} was written at {dest_bucket}")
+
+def _upload_one_image(dest_bucket, temp_dir, group_id, butler, ref):
+    """Upload a raw HSC image to the central repo.
+
+    Parameters
+    ----------
+    dest_bucket : `S3.Bucket`
+        The bucket to which to upload the images.
+    temp_dir : `str`
+        A directory in which to temporarily hold the images so that their
+        metadata can be modified.
+    group_id : `str`
+        The group ID under which to store the images.
+    butler : `lsst.daf.butler.Butler`
+        The source Butler with the raw data.
+    ref : `lsst.daf.butler.DatasetRef`
+        The dataset to upload.
+    """
+    exposure_key, exposure_header, exposure_num = make_exposure_id("HSC", int(group_id), 0)
+    dest_key = get_raw_path(
+        "HSC",
+        ref.dataId["detector"],
+        group_id,
+        0,
+        exposure_num,
+        ref.dataId["physical_filter"],
+    )
+    # Each ref is done separately because butler.retrieveArtifacts does not preserve the order.
+    transferred = butler.retrieveArtifacts(
+        [ref],
+        transfer="copy",
+        preserve_path=False,
+        destination=temp_dir,
+    )
+    if len(transferred) != 1:
+        _log.error(
+            f"{ref} has multiple artifacts and cannot be handled by current implementation"
+        )
+        return
+
+    path = transferred[0].path
+    _log.debug(
+        f"Raw file for {ref.dataId} was copied from Butler to {path}"
+    )
+    with open(path, "r+b") as temp_file:
+        replace_header_key(temp_file, exposure_key, exposure_header)
+    dest_bucket.upload_file(path, dest_key)
+    _log.debug(f"{dest_key} was written at {dest_bucket}")
 
 
 if __name__ == "__main__":
