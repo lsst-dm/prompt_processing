@@ -166,7 +166,7 @@ def upload_hsc_images(dest_bucket, group_id, butler, refs):
 
     Parameters
     ----------
-    dest_bucket: `S3.Bucket`
+    dest_bucket : `S3.Bucket`
         The bucket to which to upload the images.
     group_id : `str`
         The group ID under which to store the images.
