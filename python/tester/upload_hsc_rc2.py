@@ -20,6 +20,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+import math
+import multiprocessing
 import random
 import sys
 import tempfile
@@ -187,9 +189,21 @@ def upload_hsc_images(group_id, butler, refs):
     refs : iterable of `lsst.daf.butler.DatasetRef`
         The datasets to upload
     """
+    try:
+        max_processes = math.ceil(0.25*multiprocessing.cpu_count())
+    except NotImplementedError:
+        max_processes = 4
+
     with tempfile.TemporaryDirectory() as temp_dir:
-        for ref in refs:
-            _upload_one_image(temp_dir, group_id, butler, ref)
+        # fork pools don't work well with connection pools, such as those used
+        # for Butler registry or S3.
+        context = multiprocessing.get_context("spawn")
+        _log.debug("Uploading with %d processes...", max_processes)
+        with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool:
+            pool.starmap(_upload_one_image,
+                         [(temp_dir, group_id, butler, ref) for ref in refs],
+                         chunksize=10
+                         )
 
 
 def _upload_one_image(temp_dir, group_id, butler, ref):
