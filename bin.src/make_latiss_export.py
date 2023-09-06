@@ -115,12 +115,9 @@ def _export_for_copy(butler, target_butler=None):
             expression="LATISS/calib*",
             collectionTypes=daf_butler.CollectionType.CALIBRATION,
         ):
-            if not target_butler:
-                contents.saveCollection(collection)
-                return
             try:
                 target_butler.registry.queryCollections(collection)
-            except daf_butler.registry.MissingCollectionError:
+            except (AttributeError, daf_butler.registry.MissingCollectionError):
                 contents.saveCollection(collection)
         # Do not export chains, as they will need to be reworked to satisfy
         # prompt processing's assumptions.
