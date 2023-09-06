@@ -48,6 +48,23 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)
 
 
+# HACK: S3 object initialized once per process; see https://stackoverflow.com/questions/48091874/
+dest_bucket = None
+
+
+def _set_s3_bucket():
+    """Initialize and configure a bucket object to handle file upload.
+
+    This function sets the ``dest_bucket`` global rather than returning the
+    new bucket.
+    """
+    global dest_bucket
+    endpoint_url = "https://s3dfrgw.slac.stanford.edu"
+    s3 = boto3.resource("s3", endpoint_url=endpoint_url)
+    dest_bucket = s3.Bucket("rubin:rubin-pp")
+    dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
+
+
 def main():
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} N_GROUPS")
@@ -57,10 +74,7 @@ def main():
     date = time.strftime("%Y%m%d")
 
     kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
-    endpoint_url = "https://s3dfrgw.slac.stanford.edu"
-    s3 = boto3.resource("s3", endpoint_url=endpoint_url)
-    dest_bucket = s3.Bucket("rubin:rubin-pp")
-    dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
+    _set_s3_bucket()
 
     last_group = get_last_group(dest_bucket, "HSC", date)
     group_num = last_group + random.randrange(10, 19)
@@ -76,7 +90,7 @@ def main():
         _log.info(f"Taking exposure for group {group_num}")
         time.sleep(EXPOSURE_INTERVAL)
         _log.info(f"Uploading detector images for group {group_num}")
-        upload_hsc_images(dest_bucket, str(group_num), butler, refs)
+        upload_hsc_images(str(group_num), butler, refs)
 
 
 def get_hsc_visit_list(butler, n_sample):
@@ -161,13 +175,11 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     return refs
 
 
-def upload_hsc_images(dest_bucket, group_id, butler, refs):
+def upload_hsc_images(group_id, butler, refs):
     """Upload one group of raw HSC images to the central repo
 
     Parameters
     ----------
-    dest_bucket : `S3.Bucket`
-        The bucket to which to upload the images.
     group_id : `str`
         The group ID under which to store the images.
     butler : `lsst.daf.butler.Butler`
@@ -177,16 +189,14 @@ def upload_hsc_images(dest_bucket, group_id, butler, refs):
     """
     with tempfile.TemporaryDirectory() as temp_dir:
         for ref in refs:
-            _upload_one_image(dest_bucket, temp_dir, group_id, butler, ref)
+            _upload_one_image(temp_dir, group_id, butler, ref)
 
 
-def _upload_one_image(dest_bucket, temp_dir, group_id, butler, ref):
+def _upload_one_image(temp_dir, group_id, butler, ref):
     """Upload a raw HSC image to the central repo.
 
     Parameters
     ----------
-    dest_bucket : `S3.Bucket`
-        The bucket to which to upload the images.
     temp_dir : `str`
         A directory in which to temporarily hold the images so that their
         metadata can be modified.
