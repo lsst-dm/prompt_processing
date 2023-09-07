@@ -30,6 +30,7 @@ import time
 import boto3
 from botocore.handlers import validate_bucket_name
 
+from lsst.utils.timer import time_this
 from lsst.daf.butler import Butler
 
 from activator.raw import get_raw_path
@@ -60,11 +61,12 @@ def _set_s3_bucket():
     This function sets the ``dest_bucket`` global rather than returning the
     new bucket.
     """
-    global dest_bucket
-    endpoint_url = "https://s3dfrgw.slac.stanford.edu"
-    s3 = boto3.resource("s3", endpoint_url=endpoint_url)
-    dest_bucket = s3.Bucket("rubin:rubin-pp")
-    dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
+    with time_this(log=_log, msg="Bucket initialization", prefix=None):
+        global dest_bucket
+        endpoint_url = "https://s3dfrgw.slac.stanford.edu"
+        s3 = boto3.resource("s3", endpoint_url=endpoint_url)
+        dest_bucket = s3.Bucket("rubin:rubin-pp")
+        dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
 
 def main():
@@ -197,10 +199,11 @@ def upload_hsc_images(group_id, butler, refs):
         context = multiprocessing.get_context("spawn")
         _log.debug("Uploading with %d processes...", max_processes)
         with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool:
-            pool.starmap(_upload_one_image,
-                         [(temp_dir, group_id, butler, ref) for ref in refs],
-                         chunksize=10
-                         )
+            with time_this(log=_log, msg="Full visit processing", prefix=None):
+                pool.starmap(_upload_one_image,
+                             [(temp_dir, group_id, butler, ref) for ref in refs],
+                             chunksize=10
+                             )
 
 
 def _get_max_processes():
@@ -233,36 +236,37 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
     ref : `lsst.daf.butler.DatasetRef`
         The dataset to upload.
     """
-    exposure_key, exposure_header, exposure_num = make_exposure_id("HSC", int(group_id), 0)
-    dest_key = get_raw_path(
-        "HSC",
-        ref.dataId["detector"],
-        group_id,
-        0,
-        exposure_num,
-        ref.dataId["physical_filter"],
-    )
-    # Each ref is done separately because butler.retrieveArtifacts does not preserve the order.
-    transferred = butler.retrieveArtifacts(
-        [ref],
-        transfer="copy",
-        preserve_path=False,
-        destination=temp_dir,
-    )
-    if len(transferred) != 1:
-        _log.error(
-            f"{ref} has multiple artifacts and cannot be handled by current implementation"
+    with time_this(log=_log, msg="Single-image processing", prefix=None):
+        exposure_key, exposure_header, exposure_num = make_exposure_id("HSC", int(group_id), 0)
+        dest_key = get_raw_path(
+            "HSC",
+            ref.dataId["detector"],
+            group_id,
+            0,
+            exposure_num,
+            ref.dataId["physical_filter"],
         )
-        return
+        # Each ref is done separately because butler.retrieveArtifacts does not preserve the order.
+        transferred = butler.retrieveArtifacts(
+            [ref],
+            transfer="copy",
+            preserve_path=False,
+            destination=temp_dir,
+        )
+        if len(transferred) != 1:
+            _log.error(
+                f"{ref} has multiple artifacts and cannot be handled by current implementation"
+            )
+            return
 
-    path = transferred[0].path
-    _log.debug(
-        f"Raw file for {ref.dataId} was copied from Butler to {path}"
-    )
-    with open(path, "r+b") as temp_file:
-        replace_header_key(temp_file, exposure_key, exposure_header)
-    dest_bucket.upload_file(path, dest_key)
-    _log.debug(f"{dest_key} was written at {dest_bucket}")
+        path = transferred[0].path
+        _log.debug(
+            f"Raw file for {ref.dataId} was copied from Butler to {path}"
+        )
+        with open(path, "r+b") as temp_file:
+            replace_header_key(temp_file, exposure_key, exposure_header)
+        dest_bucket.upload_file(path, dest_key)
+        _log.debug(f"{dest_key} was written at {dest_bucket}")
 
 
 if __name__ == "__main__":
