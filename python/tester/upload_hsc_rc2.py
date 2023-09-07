@@ -189,10 +189,7 @@ def upload_hsc_images(group_id, butler, refs):
     refs : iterable of `lsst.daf.butler.DatasetRef`
         The datasets to upload
     """
-    try:
-        max_processes = math.ceil(0.25*multiprocessing.cpu_count())
-    except NotImplementedError:
-        max_processes = 4
+    max_processes = _get_max_processes()
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # fork pools don't work well with connection pools, such as those used
@@ -204,6 +201,21 @@ def upload_hsc_images(group_id, butler, refs):
                          [(temp_dir, group_id, butler, ref) for ref in refs],
                          chunksize=10
                          )
+
+
+def _get_max_processes():
+    """Return the optimal process limit.
+
+    Returns
+    -------
+    processes : `int`
+        The maximum number of processes that balances system usage, pool
+        overhead, and processing speed.
+    """
+    try:
+        return math.ceil(0.25*multiprocessing.cpu_count())
+    except NotImplementedError:
+        return 4
 
 
 def _upload_one_image(temp_dir, group_id, butler, ref):
