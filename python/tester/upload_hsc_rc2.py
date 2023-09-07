@@ -86,15 +86,23 @@ def main():
 
     butler = Butler("/repo/main")
     visit_list = get_hsc_visit_list(butler, n_groups)
-    for visit in visit_list:
-        group_num += 1
-        _log.info(f"Slewing to group {group_num}, with HSC visit {visit}")
-        time.sleep(SLEW_INTERVAL)
-        refs = prepare_one_visit(kafka_url, str(group_num), butler, visit)
-        _log.info(f"Taking exposure for group {group_num}")
-        time.sleep(EXPOSURE_INTERVAL)
-        _log.info(f"Uploading detector images for group {group_num}")
-        upload_hsc_images(str(group_num), butler, refs)
+
+    # fork pools don't work well with connection pools, such as those used
+    # for Butler registry or S3.
+    context = multiprocessing.get_context("spawn")
+    max_processes = _get_max_processes()
+    # Use a shared pool to minimize initialization overhead.
+    _log.debug("Uploading with %d processes...", max_processes)
+    with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool:
+        for visit in visit_list:
+            group_num += 1
+            _log.info(f"Slewing to group {group_num}, with HSC visit {visit}")
+            time.sleep(SLEW_INTERVAL)
+            refs = prepare_one_visit(kafka_url, str(group_num), butler, visit)
+            _log.info(f"Taking exposure for group {group_num}")
+            time.sleep(EXPOSURE_INTERVAL)
+            _log.info(f"Uploading detector images for group {group_num}")
+            upload_hsc_images(pool, str(group_num), butler, refs)
 
 
 def get_hsc_visit_list(butler, n_sample):
@@ -179,11 +187,13 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     return refs
 
 
-def upload_hsc_images(group_id, butler, refs):
+def upload_hsc_images(pool, group_id, butler, refs):
     """Upload one group of raw HSC images to the central repo
 
     Parameters
     ----------
+    pool : `multiprocessing.pool.Pool`
+        The process pool with which to schedule file uploads.
     group_id : `str`
         The group ID under which to store the images.
     butler : `lsst.daf.butler.Butler`
@@ -191,19 +201,12 @@ def upload_hsc_images(group_id, butler, refs):
     refs : iterable of `lsst.daf.butler.DatasetRef`
         The datasets to upload
     """
-    max_processes = _get_max_processes()
-
     with tempfile.TemporaryDirectory() as temp_dir:
-        # fork pools don't work well with connection pools, such as those used
-        # for Butler registry or S3.
-        context = multiprocessing.get_context("spawn")
-        _log.debug("Uploading with %d processes...", max_processes)
-        with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool:
-            with time_this(log=_log, msg="Full visit processing", prefix=None):
-                pool.starmap(_upload_one_image,
-                             [(temp_dir, group_id, butler, ref) for ref in refs],
-                             chunksize=10
-                             )
+        with time_this(log=_log, msg="Full visit processing", prefix=None):
+            pool.starmap(_upload_one_image,
+                         [(temp_dir, group_id, butler, ref) for ref in refs],
+                         chunksize=10
+                         )
 
 
 def _get_max_processes():
