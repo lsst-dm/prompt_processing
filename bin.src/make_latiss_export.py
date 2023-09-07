@@ -110,17 +110,20 @@ def _export_for_copy(butler, target_butler=None):
             if not target_butler or not target_butler.exists(record):
                 contents.saveDatasets({record})
 
-        # Save calibration collection
+        # Save calibration collection and calibration chain
         for collection in butler.registry.queryCollections(
-            expression="LATISS/calib*",
-            collectionTypes=daf_butler.CollectionType.CALIBRATION,
-        ):
+            expression="LATISS/calib",
+            flattenChains=True,
+        ) + [
+            "LATISS/calib",
+            "LATISS/calib/DM-36719",
+            "LATISS/calib/DM-38946",
+            "LATISS/calib/DM-39505",
+        ]:
             try:
                 target_butler.registry.queryCollections(collection)
             except (AttributeError, daf_butler.registry.MissingCollectionError):
                 contents.saveCollection(collection)
-        # Do not export chains, as they will need to be reworked to satisfy
-        # prompt processing's assumptions.
 
 
 if __name__ == "__main__":
