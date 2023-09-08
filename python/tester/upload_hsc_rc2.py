@@ -95,7 +95,8 @@ def main():
     # benefit of letting the pool be initialized in parallel with the first
     # exposure.
     _log.debug("Uploading with %d processes...", max_processes)
-    with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool:
+    with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool, \
+            tempfile.TemporaryDirectory() as temp_dir:
         for visit in visit_list:
             group_num += 1
             _log.info(f"Slewing to group {group_num}, with HSC visit {visit}")
@@ -104,7 +105,10 @@ def main():
             _log.info(f"Taking exposure for group {group_num}")
             time.sleep(EXPOSURE_INTERVAL)
             _log.info(f"Uploading detector images for group {group_num}")
-            upload_hsc_images(pool, str(group_num), butler, refs)
+            upload_hsc_images(pool, temp_dir, str(group_num), butler, refs)
+        pool.close()
+        _log.info("Waiting for uploads to finish...")
+        pool.join()
 
 
 def get_hsc_visit_list(butler, n_sample):
@@ -189,13 +193,16 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     return refs
 
 
-def upload_hsc_images(pool, group_id, butler, refs):
+def upload_hsc_images(pool, temp_dir, group_id, butler, refs):
     """Upload one group of raw HSC images to the central repo
 
     Parameters
     ----------
     pool : `multiprocessing.pool.Pool`
         The process pool with which to schedule file uploads.
+    temp_dir : `str`
+        A directory in which to temporarily hold the images so that their
+        metadata can be modified.
     group_id : `str`
         The group ID under which to store the images.
     butler : `lsst.daf.butler.Butler`
@@ -203,12 +210,14 @@ def upload_hsc_images(pool, group_id, butler, refs):
     refs : iterable of `lsst.daf.butler.DatasetRef`
         The datasets to upload
     """
-    with tempfile.TemporaryDirectory() as temp_dir:
-        with time_this(log=_log, msg="Full visit processing", prefix=None):
-            pool.starmap(_upload_one_image,
-                         [(temp_dir, group_id, butler, ref) for ref in refs],
-                         chunksize=5  # Works well across a broad range of # processes
-                         )
+    # Non-blocking assignment lets us upload during the next exposure.
+    # Can't time these tasks directly, but the blocking equivalent took
+    # 12-20 s depending on tuning, or less than a single exposure.
+    pool.starmap_async(_upload_one_image,
+                       [(temp_dir, group_id, butler, ref) for ref in refs],
+                       error_callback=_log.exception,
+                       chunksize=5  # Works well across a broad range of # processes
+                       )
 
 
 def _get_max_processes():
