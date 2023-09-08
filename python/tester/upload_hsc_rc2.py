@@ -91,7 +91,9 @@ def main():
     # for Butler registry or S3.
     context = multiprocessing.get_context("spawn")
     max_processes = _get_max_processes()
-    # Use a shared pool to minimize initialization overhead.
+    # Use a shared pool to minimize initialization overhead. This has the
+    # benefit of letting the pool be initialized in parallel with the first
+    # exposure.
     _log.debug("Uploading with %d processes...", max_processes)
     with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool:
         for visit in visit_list:
@@ -205,7 +207,7 @@ def upload_hsc_images(pool, group_id, butler, refs):
         with time_this(log=_log, msg="Full visit processing", prefix=None):
             pool.starmap(_upload_one_image,
                          [(temp_dir, group_id, butler, ref) for ref in refs],
-                         chunksize=10
+                         chunksize=5  # Works well across a broad range of # processes
                          )
 
 
