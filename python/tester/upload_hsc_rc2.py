@@ -20,6 +20,8 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import logging
+import math
+import multiprocessing
 import random
 import sys
 import tempfile
@@ -28,6 +30,7 @@ import time
 import boto3
 from botocore.handlers import validate_bucket_name
 
+from lsst.utils.timer import time_this
 from lsst.daf.butler import Butler
 
 from activator.raw import get_raw_path
@@ -48,6 +51,24 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)
 
 
+# HACK: S3 object initialized once per process; see https://stackoverflow.com/questions/48091874/
+dest_bucket = None
+
+
+def _set_s3_bucket():
+    """Initialize and configure a bucket object to handle file upload.
+
+    This function sets the ``dest_bucket`` global rather than returning the
+    new bucket.
+    """
+    with time_this(log=_log, msg="Bucket initialization", prefix=None):
+        global dest_bucket
+        endpoint_url = "https://s3dfrgw.slac.stanford.edu"
+        s3 = boto3.resource("s3", endpoint_url=endpoint_url)
+        dest_bucket = s3.Bucket("rubin:rubin-pp")
+        dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
+
+
 def main():
     if len(sys.argv) < 2:
         print(f"Usage: {sys.argv[0]} N_GROUPS")
@@ -57,10 +78,7 @@ def main():
     date = time.strftime("%Y%m%d")
 
     kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
-    endpoint_url = "https://s3dfrgw.slac.stanford.edu"
-    s3 = boto3.resource("s3", endpoint_url=endpoint_url)
-    dest_bucket = s3.Bucket("rubin:rubin-pp")
-    dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
+    _set_s3_bucket()
 
     last_group = get_last_group(dest_bucket, "HSC", date)
     group_num = last_group + random.randrange(10, 19)
@@ -68,15 +86,29 @@ def main():
 
     butler = Butler("/repo/main")
     visit_list = get_hsc_visit_list(butler, n_groups)
-    for visit in visit_list:
-        group_num += 1
-        _log.info(f"Slewing to group {group_num}, with HSC visit {visit}")
-        time.sleep(SLEW_INTERVAL)
-        refs = prepare_one_visit(kafka_url, str(group_num), butler, visit)
-        _log.info(f"Taking exposure for group {group_num}")
-        time.sleep(EXPOSURE_INTERVAL)
-        _log.info(f"Uploading detector images for group {group_num}")
-        upload_hsc_images(dest_bucket, str(group_num), butler, refs)
+
+    # fork pools don't work well with connection pools, such as those used
+    # for Butler registry or S3.
+    context = multiprocessing.get_context("spawn")
+    max_processes = _get_max_processes()
+    # Use a shared pool to minimize initialization overhead. This has the
+    # benefit of letting the pool be initialized in parallel with the first
+    # exposure.
+    _log.debug("Uploading with %d processes...", max_processes)
+    with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool, \
+            tempfile.TemporaryDirectory() as temp_dir:
+        for visit in visit_list:
+            group_num += 1
+            refs = prepare_one_visit(kafka_url, str(group_num), butler, visit)
+            _log.info(f"Slewing to group {group_num}, with HSC visit {visit}")
+            time.sleep(SLEW_INTERVAL)
+            _log.info(f"Taking exposure for group {group_num}")
+            time.sleep(EXPOSURE_INTERVAL)
+            _log.info(f"Uploading detector images for group {group_num}")
+            upload_hsc_images(pool, temp_dir, str(group_num), butler, refs)
+        pool.close()
+        _log.info("Waiting for uploads to finish...")
+        pool.join()
 
 
 def get_hsc_visit_list(butler, n_sample):
@@ -161,13 +193,16 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     return refs
 
 
-def upload_hsc_images(dest_bucket, group_id, butler, refs):
+def upload_hsc_images(pool, temp_dir, group_id, butler, refs):
     """Upload one group of raw HSC images to the central repo
 
     Parameters
     ----------
-    dest_bucket: `S3.Bucket`
-        The bucket to which to upload the images.
+    pool : `multiprocessing.pool.Pool`
+        The process pool with which to schedule file uploads.
+    temp_dir : `str`
+        A directory in which to temporarily hold the images so that their
+        metadata can be modified.
     group_id : `str`
         The group ID under which to store the images.
     butler : `lsst.daf.butler.Butler`
@@ -175,38 +210,77 @@ def upload_hsc_images(dest_bucket, group_id, butler, refs):
     refs : iterable of `lsst.daf.butler.DatasetRef`
         The datasets to upload
     """
-    exposure_key, exposure_header, exposure_num = make_exposure_id("HSC", int(group_id), 0)
-    with tempfile.TemporaryDirectory() as temp_dir:
-        # Each ref is done separately because butler.retrieveArtifacts does not preserve the order.
-        for ref in refs:
-            dest_key = get_raw_path(
-                "HSC",
-                ref.dataId["detector"],
-                group_id,
-                0,
-                exposure_num,
-                ref.dataId["physical_filter"],
-            )
-            transferred = butler.retrieveArtifacts(
-                [ref],
-                transfer="copy",
-                preserve_path=False,
-                destination=temp_dir,
-            )
-            if len(transferred) != 1:
-                _log.error(
-                    f"{ref} has multitple artifacts and cannot be handled by current implementation"
-                )
-                continue
+    # Non-blocking assignment lets us upload during the next exposure.
+    # Can't time these tasks directly, but the blocking equivalent took
+    # 12-20 s depending on tuning, or less than a single exposure.
+    pool.starmap_async(_upload_one_image,
+                       [(temp_dir, group_id, butler, ref) for ref in refs],
+                       error_callback=_log.exception,
+                       chunksize=5  # Works well across a broad range of # processes
+                       )
 
-            path = transferred[0].path
-            _log.debug(
-                f"Raw file for {ref.dataId} was copied from Butler to {path}"
+
+def _get_max_processes():
+    """Return the optimal process limit.
+
+    Returns
+    -------
+    processes : `int`
+        The maximum number of processes that balances system usage, pool
+        overhead, and processing speed.
+    """
+    try:
+        return math.ceil(0.25*multiprocessing.cpu_count())
+    except NotImplementedError:
+        return 4
+
+
+def _upload_one_image(temp_dir, group_id, butler, ref):
+    """Upload a raw HSC image to the central repo.
+
+    Parameters
+    ----------
+    temp_dir : `str`
+        A directory in which to temporarily hold the images so that their
+        metadata can be modified.
+    group_id : `str`
+        The group ID under which to store the images.
+    butler : `lsst.daf.butler.Butler`
+        The source Butler with the raw data.
+    ref : `lsst.daf.butler.DatasetRef`
+        The dataset to upload.
+    """
+    with time_this(log=_log, msg="Single-image processing", prefix=None):
+        exposure_key, exposure_header, exposure_num = make_exposure_id("HSC", int(group_id), 0)
+        dest_key = get_raw_path(
+            "HSC",
+            ref.dataId["detector"],
+            group_id,
+            0,
+            exposure_num,
+            ref.dataId["physical_filter"],
+        )
+        # Each ref is done separately because butler.retrieveArtifacts does not preserve the order.
+        transferred = butler.retrieveArtifacts(
+            [ref],
+            transfer="copy",
+            preserve_path=False,
+            destination=temp_dir,
+        )
+        if len(transferred) != 1:
+            _log.error(
+                f"{ref} has multiple artifacts and cannot be handled by current implementation"
             )
-            with open(path, "r+b") as temp_file:
-                replace_header_key(temp_file, exposure_key, exposure_header)
-            dest_bucket.upload_file(path, dest_key)
-            _log.debug(f"{dest_key} was written at {dest_bucket}")
+            return
+
+        path = transferred[0].path
+        _log.debug(
+            f"Raw file for {ref.dataId} was copied from Butler to {path}"
+        )
+        with open(path, "r+b") as temp_file:
+            replace_header_key(temp_file, exposure_key, exposure_header)
+        dest_bucket.upload_file(path, dest_key)
+        _log.debug(f"{dest_key} was written at {dest_bucket}")
 
 
 if __name__ == "__main__":

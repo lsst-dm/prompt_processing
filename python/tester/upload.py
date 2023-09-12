@@ -66,6 +66,9 @@ def process_group(kafka_url, visit_infos, uploader):
         _log.info("No observations to make; aborting.")
         return
 
+    _log.info(f"Slewing to group {group}")
+    time.sleep(SLEW_INTERVAL)
+
     # TODO: need asynchronous code to handle next_visit delay correctly
     for snap in range(n_snaps):
         _log.info(f"Taking group: {group} snap: {snap}")
@@ -257,7 +260,6 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
                 dest_bucket.upload_fileobj(buffer, filename)
 
         process_group(kafka_url, visit_infos, upload_from_pool)
-        time.sleep(SLEW_INTERVAL)
 
 
 if __name__ == "__main__":
