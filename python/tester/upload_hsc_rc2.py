@@ -99,9 +99,9 @@ def main():
             tempfile.TemporaryDirectory() as temp_dir:
         for visit in visit_list:
             group_num += 1
+            refs = prepare_one_visit(kafka_url, str(group_num), butler, visit)
             _log.info(f"Slewing to group {group_num}, with HSC visit {visit}")
             time.sleep(SLEW_INTERVAL)
-            refs = prepare_one_visit(kafka_url, str(group_num), butler, visit)
             _log.info(f"Taking exposure for group {group_num}")
             time.sleep(EXPOSURE_INTERVAL)
             _log.info(f"Uploading detector images for group {group_num}")
