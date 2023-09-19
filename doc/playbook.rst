@@ -233,15 +233,13 @@ It includes the following required environment variables:
 * IMAGE_BUCKET: bucket containing raw images
 * CALIB_REPO: URI to repo containing calibrations (and templates)
 * LSST_DISABLE_BUCKET_VALIDATION: set this so to disable validation of S3 bucket names, allowing Ceph multi-tenant colon-separated names to be used.
-* IP_APDB: IP address or hostname and port of the APDB (see `Databases`_, below)
-* DB_APDB: PostgreSQL database name for the APDB
+* URL_APDB: the URL to the APDB, in any form recognized by SQLAlchemy
 * KAFKA_CLUSTER: hostname and port of the Kafka provider
 
 The following environment variables are optional:
 
 * IMAGE_TIMEOUT: timeout in seconds to wait after expected script completion for raw image arrival, default 20 sec.
 * LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
-* USER_APDB: database user for the APDB, default "postgres"
 * NAMESPACE_APDB: the database namespace for the APDB, defaults to the DB's default namespace
 * SERVICE_LOG_LEVELS: requested logging levels in the format of `Middleware's --log-level argument <https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/scripts/butler.html#cmdoption-butler-log-level>`_.
   Default is to log prompt_prototype at DEBUG, other LSST code at INFO, and third-party code at WARNING.

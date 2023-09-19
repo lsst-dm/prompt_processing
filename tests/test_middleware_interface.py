@@ -117,9 +117,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.env_patcher = unittest.mock.patch.dict(os.environ,
-                                                   {"IP_APDB": "localhost",
-                                                    "DB_APDB": "postgres",
-                                                    "USER_APDB": "postgres",
+                                                   {"URL_APDB": "postgresql://localhost/postgres",
                                                     "K_REVISION": "prompt-proto-service-042",
                                                     })
         cls.env_patcher.start()
@@ -805,9 +803,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         super().setUpClass()
 
         cls.env_patcher = unittest.mock.patch.dict(os.environ,
-                                                   {"IP_APDB": "localhost",
-                                                    "DB_APDB": "postgres",
-                                                    "USER_APDB": "postgres",
+                                                   {"URL_APDB": "postgresql://localhost/postgres",
                                                     "K_REVISION": "prompt-proto-service-042",
                                                     })
         cls.env_patcher.start()

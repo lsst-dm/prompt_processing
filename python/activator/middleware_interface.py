@@ -179,7 +179,6 @@ class MiddlewareInterface:
     """
 
     # Class invariants:
-    # self._apdb_uri is a valid URI that unambiguously identifies the APDB
     # self.image_host is a valid URI with non-empty path and no query or fragment.
     # self._download_store is None if and only if self.image_host is a local URI.
     # self.visit, self.instrument, self.camera, self.skymap, self._deployment
@@ -262,11 +261,7 @@ class MiddlewareInterface:
     def _make_apdb_uri(self):
         """Generate a URI for accessing the APDB.
         """
-        # TODO: merge this code with make_pgpass.py
-        ip_apdb = os.environ["IP_APDB"]  # Also includes port
-        db_apdb = os.environ["DB_APDB"]
-        user_apdb = os.environ.get("USER_APDB", "postgres")
-        return f"postgresql://{user_apdb}@{ip_apdb}/{db_apdb}"
+        return os.environ["URL_APDB"]
 
     def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
         """Prepare the local butler to ingest into and process from.
