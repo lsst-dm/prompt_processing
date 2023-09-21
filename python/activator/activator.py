@@ -37,7 +37,6 @@ from flask import Flask, request
 
 from .config import PipelinesConfig
 from .logger import setup_usdf_logger
-from .make_pgpass import make_pgpass
 from .middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface
 from .raw import (
     get_prefix_from_snap,
@@ -80,10 +79,6 @@ _log.setLevel(logging.DEBUG)
 
 
 try:
-    # Write PostgreSQL credentials.
-    # This MUST be done before creating a Butler or accessing the APDB.
-    make_pgpass()
-
     app = Flask(__name__)
 
     consumer = kafka.Consumer({

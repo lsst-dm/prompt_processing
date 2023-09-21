@@ -214,44 +214,30 @@ The service can be controlled with ``kubectl`` from ``rubin-devl``.
 You must first `get credentials for the development cluster <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev>`_ on the web; ignore the installation instructions and copy the commands from the second box.
 Credentials must be renewed if you get a "cannot fetch token: 400 Bad Request" error when running ``kubectl``.
 
-Each time the service container is updated, a new revision of the service should be edited and deployed.
-(Continuous deployment has not yet been set up.)
-To create the service, clone the `slaclab/rubin-usdf-prompt-processing`_ repo and navigate to the ``kubernetes/overlays/dev/prompt-proto-service`` directory.
-Edit ``prompt-proto-service.yaml`` to point to the new service container (likely a ticket branch instead of ``latest``), then run ``make apply`` *from the same directory*.
-See the readme in that directory for more details.
+The service container deployment is managed using `Argo CD and Phalanx <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev/argo-cd>`_.
+See the `Phalanx`_ docs for information on working with Phalanx in general (including special developer environment setup).
 
-.. _slaclab/rubin-usdf-prompt-processing: https://github.com/slaclab/rubin-usdf-prompt-processing/
+There are two different ways to deploy a development release of the service:
 
-All service configuration is in ``prompt-proto-service.yaml``.
-It includes the following required environment variables:
+* If you will not be making permanent changes to the Phalanx config, go to the Argo UI, select the specific ``prompt-proto-service-<instrument>`` service, then select the first "svc" node.
+  Scroll down to the live manifest, click "edit", then update the ``template.spec.containers.image`` key to point to the new service container (likely a ticket branch instead of ``latest``).
+  The service will immediately redeploy with the new image.
+  To force an update of the container, edit ``template.metadata.annotations.revision``.
+  *Do not* click "SYNC" on the main screen, as that will undo all your edits.
+* If you will be making permanent changes of any kind, the above procedure would force you to re-enter your changes with each update of the ``phalanx`` branch.
+  Instead, clone the `lsst-sqre/phalanx`_ repo and navigate to the ``applications/prompt-proto-service-<instrument>`` directory.
+  Edit ``values-usdfdev-prompt-processing.yaml`` to point to the new service container (likely a ticket branch instead of ``latest``) and push the branch.
+  You do not need to create a PR.
+  Then, in the Argo UI, follow the instructions in `the Phalanx docs <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#switching-the-argo-cd-application-to-sync-the-branch>`_.
+  To force a container update without a corresponding ``phalanx`` update, you need to edit ``template.metadata.annotations.revision`` as described above -- `restarting a deployment <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#restarting-a-deployment>`_ that's part of a service does not check for a newer container, even with Always pull policy.
 
-* RUBIN_INSTRUMENT: the "short" instrument name
-* PIPELINES_CONFIG: a machine-readable string describing which pipeline(s) should be run for which visits.
-  Notation is complex and still in flux; see :file:`../python/activator/config.py` for current documentation and examples.
-* PUBSUB_VERIFICATION_TOKEN: choose an arbitrary string matching the Pub/Sub endpoint URL below.
-  This variable is currently unused and may be removed in the future.
-* IMAGE_BUCKET: bucket containing raw images
-* CALIB_REPO: URI to repo containing calibrations (and templates)
-* LSST_DISABLE_BUCKET_VALIDATION: set this so to disable validation of S3 bucket names, allowing Ceph multi-tenant colon-separated names to be used.
-* IP_APDB: IP address or hostname and port of the APDB (see `Databases`_, below)
-* IP_REGISTRY: IP address or hostname and port of the registry database (see `Databases`_)
-* DB_APDB: PostgreSQL database name for the APDB
-* PSQL_APDB_PASS: secret containing the password for ``USER_APDB`` (see below)
-* DB_REGISTRY: PostgreSQL database name for the registry database
-* PSQL_REGISTRY_PASS: secret containing the password for ``USER_REGISTRY`` (see below)
-* KAFKA_CLUSTER: hostname and port of the Kafka provider
+.. _Phalanx: https://phalanx.lsst.io/developers/
+.. _lsst-sqre/phalanx: https://github.com/lsst-sqre/phalanx/
 
-The following environment variables are optional:
-
-* IMAGE_TIMEOUT: timeout in seconds to wait after expected script completion for raw image arrival, default 20 sec.
-* LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
-* USER_APDB: database user for the APDB, default "postgres"
-* USER_REGISTRY: database user for the registry database, default "postgres"
-* NAMESPACE_APDB: the database namespace for the APDB, defaults to the DB's default namespace
-* SERVICE_LOG_LEVELS: requested logging levels in the format of `Middleware's --log-level argument <https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/scripts/butler.html#cmdoption-butler-log-level>`_.
-  Default is to log prompt_prototype at DEBUG, other LSST code at INFO, and third-party code at WARNING.
-
-Secrets are configured through the makefile and ``kustomization.yaml``.
+The service configuration is in each instrument's ``values.yaml`` (for settings shared between development and production) and ``values-usdfdev-prompt-processing.yaml`` (for development-only settings).
+``values.yaml`` and ``README.md`` provide documentation for all settings.
+The actual Kubernetes config (and the implementation of new config settings or secrets) is in ``charts/prompt-proto-service/templates/prompt-proto-service.yaml``.
+This file fully supports the Go template syntax.
 
 A few useful commands for managing the service:
 
