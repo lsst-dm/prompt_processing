@@ -381,6 +381,7 @@ class MiddlewareInterface:
                 self._export_refcats(export, center, radius)
                 self._export_skymap_and_templates(export, center, detector, wcs, self.visit.filters)
                 self._export_calibs(export, self.visit.detector, self.visit.filters)
+                self._export_collections(export, self._get_template_collection())
                 self._export_collections(export, self.instrument.makeUmbrellaCollectionName())
 
             self.butler.import_(filename=export_file.name,
@@ -486,7 +487,6 @@ class MiddlewareInterface:
         else:
             _log.debug("Found %d new template datasets.", len(templates))
             export.saveDatasets(templates)
-        self._export_collections(export, self._get_template_collection())
 
     def _export_calibs(self, export, detector_id, filter):
         """Export the calibs for this visit from the central butler.
