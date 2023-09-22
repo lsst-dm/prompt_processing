@@ -132,7 +132,9 @@ def _export_for_copy(butler, target_butler):
             "LATISS/calib/DM-38946",
             "LATISS/calib/DM-39505",
             "LATISS/templates",
+            "LATISS/calib/unbounded",
         ]:
+            logging.debug(f"Selecting collection {collection}")
             try:
                 target_butler.registry.queryCollections(collection)
             except daf_butler.registry.MissingCollectionError:
