@@ -378,9 +378,11 @@ class MiddlewareInterface:
 
         with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
             with self.central_butler.export(filename=export_file.name, format="yaml") as export:
-                self._export_refcats(export, center, radius)
-                self._export_skymap_and_templates(export, center, detector, wcs, self.visit.filters)
-                self._export_calibs(export, self.visit.detector, self.visit.filters)
+                export.saveDatasets(self._export_refcats(center, radius))
+                export.saveDatasets(
+                    self._export_skymap_and_templates(center, detector, wcs, self.visit.filters))
+                export.saveDatasets(self._export_calibs(self.visit.detector, self.visit.filters),
+                                    elements=[])
                 self._export_collections(export, self._get_template_collection())
                 self._export_collections(export, self.instrument.makeUmbrellaCollectionName())
 
@@ -402,17 +404,20 @@ class MiddlewareInterface:
         """
         return self.instrument.makeCollectionName("templates")
 
-    def _export_refcats(self, export, center, radius):
-        """Export the refcats for this visit from the central butler.
+    def _export_refcats(self, center, radius):
+        """Identify the refcats to export from the central butler.
 
         Parameters
         ----------
-        export : `Iterator[RepoExportContext]`
-            Export context manager.
         center : `lsst.geom.SpherePoint`
             Center of the region to find refcat shards in.
         radius : `lst.geom.Angle`
             Radius to search for refcat shards in.
+
+        Returns
+        -------
+        refcats : iterable [`DatasetRef`]
+            The refcats to be exported, after any filtering.
         """
         indexer = HtmIndexer(depth=7)
         shard_ids, _ = indexer.getShardIds(center, radius+self.padding)
@@ -431,16 +436,13 @@ class MiddlewareInterface:
                       where=htm_where,
                       findFirst=True))
         _log.debug("Found %d new refcat datasets.", len(refcats))
-        export.saveDatasets(refcats)
+        return refcats
 
-    def _export_skymap_and_templates(self, export, center, detector, wcs, filter):
-        """Export the skymap and templates for this visit from the central
-        butler.
+    def _export_skymap_and_templates(self, center, detector, wcs, filter):
+        """Identify the skymap and templates to export from the central butler.
 
         Parameters
         ----------
-        export : `Iterator[RepoExportContext]`
-            Export context manager.
         center : `lsst.geom.SpherePoint`
             Center of the region to load the skyamp tract/patches for.
         detector : `lsst.afw.cameraGeom.Detector`
@@ -449,6 +451,11 @@ class MiddlewareInterface:
             Rough WCS for the upcoming visit, to help finding patches.
         filter : `str`
             Physical filter for which to export templates.
+
+        Returns
+        -------
+        skymapTemplates : iterable [`DatasetRef`]
+            The datasets to be exported, after any filtering.
         """
         # TODO: This exports the whole skymap, but we want to only export the
         # subset of the skymap that covers this data.
@@ -459,7 +466,6 @@ class MiddlewareInterface:
             collections=self._COLLECTION_SKYMAP,
             findFirst=True))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
-        export.saveDatasets(skymaps)
         # Getting only one tract should be safe: we're getting the
         # tract closest to this detector, so we should be well within
         # the tract bbox.
@@ -484,21 +490,25 @@ class MiddlewareInterface:
                 findFirst=True))
         except _MissingDatasetError as err:
             _log.error(err)
+            templates = set()
         else:
             _log.debug("Found %d new template datasets.", len(templates))
-            export.saveDatasets(templates)
+        return skymaps | templates
 
-    def _export_calibs(self, export, detector_id, filter):
-        """Export the calibs for this visit from the central butler.
+    def _export_calibs(self, detector_id, filter):
+        """Identify the calibs to export from the central butler.
 
         Parameters
         ----------
-        export : `Iterator[RepoExportContext]`
-            Export context manager.
         detector_id : `int`
             Identifier of the detector to load calibs for.
         filter : `str`
             Physical filter name of the upcoming visit.
+
+        Returns
+        -------
+        calibs : iterable [`DatasetRef`]
+            The calibs to be exported, after any filtering.
         """
         # TODO: we can't filter by validity range because it's not
         # supported in queryDatasets yet.
@@ -520,9 +530,7 @@ class MiddlewareInterface:
                 _log.debug("Found %d new calib datasets of type '%s'.", n_datasets, dataset_type)
         else:
             _log.debug("Found 0 new calib datasets.")
-        export.saveDatasets(
-            calibs,
-            elements=[])  # elements=[] means do not export dimension records
+        return calibs
 
     def _export_collections(self, export, collection):
         """Export the collection and all its children.
