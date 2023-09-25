@@ -907,7 +907,8 @@ class MiddlewareInterface:
                 # Since AP processing is strictly visit-detector, these three
                 # dimensions should suffice.
                 # DO NOT assume that visit == exposure!
-                where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
+                where="exposure in (exposure_ids)",
+                bind={"exposure_ids": exposure_ids},
                 instrument=self.instrument.getName(),
                 detector=self.visit.detector,
             ))
@@ -918,19 +919,25 @@ class MiddlewareInterface:
         # TODO: get a proper synchronization API for Butler
         self.central_butler.registry.refresh()
 
-        with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
-            # MUST NOT export governor dimensions, as this causes deadlocks in
-            # central registry. Can omit most other dimensions (all dimensions,
-            # after DM-36051) to avoid locks or redundant work.
-            # TODO: saveDatasets(elements={"exposure", "visit"}) doesn't work.
-            # Use import(skip_dimensions) until DM-36062 is fixed.
-            with self.butler.export(filename=export_file.name) as export:
-                export.saveDatasets(datasets)
-            self.central_butler.import_(filename=export_file.name,
-                                        directory=self.butler.datastore.root,
-                                        skip_dimensions={"instrument", "detector",
-                                                         "skymap", "tract", "patch"},
-                                        transfer="copy")
+        # Transferring governor dimensions in parallel can cause deadlocks in
+        # central registry. We need to transfer our exposure/visit dimensions,
+        # so handle those manually.
+        for dimension in ["exposure",
+                          "visit",
+                          "visit_definition",
+                          "visit_detector_region",
+                          "visit_system",
+                          "visit_system_membership",
+                          ]:
+            for record in self.butler.registry.queryDimensionRecords(
+                dimension,
+                where="exposure in (exposure_ids)",
+                bind={"exposure_ids": exposure_ids},
+                instrument=self.instrument.getName(),
+                detector=self.visit.detector,
+            ):
+                self.central_butler.registry.syncDimensionData(dimension, record, update=False)
+        self.central_butler.transfer_from(self.butler, datasets, transfer="copy", transfer_dimensions=False)
 
         return datasets
 
