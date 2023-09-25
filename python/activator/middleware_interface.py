@@ -381,14 +381,16 @@ class MiddlewareInterface:
                 export.saveDatasets(self._export_refcats(center, radius))
                 export.saveDatasets(
                     self._export_skymap_and_templates(center, detector, wcs, self.visit.filters))
-                export.saveDatasets(self._export_calibs(self.visit.detector, self.visit.filters),
-                                    elements=[])
-                self._export_collections(export, self._get_template_collection())
-                self._export_collections(export, self.instrument.makeUmbrellaCollectionName())
+                calib_datasets = self._export_calibs(self.visit.detector, self.visit.filters)
+                export.saveDatasets(calib_datasets, elements=[])
+            self._export_collections(self._get_template_collection())
+            self._export_collections(self.instrument.makeUmbrellaCollectionName())
 
             self.butler.import_(filename=export_file.name,
                                 directory=self.central_butler.datastore.root,
                                 transfer="copy")
+
+        self._export_calib_associations(self.instrument.makeCalibrationCollectionName(), calib_datasets)
 
         # Temporary workarounds until we have a prompt-processing default top-level collection
         # in shared repos, and raw collection in dev repo, and then we can organize collections
@@ -532,7 +534,7 @@ class MiddlewareInterface:
             _log.debug("Found 0 new calib datasets.")
         return calibs
 
-    def _export_collections(self, export, collection):
+    def _export_collections(self, collection):
         """Export the collection and all its children.
 
         This preserves the collection structure even if some child collections
@@ -540,15 +542,56 @@ class MiddlewareInterface:
 
         Parameters
         ----------
-        export : `Iterator[RepoExportContext]`
-            Export context manager.
         collection : `str`
             The collection to be exported. It is usually a CHAINED collection
             and can have many children.
         """
-        for child in self.central_butler.registry.queryCollections(
-                collection, flattenChains=True, includeChains=True):
-            export.saveCollection(child)
+        src = self.central_butler.registry
+        dest = self.butler.registry
+
+        # Store collection chains after all children guaranteed to exist
+        chains = {}
+        for child in src.queryCollections(collection, flattenChains=True, includeChains=True):
+            if src.getCollectionType(child) == CollectionType.CHAINED:
+                chains[child] = src.getCollectionChain(child)
+            dest.registerCollection(child,
+                                    src.getCollectionType(child),
+                                    src.getCollectionDocumentation(child))
+        for chain, children in chains.items():
+            dest.setCollectionChain(chain, children)
+
+    def _export_calib_associations(self, calib_collection, datasets):
+        """Export the associations between a set of datasets and a
+        calibration collection.
+
+        Parameters
+        ----------
+        calib_collection : `str`
+            The calibration collection, or a chain thereof, containing the
+            associations. The collection and any children must exist in both
+            the central and local repos.
+        datasets : iterable [`lsst.daf.butler.DatasetRef']
+            The calib datasets whose associations must be exported. Must be
+            certified in ``calib_collection`` in the central repo, and must
+            exist in the local repo.
+        """
+        dataset_types = {ref.datasetType for ref in datasets}
+        associations = {}
+        for dataset_type in dataset_types:
+            associations.update(
+                (a.ref, a) for a in self.central_butler.registry.queryDatasetAssociations(
+                    dataset_type,
+                    calib_collection,
+                    collectionTypes={CollectionType.CALIBRATION},
+                    flattenChains=True
+                )
+            )
+        for dataset in datasets:
+            association = associations[dataset]
+            # certify is designed to work on groups of datasets; in practice,
+            # the total number of calibs (~1 of each type) is small enough that
+            # grouping by timespan isn't worth it.
+            self.butler.registry.certify(association.collection, [dataset], association.timespan)
 
     @staticmethod
     def _count_by_type(refs):
