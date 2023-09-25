@@ -376,20 +376,19 @@ class MiddlewareInterface:
         self.central_butler.registry.refresh()
         self.butler.registry.refresh()
 
-        with tempfile.NamedTemporaryFile(mode="w+b", suffix=".yaml") as export_file:
-            with self.central_butler.export(filename=export_file.name, format="yaml") as export:
-                export.saveDatasets(self._export_refcats(center, radius))
-                export.saveDatasets(
-                    self._export_skymap_and_templates(center, detector, wcs, self.visit.filters))
-                calib_datasets = self._export_calibs(self.visit.detector, self.visit.filters)
-                export.saveDatasets(calib_datasets, elements=[])
-            self._export_collections(self._get_template_collection())
-            self._export_collections(self.instrument.makeUmbrellaCollectionName())
+        refcat_datasets = list(self._export_refcats(center, radius))
+        template_datasets = list(self._export_skymap_and_templates(center, detector, wcs, self.visit.filters))
+        calib_datasets = list(self._export_calibs(self.visit.detector, self.visit.filters))
+        self.butler.transfer_from(self.central_butler,
+                                  refcat_datasets + template_datasets + calib_datasets,
+                                  transfer="copy",
+                                  skip_missing=True,
+                                  register_dataset_types=True,
+                                  transfer_dimensions=True,
+                                  )
 
-            self.butler.import_(filename=export_file.name,
-                                directory=self.central_butler.datastore.root,
-                                transfer="copy")
-
+        self._export_collections(self._get_template_collection())
+        self._export_collections(self.instrument.makeUmbrellaCollectionName())
         self._export_calib_associations(self.instrument.makeCalibrationCollectionName(), calib_datasets)
 
         # Temporary workarounds until we have a prompt-processing default top-level collection
