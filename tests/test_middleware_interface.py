@@ -921,8 +921,11 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
         self.second_processed_data_id = {(k if k != "exposure" else "visit"): v
                                          for k, v in self.second_data_id.items()}
-        # Dataset types defined for local Butler on pipeline run, but no
-        # guarantee this happens in central Butler.
+        # Dataset types defined for local Butler on pipeline run, but code
+        # assumes output types already exist in central repo.
+        butler_tests.addDatasetType(self.interface.central_butler, "calexp",
+                                    {"instrument", "visit", "detector"},
+                                    "ExposureF")
         butler_tests.addDatasetType(self.interface.butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
