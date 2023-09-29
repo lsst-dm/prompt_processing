@@ -252,8 +252,7 @@ def next_visit_handler() -> Tuple[str, int]:
             return "No pipeline configured for the received visit.", 422
 
         log_factory = logging.getLogRecordFactory()
-        with log_factory.add_context(#group=expected_visit.groupId,
-                                     survey=expected_visit.survey,
+        with log_factory.add_context(survey=expected_visit.survey,
                                      detector=expected_visit.detector,
                                      ):
             expid_set = set()
