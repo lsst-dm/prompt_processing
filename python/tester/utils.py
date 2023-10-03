@@ -36,6 +36,7 @@ import requests
 
 from astropy.io import fits
 
+from activator.raw import _LSST_CAMERA_LIST
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)
@@ -71,6 +72,9 @@ def get_last_group(bucket, instrument, date):
         The largest existing group for ``instrument``, or a newly generated
         group if none exist.
     """
+    if instrument in _LSST_CAMERA_LIST:
+        raise NotImplementedError
+
     preblobs = bucket.objects.filter(
         Prefix=f"{instrument}/",
     )

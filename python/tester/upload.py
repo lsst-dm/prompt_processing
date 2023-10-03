@@ -10,7 +10,7 @@ import time
 import boto3
 from botocore.handlers import validate_bucket_name
 
-from activator.raw import OTHER_REGEXP, get_raw_path
+from activator.raw import OTHER_REGEXP, get_raw_path, _LSST_CAMERA_LIST
 from activator.visit import FannedOutVisit, SummitVisit
 from tester.utils import (
     get_last_group,
@@ -102,14 +102,18 @@ def main():
     dest_bucket = s3.Bucket("rubin:rubin-pp")
     dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
-    last_group = get_last_group(dest_bucket, instrument, date)
-    _log.info(f"Last group {last_group}")
-
     src_bucket = s3.Bucket("rubin:rubin-pp-users")
     src_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
-    raw_pool = get_samples(src_bucket, instrument)
 
+    last_group = get_last_group(dest_bucket, instrument, date)
     new_group_base = increment_group(instrument, last_group, random.randrange(10, 19))
+    _log.info(f"Last group {last_group}. New group base {new_group_base}")
+
+    if instrument in _LSST_CAMERA_LIST:
+        raise NotImplementedError
+    else:
+        raw_pool = get_samples_non_lsst(src_bucket, instrument)
+
     if raw_pool:
         _log.info(f"Observing real raw files from {instrument}.")
         upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket,
@@ -118,7 +122,7 @@ def main():
         _log.error(f"No raw files found for {instrument}, aborting.")
 
 
-def get_samples(bucket, instrument):
+def get_samples_non_lsst(bucket, instrument):
     """Return any predefined raw exposures for a given instrument.
 
     Parameters
