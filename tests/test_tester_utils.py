@@ -78,11 +78,11 @@ class TesterUtilsTest(unittest.TestCase):
         bucket = s3.Bucket(self.bucket_name)
 
         last_group = get_last_group(bucket, "TestCam", "20221102")
-        self.assertEqual(last_group, 2022110200002)
+        self.assertEqual(last_group, "2022110200002")
 
         # Test the case of no match
         last_group = get_last_group(bucket, "TestCam", "20110101")
-        self.assertEqual(last_group, int(20110101) * 100_000)
+        self.assertEqual(last_group, str(int(20110101) * 100_000))
 
     def test_exposure_id_hsc(self):
         group = "2023011100026"

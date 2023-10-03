@@ -81,8 +81,8 @@ def main():
     _set_s3_bucket()
 
     last_group = get_last_group(dest_bucket, "HSC", date)
-    group_num = last_group + random.randrange(10, 19)
-    _log.debug(f"Last group {last_group}; new group base {group_num}")
+    group = str(int(last_group) + random.randrange(10, 19))
+    _log.debug(f"Last group {last_group}; new group base {group}")
 
     butler = Butler("/repo/main")
     visit_list = get_hsc_visit_list(butler, n_groups)
@@ -98,14 +98,14 @@ def main():
     with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool, \
             tempfile.TemporaryDirectory() as temp_dir:
         for visit in visit_list:
-            group_num += 1
-            refs = prepare_one_visit(kafka_url, str(group_num), butler, visit)
-            _log.info(f"Slewing to group {group_num}, with HSC visit {visit}")
+            group = str(int(group) + 1)
+            refs = prepare_one_visit(kafka_url, group, butler, visit)
+            _log.info(f"Slewing to group {group}, with HSC visit {visit}")
             time.sleep(SLEW_INTERVAL)
-            _log.info(f"Taking exposure for group {group_num}")
+            _log.info(f"Taking exposure for group {group}")
             time.sleep(EXPOSURE_INTERVAL)
-            _log.info(f"Uploading detector images for group {group_num}")
-            upload_hsc_images(pool, temp_dir, str(group_num), butler, refs)
+            _log.info(f"Uploading detector images for group {group}")
+            upload_hsc_images(pool, temp_dir, group, butler, refs)
         pool.close()
         _log.info("Waiting for uploads to finish...")
         pool.join()

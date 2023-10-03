@@ -45,9 +45,9 @@ exposure IDs are in Middleware (integer) format, not native format.
 
 
 def get_last_group(bucket, instrument, date):
-    """Identify the largest group number or a new group number.
+    """Identify the largest group ID or a new group ID.
 
-    This number helps decide the next group number so it will not
+    This helps decide the next group ID so it will not
     collide with any previous groups.
 
     Parameters
@@ -61,7 +61,7 @@ def get_last_group(bucket, instrument, date):
 
     Returns
     -------
-    group : `int`
+    group : `str`
         The largest existing group for ``instrument``, or a newly generated
         group if none exist.
     """
@@ -75,9 +75,10 @@ def get_last_group(bucket, instrument, date):
     )
     prefixes = [int(blob.key.split("/")[2]) for blob in blobs]
     if len(prefixes) == 0:
-        return int(date) * 100_000
+        group = int(date) * 100_000
     else:
-        return max(prefixes)
+        group = max(prefixes)
+    return str(group)
 
 
 def make_exposure_id(instrument, group_num, snap):
