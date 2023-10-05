@@ -1,4 +1,5 @@
 import dataclasses
+import datetime
 import itertools
 import json
 import logging
@@ -236,17 +237,6 @@ def get_samples_lsst(bucket, instrument):
         innermost mapping is the observation metadata for each detector,
         and a Blob representing the image taken in that detector-snap.
     """
-    latiss_metadata = {
-        2023082900500: {
-            "ra": 270.14386585558344,
-            "dec": -24.989937309744448,
-            "rot": 360.0,
-            "time": 1693371362.626,
-            "filter": "SDSSr_65mm~empty",
-            "group" : "2023-08-30T04:54:42.780",
-        },
-    }
-
     # The pre-made raw files are stored with the "unobserved" prefix
     blobs = bucket.objects.filter(Prefix=f"unobserved/{instrument}/")
     result = {}
@@ -256,29 +246,36 @@ def get_samples_lsst(bucket, instrument):
         m = re.match(LSST_REGEXP, blob.key)
         if not m or m["extension"] == ".json":
             continue
-        _, _, day_obs, seq_num = m["obs_id"].split("_")
-        exp_id = LsstBaseTranslator.compute_exposure_id(day_obs, int(seq_num))
+
+        # Retrieve the corresponding sidecar json file
+        sidecar = ResourcePath("s3://" + blob.bucket_name).join(
+            blob.key.removesuffix(m["extension"]) + ".json"
+        )
+        if not sidecar.exists():
+            raise RuntimeError(f"Unable to retrieve JSON sidecar: {sidecar}")
+        with sidecar.open("r") as f:
+            md = json.load(f)
 
         visit = FannedOutVisit(
             instrument=instrument,
             detector=_DETECTOR_FROM_RS[instrument][m["raft_sensor"]],
-            groupId=latiss_metadata[exp_id]["group"],
+            groupId=md["GROUPID"],
             nimages=INSTRUMENTS[instrument].n_snaps,
-            filters=latiss_metadata[exp_id]["filter"],
+            filters=md["FILTBAND"],
             coordinateSystem=FannedOutVisit.CoordSys.ICRS,
-            position=[latiss_metadata[exp_id]["ra"], latiss_metadata[exp_id]["dec"]],
+            position=[md["RA"], md["DEC"]],
             rotationSystem=FannedOutVisit.RotSys.SKY,
-            cameraAngle=latiss_metadata[exp_id]["rot"],
+            cameraAngle=md["ROTPA"],
             survey="SURVEY",
             salIndex=2,  # 2 is LATISS
             scriptSalIndex=2,
             dome=FannedOutVisit.Dome.OPEN,
             duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
             totalCheckpoints=1,
-            private_sndStamp=latiss_metadata[exp_id]["time"],
+            private_sndStamp=datetime.datetime.fromisoformat(md["DATE"]).timestamp(),
         )
-        _log.debug(f"File {blob.key} parsed as visit {visit} and registered.")
-        result[latiss_metadata[exp_id]["group"]] = {0: {visit: blob}}
+        _log.debug(f"File {blob.key} parsed as visit {visit} and registered as group {md['GROUPID']}.")
+        result[md["GROUPID"]] = {0: {visit: blob}}
 
     return result
 
