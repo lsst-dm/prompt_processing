@@ -24,6 +24,8 @@ __all__ = [
     "make_exposure_id",
     "replace_header_key",
     "send_next_visit",
+    "make_group",
+    "decode_group",
     "increment_group",
 ]
 
@@ -239,6 +241,47 @@ def day_obs_to_unix_utc(day_obs):
         tzinfo=datetime.timezone(-datetime.timedelta(hours=4))
     ) + datetime.timedelta(days=1)  # Day advances at midnight
     return calendar.timegm(midnight.utctimetuple())
+
+
+def make_group(day_obs, seq_num):
+    """Make up a LSST-like group ID to be used in testers.
+
+    Parameters
+    ----------
+    day_obs : `str`
+        Day of observation in YYYYMMDD format.
+    seq_num : `int`
+        Sequence number.
+
+    Returns
+    -------
+    group_id : `str`
+        A group ID in the LSST style.
+    """
+    return datetime.datetime.strptime(f"{day_obs}{seq_num:06d}", "%Y%m%d%f").isoformat(
+        timespec="microseconds"
+    )
+
+
+def decode_group(group):
+    """Interpret a group ID made by `make_group`
+
+    Parameters
+    ----------
+    group_id : `str`
+        A group ID made by `make_group`.
+
+    Returns
+    -------
+    day_obs : `str`
+        Day of observation in YYYYMMDD format.
+    seq_num : `int`
+        Sequence number.
+    """
+    timestamp = datetime.datetime.fromisoformat(group)
+    day_obs = timestamp.strftime("%Y%m%d")
+    seq_num = int(timestamp.strftime("%f"))
+    return day_obs, seq_num
 
 
 def increment_group(instrument, group_base, amount):

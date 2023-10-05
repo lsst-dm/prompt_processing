@@ -37,6 +37,8 @@ from tester.utils import (
     get_last_group,
     make_exposure_id,
     day_obs_to_unix_utc,
+    make_group,
+    decode_group,
     increment_group,
 )
 
@@ -140,6 +142,18 @@ class TesterDateHandlingTest(unittest.TestCase):
 
 class TesterGoupIdTest(unittest.TestCase):
     """Test the utilities on the made-up group ID"""
+
+    def test_round_trip(self):
+        for day_obs, seq_num in [
+            ("20230123", 456),
+            ("20241231", 1000),
+        ]:
+            self.assertEqual(
+                (day_obs, seq_num), decode_group(make_group(day_obs, seq_num))
+            )
+
+        for group_id in ["2023-01-23T00:00:00.000456", "2024-12-31T00:00:00.001000"]:
+            self.assertEqual(group_id, make_group(*decode_group(group_id)))
 
     def test_increment_group(self):
         group_base = "2022110200002"
