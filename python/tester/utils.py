@@ -38,6 +38,8 @@ import requests
 
 from astropy.io import fits
 
+from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
+
 from activator.raw import _LSST_CAMERA_LIST
 
 _log = logging.getLogger("lsst." + __name__)
@@ -56,7 +58,8 @@ exposure IDs are in Middleware (integer) format, not native format.
 def get_last_group(bucket, instrument, date):
     """Identify the largest group ID or a new group ID.
 
-    This helps decide the next group ID so it will not
+    This checks the last file existing in the bucket,
+    and helps decide the next group ID so it will not
     collide with any previous groups.
 
     Parameters
@@ -75,7 +78,15 @@ def get_last_group(bucket, instrument, date):
         group if none exist.
     """
     if instrument in _LSST_CAMERA_LIST:
-        raise NotImplementedError
+        blobs = bucket.objects.filter(
+            Prefix=f"{instrument}/{date}/",
+        )
+        numbers = [int(blob.key.split("/")[2].split("_")[-1]) for blob in blobs]
+        if numbers:
+            last_number = max(numbers)
+        else:
+            last_number = 0
+        return make_group(date, last_number)
 
     preblobs = bucket.objects.filter(
         Prefix=f"{instrument}/",
@@ -121,6 +132,8 @@ def make_exposure_id(instrument, group_id, snap):
     match instrument:
         case "HSC":
             return make_hsc_id(group_id, snap)
+        case "LATISS":
+            return make_latiss_id(group_id, snap)
         case _:
             raise NotImplementedError(f"Exposure ID generation not supported for {instrument}.")
 
@@ -162,6 +175,34 @@ def make_hsc_id(group_id, snap):
         raise RuntimeError(f"{group_num} translated to expId {exposure_id}, "
                            f"max allowed is { max_exposure['HSC']}.")
     return exposure_id, {"EXP-ID": f"HSCE{exposure_id:08d}"}
+
+
+def make_latiss_id(group_id, snap):
+    """Generate an exposure ID that the Butler can parse as a valid LATISS ID.
+
+    Parameters
+    ----------
+    group_id : `str`
+        The mocked group ID.
+    snap : `int`
+        A snap ID.
+
+    Returns
+    -------
+    exposure_number :
+        An exposure ID in the format expected by Gen 3 Middleware.
+    headers : `dict`
+        The key-value pairs are in the form to appear in LATISS headers.
+    """
+    day_obs, seq_num = decode_group(group_id)
+    exposure_num = LsstBaseTranslator.compute_exposure_id(day_obs, seq_num)
+    obs_id = f"AT_O_{day_obs}_{seq_num:06d}"
+    return exposure_num, {
+        "DAYOBS": day_obs,
+        "SEQNUM": seq_num,
+        "OBSID": obs_id,
+        "GROUPID": group_id,
+    }
 
 
 def send_next_visit(url, group, visit_infos):
@@ -303,5 +344,11 @@ def increment_group(instrument, group_base, amount):
         The numerical amount depends on the implementation for ths
         ``intrument``.
     """
-    # This assumes the group ID can be directly converted to an integer.
+    if instrument in _LSST_CAMERA_LIST:
+        day_obs, seq_num = decode_group(group_base)
+        seq_num += amount
+        return make_group(day_obs, seq_num)
+
+    # For other instruments, assume the group ID can be directly
+    # converted to an integer.
     return str(int(group_base) + amount)

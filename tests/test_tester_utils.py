@@ -166,3 +166,13 @@ class TesterGoupIdTest(unittest.TestCase):
             self.assertEqual(
                 offsets[amount], increment_group("HSC", group_base, amount)
             )
+        group_base = "2024-12-31T00:00:00.001000"
+        offsets = {
+            1: "2024-12-31T00:00:00.001001",
+            99: "2024-12-31T00:00:00.001099",
+            1345: "2024-12-31T00:00:00.002345",
+        }
+        for amount in offsets:
+            self.assertEqual(
+                offsets[amount], increment_group("LATISS", group_base, amount)
+            )
