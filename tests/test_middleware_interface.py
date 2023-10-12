@@ -641,21 +641,29 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self._assert_not_in_collection(butler, "*", "src", processed_data_id)
         self._assert_not_in_collection(butler, "*", "calexp", processed_data_id)
 
+    @staticmethod
+    def _make_expanded_ref(registry, dtype, data_id, run):
+        """Make an expanded dataset ref with the given dataset type, data ID,
+        and run, and the corresponding dimension records.
+        """
+        return lsst.daf.butler.DatasetRef(registry.getDatasetType(dtype), data_id, run=run) \
+            .expanded(registry.expandDataId(data_id))
+
     def test_filter_datasets(self):
         """Test that _filter_datasets provides the correct values.
         """
         # Much easier to create DatasetRefs with a real repo.
-        butler = self.central_butler
-        dtype = butler.registry.getDatasetType("cpBias")
-        data1 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 5}, run="dummy")
-        data2 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 25}, run="dummy")
-        data3 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 42}, run="dummy")
+        registry = self.central_butler.registry
+        data1 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 5}, "dummy")
+        data2 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 25}, "dummy")
+        data3 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 42}, "dummy")
 
         combinations = [{data1, data2}, {data1, data2, data3}]
         # Case where src is empty now covered in test_filter_datasets_nosrc.
         for src, existing in itertools.product(combinations, [set()] + combinations):
             diff = src - existing
-            src_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": src})
+            src_butler = unittest.mock.Mock(
+                **{"registry.queryDatasets.return_value.expanded.return_value": src})
             existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
 
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
@@ -672,15 +680,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         dimensions to define them.
         """
         # Much easier to create DatasetRefs with a real repo.
-        butler = self.central_butler
-        dtype = butler.registry.getDatasetType("skyMap")
-        data1 = lsst.daf.butler.DatasetRef(dtype, {"skymap": "mymap"}, run="dummy")
+        registry = self.central_butler.registry
+        data1 = self._make_expanded_ref(registry, "skyMap", {"skymap": skymap_name}, "dummy")
 
-        src_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": {data1}})
+        src_butler = unittest.mock.Mock(
+            **{"registry.queryDatasets.return_value.expanded.return_value": {data1}})
         existing_butler = unittest.mock.Mock(
             **{"registry.queryDatasets.side_effect":
                lsst.daf.butler.registry.DataIdValueError(
-                   "Unknown values specified for governor dimension skymap: {'mymap'}")
+                   f"Unknown values specified for governor dimension skymap: {{{skymap_name}}}")
                })
 
         result = set(_filter_datasets(src_butler, existing_butler, "skyMap", ..., skymap="mymap"))
@@ -693,11 +701,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         destination repository.
         """
         # Much easier to create DatasetRefs with a real repo.
-        butler = self.central_butler
-        dtype = butler.registry.getDatasetType("cpBias")
-        data1 = lsst.daf.butler.DatasetRef(dtype, {"instrument": "DECam", "detector": 42}, run="dummy")
+        registry = self.central_butler.registry
+        data1 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 42}, "dummy")
 
-        src_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": set()})
+        src_butler = unittest.mock.Mock(
+            **{"registry.queryDatasets.return_value.expanded.return_value": set()})
         for existing in [set(), {data1}]:
             existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
 

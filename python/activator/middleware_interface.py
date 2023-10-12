@@ -911,7 +911,7 @@ class MiddlewareInterface:
                 bind={"exposure_ids": exposure_ids},
                 instrument=self.instrument.getName(),
                 detector=self.visit.detector,
-            ))
+            ).expanded())
         except lsst.daf.butler.registry.DataIdError as e:
             raise ValueError("Invalid visit or exposures.") from e
 
@@ -1004,7 +1004,8 @@ def _filter_datasets(src_repo: Butler,
     Returns
     -------
     datasets : iterable [`lsst.daf.butler.DatasetRef`]
-        The datasets that exist in ``src_repo`` but not ``dest_repo``.
+        The datasets that exist in ``src_repo`` but not ``dest_repo``. All
+        datasetRefs are fully expanded.
 
     Raises
     ------
@@ -1024,7 +1025,9 @@ def _filter_datasets(src_repo: Butler,
 
     # Let exceptions from src_repo query raise: if it fails, that invalidates
     # this operation.
-    src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs))
+    # "expanded" dimension records are ignored for DataCoordinate equality
+    # comparison, so we only need them on src_datasets.
+    src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs).expanded())
     if calib_date:
         src_datasets = _filter_calibs_by_date(
             src_repo,
