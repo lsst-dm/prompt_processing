@@ -278,7 +278,6 @@ class RecordFactoryContextAdapter:
         # Record factories must be shared to be useful; keep all nontrivial
         # state in a `local` object to emulate a thread-specific factory.
         self._store = threading.local()
-        self._context = {}
 
     @property
     def _context(self):
@@ -287,7 +286,10 @@ class RecordFactoryContextAdapter:
 
         This value is guaranteed to be thread confined.
         """
-        # This property MUST NOT be called before self._store is initialized.
+        # Cannot initialize self._store.context in a way that's visible to all
+        # threads, so handle initialization lazily instead.
+        if not hasattr(self._store, "context"):
+            self._store.context = {}
         return self._store.context
 
     @_context.setter

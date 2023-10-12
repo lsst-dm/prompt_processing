@@ -24,7 +24,10 @@ import io
 import json
 import logging
 import os
+import threading
 import unittest
+
+import pytest
 
 from activator.logger import GCloudStructuredLogFormatter, UsdfJsonFormatter, \
     _parse_log_levels, RecordFactoryContextAdapter
@@ -463,3 +466,19 @@ class AddLogContextTest(unittest.TestCase):
                              [{"color": "blue"},
                               {"color": "blue"},
                               ])
+
+    # This decorator works with scons/unittest as well
+    @pytest.mark.filterwarnings("error::pytest.PytestUnhandledThreadExceptionWarning")
+    def test_multithreading(self):
+        """Test that instances of RecordFactoryContextAdapter work correctly in
+        threads other than the factory's creator.
+
+        This test does *not* check whether parallel logging calls are safe, as
+        verifying this requires running at scale (with or without GIL).
+        """
+        # RecordFactoryContextAdapter is designed to be used safely without external locks
+        thread = threading.Thread(target=self.test_basic_context)
+        thread.start()
+        thread.join(timeout=10.0)
+        if thread.is_alive():
+            self.fail("Test thread timed out!")
