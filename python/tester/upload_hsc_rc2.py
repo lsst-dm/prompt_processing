@@ -257,7 +257,7 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
         The dataset to upload.
     """
     with time_this(log=_log, msg="Single-image processing", prefix=None):
-        exposure_key, exposure_header, exposure_num = make_exposure_id("HSC", int(group_id), 0)
+        exposure_num, headers = make_exposure_id("HSC", group_id, 0)
         dest_key = get_raw_path(
             "HSC",
             ref.dataId["detector"],
@@ -284,7 +284,8 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
             f"Raw file for {ref.dataId} was copied from Butler to {path}"
         )
         with open(path, "r+b") as temp_file:
-            replace_header_key(temp_file, exposure_key, exposure_header)
+            for header_key in headers:
+                replace_header_key(temp_file, header_key, headers[header_key])
         dest_bucket.upload_file(path, dest_key)
         _log.debug(f"{dest_key} was written at {dest_bucket}")
 

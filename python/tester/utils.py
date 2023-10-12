@@ -87,7 +87,7 @@ def get_last_group(bucket, instrument, date):
     return str(group)
 
 
-def make_exposure_id(instrument, group_num, snap):
+def make_exposure_id(instrument, group_id, snap):
     """Generate an exposure ID from an exposure's other metadata.
 
     The exposure ID is designed for insertion into an image header, and is
@@ -97,31 +97,29 @@ def make_exposure_id(instrument, group_num, snap):
     ----------
     instrument : `str`
         The short name of the instrument.
-    group_num : `int`
-        The integer used to generate a group ID.
+    group_id : `str`
+        A group ID.
     snap : `int`
         A snap ID.
 
     Returns
     -------
-    exposure_key : `str`
-        The header key under which ``instrument`` stores the exposure ID.
-    exposure_header : `str`
-        An exposure ID that is likely to be unique for each combination of
-        ``group_num`` and ``snap``, for a given ``instrument``, in the format
-        for ``instrument``'s header.
     exposure_num : `int`
-        An exposure ID equivalent to ``exposure_header`` in the format expected
-        by Gen 3 Middleware.
+        An exposure ID that is likely to be unique for each combination of
+        ``group_num`` and ``snap``, for a given ``instrument``, in the
+        format expected by Gen 3 Middleware.
+    headers : `dict`
+        The header key-value pairs to accompany with the exposure ID in the
+        format for ``instrument``'s header.
     """
     match instrument:
         case "HSC":
-            return "EXP-ID", *make_hsc_id(group_num, snap)
+            return make_hsc_id(group_id, snap)
         case _:
             raise NotImplementedError(f"Exposure ID generation not supported for {instrument}.")
 
 
-def make_hsc_id(group_num, snap):
+def make_hsc_id(group_id, snap):
     """Generate an exposure ID that the Butler can parse as a valid HSC ID.
 
     This function returns a value in the "HSCE########" format (introduced June
@@ -129,24 +127,25 @@ def make_hsc_id(group_num, snap):
 
     Parameters
     ----------
-    group_num : `int`
-        The integer used to generate a group ID.
+    group_id : `str`
+        A group ID. The HSC tester uses an integer as a group ID.
     snap : `int`
         A snap ID.
 
     Returns
     -------
-    exposure_header : `str`
-        An exposure ID that is likely to be unique for each combination of
-        ``group`` and ``snap``, in the form it appears in HSC headers.
     exposure_num : `int`
-        The exposure ID genereated by Middleware from ``exposure_header``.
+        The exposure ID genereated by Middleware from ``headers``. It is
+        likely to be unique for each combination of ``group_num`` and ``snap``.
+    headers : `dict`
+        The key-value pairs to represent ``exposure_num` in HSC headers.
 
     Notes
     -----
     The current implementation gives illegal exposure IDs after September 2024.
     If this generator is still needed after that, it will need to be tweaked.
     """
+    group_num = int(group_id)
     # This is a bit too dependent on how group_num is generated, but I want the
     # group number to be discernible even after compressing to 8 digits.
     year = (group_num // 100_00_00000) - 2023          # Always 1 digit, 0-1
@@ -156,7 +155,7 @@ def make_hsc_id(group_num, snap):
     if exposure_id > max_exposure["HSC"]:
         raise RuntimeError(f"{group_num} translated to expId {exposure_id}, "
                            f"max allowed is { max_exposure['HSC']}.")
-    return f"HSCE{exposure_id:08d}", exposure_id
+    return exposure_id, {"EXP-ID": f"HSCE{exposure_id:08d}"}
 
 
 def send_next_visit(url, group, visit_infos):

@@ -254,14 +254,15 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
         # closures for the buckets and data.
         def upload_from_pool(visit, snap_id):
             src_blob = snap_dict[snap_id][visit]
-            exposure_key, exposure_header, exposure_num = \
-                make_exposure_id(visit.instrument, int(visit.groupId), snap_id)
+            exposure_num, headers = \
+                make_exposure_id(visit.instrument, visit.groupId, snap_id)
             filename = get_raw_path(visit.instrument, visit.detector, visit.groupId, snap_id,
                                     exposure_num, visit.filters)
             # r+b required by replace_header_key.
             with tempfile.TemporaryFile(mode="r+b") as buffer:
                 src_bucket.download_fileobj(src_blob.key, buffer)
-                replace_header_key(buffer, exposure_key, exposure_header)
+                for header_key in headers:
+                    replace_header_key(buffer, header_key, headers[header_key])
                 buffer.seek(0)  # Assumed by upload_fileobj.
                 dest_bucket.upload_fileobj(buffer, filename)
 

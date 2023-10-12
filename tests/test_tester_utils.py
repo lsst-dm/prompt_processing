@@ -100,10 +100,11 @@ class TesterUtilsTest(unittest.TestCase):
             self.assertEqual(len(instruments), 1)
             exp_max = instruments[0].exposure_max
 
-            _, str_exp_id, exp_id = make_exposure_id("HSC", int(group), 0)
+            exp_id, headers = make_exposure_id("HSC", group, 0)
             butler_tests.addDataIdValue(butler, "visit", exp_id)
             data_id = butler.registry.expandDataId({"instrument": "HSC", "visit": exp_id, "detector": 111})
 
+        str_exp_id = headers["EXP-ID"]
         self.assertEqual(str_exp_id, "HSCE%08d" % exp_id)
         # Above assertion passes if exp_id has 9+ digits, but such IDs aren't valid.
         self.assertEqual(len(str_exp_id[4:]), 8)
@@ -115,10 +116,10 @@ class TesterUtilsTest(unittest.TestCase):
     def test_exposure_id_hsc_limits(self):
         # Confirm that the exposure ID generator works as long as advertised:
         # until the end of September 2024.
-        _, _, exp_id = make_exposure_id("HSC", 2024093009999, 0)
+        exp_id, _ = make_exposure_id("HSC", "2024093009999", 0)
         self.assertEqual(exp_id, 21309999)
         with self.assertRaises(RuntimeError):
-            make_exposure_id("HSC", 2024100100000, 0)
+            make_exposure_id("HSC", "2024100100000", 0)
 
 
 class TesterDateHandlingTest(unittest.TestCase):
