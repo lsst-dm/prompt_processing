@@ -278,7 +278,23 @@ class RecordFactoryContextAdapter:
         # Record factories must be shared to be useful; keep all nontrivial
         # state in a `local` object to emulate a thread-specific factory.
         self._store = threading.local()
-        self._store.context = {}
+
+    @property
+    def _context(self):
+        """The values to add to ``logging_context`` at any given time
+        (mutable mapping).
+
+        This value is guaranteed to be thread confined.
+        """
+        # Cannot initialize self._store.context in a way that's visible to all
+        # threads, so handle initialization lazily instead.
+        if not hasattr(self._store, "context"):
+            self._store.context = {}
+        return self._store.context
+
+    @_context.setter
+    def _context(self, value):
+        self._store.context = value
 
     def __call__(self, *args, **kwargs):
         """Create a log record from the provided arguments.
@@ -293,8 +309,8 @@ class RecordFactoryContextAdapter:
             calls to `add_context`.
         """
         record = self._old_factory(*args, **kwargs)
-        # _store.context is mutable; make sure record can't be changed after the fact.
-        record.logging_context = self._store.context.copy()
+        # _context is mutable; make sure record can't be changed after the fact.
+        record.logging_context = self._context.copy()
         return record
 
     @contextmanager
@@ -326,12 +342,12 @@ class RecordFactoryContextAdapter:
         ...     logging.error("Does not compute!")
         {'visit': 101, 'detector': 42}: ERROR: Does not compute!
         """
-        _old_context = self._store.context.copy()
+        _old_context = self._context.copy()
         try:
-            self._store.context.update(**context)
+            self._context.update(**context)
             yield
         finally:
-            # This replacement is safe because self._store cannot have been
+            # This replacement is safe because self._context cannot have been
             # changed by other threads. Changes can only have been made by
             # nested context managers, which have already been rolled back.
-            self._store.context = _old_context
+            self._context = _old_context
