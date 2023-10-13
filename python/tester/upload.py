@@ -12,7 +12,13 @@ from botocore.handlers import validate_bucket_name
 
 from activator.raw import OTHER_REGEXP, get_raw_path
 from activator.visit import FannedOutVisit, SummitVisit
-from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
+from tester.utils import (
+    get_last_group,
+    increment_group,
+    make_exposure_id,
+    replace_header_key,
+    send_next_visit,
+)
 
 
 @dataclasses.dataclass
@@ -103,7 +109,7 @@ def main():
     src_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
     raw_pool = get_samples(src_bucket, instrument)
 
-    new_group_base = str(int(last_group) + random.randrange(10, 19))
+    new_group_base = increment_group(instrument, last_group, random.randrange(10, 19))
     if raw_pool:
         _log.info(f"Observing real raw files from {instrument}.")
         upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket,
@@ -230,7 +236,7 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
                          "unobserved raw groups are available.")
 
     for i, true_group in enumerate(itertools.islice(raw_pool, n_groups)):
-        group = str(int(group_base) + i)
+        group = increment_group(instrument, group_base, i)
         _log.info(f"Processing group {group} from unobserved {true_group}...")
         # snap_dict maps snap_id to {visit: blob}
         snap_dict = {}

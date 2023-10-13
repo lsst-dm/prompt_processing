@@ -19,7 +19,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["get_last_group", "make_exposure_id", "replace_header_key", "send_next_visit"]
+__all__ = [
+    "get_last_group",
+    "make_exposure_id",
+    "replace_header_key",
+    "send_next_visit",
+    "increment_group",
+]
 
 import calendar
 from dataclasses import asdict
@@ -230,3 +236,26 @@ def day_obs_to_unix_utc(day_obs):
         tzinfo=datetime.timezone(-datetime.timedelta(hours=4))
     ) + datetime.timedelta(days=1)  # Day advances at midnight
     return calendar.timegm(midnight.utctimetuple())
+
+
+def increment_group(instrument, group_base, amount):
+    """Make a larger group ID.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The short name of the active instrument.
+    group_base : `str`
+        The group ID from which to increase to a new group ID.
+    amount : `int`
+        The amount by which to increase from ``group_base``.
+
+    Returns
+    -------
+    new_group : `str`
+        A new group ID that is ``amount`` larger than ``group_base``.
+        The numerical amount depends on the implementation for ths
+        ``intrument``.
+    """
+    # This assumes the group ID can be directly converted to an integer.
+    return str(int(group_base) + amount)

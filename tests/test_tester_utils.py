@@ -33,7 +33,12 @@ import lsst.meas.base
 from lsst.obs.subaru import HyperSuprimeCam
 
 from activator.raw import get_raw_path
-from tester.utils import get_last_group, make_exposure_id, day_obs_to_unix_utc
+from tester.utils import (
+    get_last_group,
+    make_exposure_id,
+    day_obs_to_unix_utc,
+    increment_group,
+)
 
 
 class TesterUtilsTest(unittest.TestCase):
@@ -130,3 +135,19 @@ class TesterDateHandlingTest(unittest.TestCase):
                           (2000, 1, 1),
                           ]:
             self._check_day_obs(y, m, d)
+
+
+class TesterGoupIdTest(unittest.TestCase):
+    """Test the utilities on the made-up group ID"""
+
+    def test_increment_group(self):
+        group_base = "2022110200002"
+        offsets = {
+            1: "2022110200003",
+            99: "2022110200101",
+            1345: "2022110201347",
+        }
+        for amount in offsets:
+            self.assertEqual(
+                offsets[amount], increment_group("HSC", group_base, amount)
+            )

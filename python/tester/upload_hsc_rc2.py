@@ -35,8 +35,14 @@ from lsst.daf.butler import Butler
 
 from activator.raw import get_raw_path
 from activator.visit import SummitVisit
-from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit, \
-    day_obs_to_unix_utc
+from tester.utils import (
+    get_last_group,
+    increment_group,
+    make_exposure_id,
+    replace_header_key,
+    send_next_visit,
+    day_obs_to_unix_utc,
+)
 
 
 EXPOSURE_INTERVAL = 18
@@ -81,7 +87,7 @@ def main():
     _set_s3_bucket()
 
     last_group = get_last_group(dest_bucket, "HSC", date)
-    group = str(int(last_group) + random.randrange(10, 19))
+    group = increment_group("HSC", last_group, random.randrange(10, 19))
     _log.debug(f"Last group {last_group}; new group base {group}")
 
     butler = Butler("/repo/main")
@@ -98,7 +104,7 @@ def main():
     with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool, \
             tempfile.TemporaryDirectory() as temp_dir:
         for visit in visit_list:
-            group = str(int(group) + 1)
+            group = increment_group("HSC", group, 1)
             refs = prepare_one_visit(kafka_url, group, butler, visit)
             _log.info(f"Slewing to group {group}, with HSC visit {visit}")
             time.sleep(SLEW_INTERVAL)
