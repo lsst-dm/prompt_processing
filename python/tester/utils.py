@@ -82,26 +82,23 @@ def get_last_group(bucket, instrument, date):
             Prefix=f"{instrument}/{date}/",
         )
         numbers = [int(blob.key.split("/")[2].split("_")[-1]) for blob in blobs]
-        if numbers:
-            last_number = max(numbers)
-        else:
-            last_number = 0
-        return make_group(date, last_number)
-
-    preblobs = bucket.objects.filter(
-        Prefix=f"{instrument}/",
-    )
-    detector = min((int(preblob.key.split("/")[1]) for preblob in preblobs), default=0)
-
-    blobs = preblobs.filter(
-        Prefix=f"{instrument}/{detector}/{date}"
-    )
-    prefixes = [int(blob.key.split("/")[2]) for blob in blobs]
-    if len(prefixes) == 0:
-        group = int(date) * 100_000
     else:
-        group = max(prefixes)
-    return str(group)
+        preblobs = bucket.objects.filter(
+            Prefix=f"{instrument}/",
+        )
+        detector = min(
+            (int(preblob.key.split("/")[1]) for preblob in preblobs), default=0
+        )
+
+        group_prefix = "-".join([date[:4], date[4:6:], date[-2:]])
+        blobs = preblobs.filter(Prefix=f"{instrument}/{detector}/{group_prefix}")
+        numbers = [int(blob.key.split("/")[2][-6:]) for blob in blobs]
+
+    if numbers:
+        last_number = max(numbers)
+    else:
+        last_number = 0
+    return make_group(date, last_number)
 
 
 def make_exposure_id(instrument, group_id, snap):
@@ -147,7 +144,7 @@ def make_hsc_id(group_id, snap):
     Parameters
     ----------
     group_id : `str`
-        A group ID. The HSC tester uses an integer as a group ID.
+        A group ID.
     snap : `int`
         A snap ID.
 
@@ -164,15 +161,14 @@ def make_hsc_id(group_id, snap):
     The current implementation gives illegal exposure IDs after September 2024.
     If this generator is still needed after that, it will need to be tweaked.
     """
-    group_num = int(group_id)
-    # This is a bit too dependent on how group_num is generated, but I want the
+    # This is a bit too dependent on how group_id is generated, but I want the
     # group number to be discernible even after compressing to 8 digits.
-    year = (group_num // 100_00_00000) - 2023          # Always 1 digit, 0-1
-    night_id = (group_num % 100_00_00000) // 100000    # Always 4 digits up to 1231
-    run_id = group_num % 100_000                       # Up to 5 digits, but usually 2-3
+    date, run_id = decode_group(group_id)  # run_id has up to 5 digits, but usually 2-3
+    year = int(date[:4]) - 2023            # Always 1 digit, 0-1
+    night_id = int(date[-4:])              # Always 4 digits up to 1231
     exposure_id = (year*1200 + night_id) * 10000 + (run_id % 10000)  # Always 8 digits
     if exposure_id > max_exposure["HSC"]:
-        raise RuntimeError(f"{group_num} translated to expId {exposure_id}, "
+        raise RuntimeError(f"{group_id} translated to expId {exposure_id}, "
                            f"max allowed is { max_exposure['HSC']}.")
     return exposure_id, {"EXP-ID": f"HSCE{exposure_id:08d}"}
 
@@ -344,11 +340,6 @@ def increment_group(instrument, group_base, amount):
         The numerical amount depends on the implementation for ths
         ``intrument``.
     """
-    if instrument in _LSST_CAMERA_LIST:
-        day_obs, seq_num = decode_group(group_base)
-        seq_num += amount
-        return make_group(day_obs, seq_num)
-
-    # For other instruments, assume the group ID can be directly
-    # converted to an integer.
-    return str(int(group_base) + amount)
+    day_obs, seq_num = decode_group(group_base)
+    seq_num += amount
+    return make_group(day_obs, seq_num)

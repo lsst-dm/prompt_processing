@@ -54,10 +54,14 @@ class TesterUtilsTest(unittest.TestCase):
         s3 = boto3.resource("s3")
         s3.create_bucket(Bucket=self.bucket_name)
 
-        path = get_raw_path("TestCam", 123, "2022110200001", 2, 30, "TestFilter")
+        path = get_raw_path(
+            "TestCam", 123, "2022-11-02T00:00:00.000001", 2, 30, "TestFilter"
+        )
         obj = s3.Object(self.bucket_name, path)
         obj.put(Body=b'test1')
-        path = get_raw_path("TestCam", 123, "2022110200002", 2, 30, "TestFilter")
+        path = get_raw_path(
+            "TestCam", 123, "2022-11-02T00:00:00.000002", 2, 30, "TestFilter"
+        )
         obj = s3.Object(self.bucket_name, path)
         obj.put(Body=b'test2')
 
@@ -85,11 +89,11 @@ class TesterUtilsTest(unittest.TestCase):
         bucket = s3.Bucket(self.bucket_name)
 
         last_group = get_last_group(bucket, "TestCam", "20221102")
-        self.assertEqual(last_group, "2022110200002")
+        self.assertEqual(last_group, "2022-11-02T00:00:00.000002")
 
         # Test the case of no match
         last_group = get_last_group(bucket, "TestCam", "20110101")
-        self.assertEqual(last_group, str(int(20110101) * 100_000))
+        self.assertEqual(last_group, "2011-01-01T00:00:00.000000")
 
     def test_exposure_id_hsc(self):
         group = "2023011100026"
@@ -118,10 +122,10 @@ class TesterUtilsTest(unittest.TestCase):
     def test_exposure_id_hsc_limits(self):
         # Confirm that the exposure ID generator works as long as advertised:
         # until the end of September 2024.
-        exp_id, _ = make_exposure_id("HSC", "2024093009999", 0)
+        exp_id, _ = make_exposure_id("HSC", "2024-09-30T00:00:00.009999", 0)
         self.assertEqual(exp_id, 21309999)
         with self.assertRaises(RuntimeError):
-            make_exposure_id("HSC", "2024100100000", 0)
+            make_exposure_id("HSC", "2024-10-01T00:00:00.000000", 0)
 
 
 class TesterDateHandlingTest(unittest.TestCase):
@@ -156,16 +160,6 @@ class TesterGoupIdTest(unittest.TestCase):
             self.assertEqual(group_id, make_group(*decode_group(group_id)))
 
     def test_increment_group(self):
-        group_base = "2022110200002"
-        offsets = {
-            1: "2022110200003",
-            99: "2022110200101",
-            1345: "2022110201347",
-        }
-        for amount in offsets:
-            self.assertEqual(
-                offsets[amount], increment_group("HSC", group_base, amount)
-            )
         group_base = "2024-12-31T00:00:00.001000"
         offsets = {
             1: "2024-12-31T00:00:00.001001",
