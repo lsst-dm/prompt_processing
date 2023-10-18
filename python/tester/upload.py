@@ -1,5 +1,7 @@
 import dataclasses
+import datetime
 import itertools
+import json
 import logging
 import random
 import re
@@ -10,9 +12,23 @@ import time
 import boto3
 from botocore.handlers import validate_bucket_name
 
-from activator.raw import OTHER_REGEXP, get_raw_path
+from lsst.resources import ResourcePath
+
+from activator.raw import (
+    LSST_REGEXP,
+    OTHER_REGEXP,
+    get_raw_path,
+    _LSST_CAMERA_LIST,
+    _DETECTOR_FROM_RS,
+)
 from activator.visit import FannedOutVisit, SummitVisit
-from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit
+from tester.utils import (
+    get_last_group,
+    increment_group,
+    make_exposure_id,
+    replace_header_key,
+    send_next_visit,
+)
 
 
 @dataclasses.dataclass
@@ -96,14 +112,18 @@ def main():
     dest_bucket = s3.Bucket("rubin:rubin-pp")
     dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
-    last_group = get_last_group(dest_bucket, instrument, date)
-    _log.info(f"Last group {last_group}")
-
     src_bucket = s3.Bucket("rubin:rubin-pp-users")
     src_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
-    raw_pool = get_samples(src_bucket, instrument)
 
-    new_group_base = last_group + random.randrange(10, 19)
+    last_group = get_last_group(dest_bucket, instrument, date)
+    new_group_base = increment_group(instrument, last_group, random.randrange(10, 19))
+    _log.info(f"Last group {last_group}. New group base {new_group_base}")
+
+    if instrument in _LSST_CAMERA_LIST:
+        raw_pool = get_samples_lsst(src_bucket, instrument)
+    else:
+        raw_pool = get_samples_non_lsst(src_bucket, instrument)
+
     if raw_pool:
         _log.info(f"Observing real raw files from {instrument}.")
         upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket,
@@ -112,8 +132,11 @@ def main():
         _log.error(f"No raw files found for {instrument}, aborting.")
 
 
-def get_samples(bucket, instrument):
-    """Return any predefined raw exposures for a given instrument.
+def get_samples_non_lsst(bucket, instrument):
+    """Return any predefined raw exposures for a non-LSST instrument.
+
+    The raws follows the non-LSST filename format as defined in activator/raw.py:
+    instrument/detector/group/snap/expid/filter/*.fz
 
     Parameters
     ----------
@@ -195,6 +218,68 @@ def get_samples(bucket, instrument):
     return result
 
 
+def get_samples_lsst(bucket, instrument):
+    """Return any predefined raw exposures for a LSST instrument.
+
+    The raws follows the LSST filename convention.
+
+    Parameters
+    ----------
+    bucket : `S3.Bucket`
+        The bucket in which to search for predefined raws.
+    instrument : `str`
+        The short name of the instrument to sample.
+
+    Returns
+    -------
+    raws : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
+        A mapping from group IDs to a mapping of snap ID. The value of the
+        innermost mapping is the observation metadata for each detector,
+        and a Blob representing the image taken in that detector-snap.
+    """
+    # The pre-made raw files are stored with the "unobserved" prefix
+    blobs = bucket.objects.filter(Prefix=f"unobserved/{instrument}/")
+    result = {}
+    for blob in blobs:
+        # Assume that the unobserved bucket uses the same filename scheme as
+        # the observed bucket.
+        m = re.match(LSST_REGEXP, blob.key)
+        if not m or m["extension"] == ".json":
+            continue
+
+        # Retrieve the corresponding sidecar json file
+        sidecar = ResourcePath("s3://" + blob.bucket_name).join(
+            blob.key.removesuffix(m["extension"]) + ".json"
+        )
+        if not sidecar.exists():
+            raise RuntimeError(f"Unable to retrieve JSON sidecar: {sidecar}")
+        with sidecar.open("r") as f:
+            md = json.load(f)
+
+        visit = FannedOutVisit(
+            instrument=instrument,
+            detector=_DETECTOR_FROM_RS[instrument][m["raft_sensor"]],
+            groupId=md["GROUPID"],
+            nimages=INSTRUMENTS[instrument].n_snaps,
+            filters=md["FILTBAND"],
+            coordinateSystem=FannedOutVisit.CoordSys.ICRS,
+            position=[md["RA"], md["DEC"]],
+            rotationSystem=FannedOutVisit.RotSys.SKY,
+            cameraAngle=md["ROTPA"],
+            survey="SURVEY",
+            salIndex=2,  # 2 is LATISS
+            scriptSalIndex=2,
+            dome=FannedOutVisit.Dome.OPEN,
+            duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
+            totalCheckpoints=1,
+            private_sndStamp=datetime.datetime.fromisoformat(md["DATE"]).timestamp(),
+        )
+        _log.debug(f"File {blob.key} parsed as visit {visit} and registered as group {md['GROUPID']}.")
+        result[md["GROUPID"]] = {0: {visit: blob}}
+
+    return result
+
+
 def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n_groups, group_base):
     """Upload visits and files using real raws.
 
@@ -217,8 +302,8 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
         The number of observation groups to simulate. If more than the number
         of groups in ``raw_pool``, files will be re-uploaded under new
         group IDs.
-    group_base : `int`
-        The base number from which to offset new group numbers.
+    group_base : `str`
+        The base group ID from which to offset new group IDs.
 
     Exceptions
     ----------
@@ -230,7 +315,7 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
                          "unobserved raw groups are available.")
 
     for i, true_group in enumerate(itertools.islice(raw_pool, n_groups)):
-        group = str(group_base + i)
+        group = increment_group(instrument, group_base, i)
         _log.info(f"Processing group {group} from unobserved {true_group}...")
         # snap_dict maps snap_id to {visit: blob}
         snap_dict = {}
@@ -248,16 +333,30 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
         # closures for the buckets and data.
         def upload_from_pool(visit, snap_id):
             src_blob = snap_dict[snap_id][visit]
-            exposure_key, exposure_header, exposure_num = \
-                make_exposure_id(visit.instrument, int(visit.groupId), snap_id)
+            exposure_num, headers = \
+                make_exposure_id(visit.instrument, visit.groupId, snap_id)
             filename = get_raw_path(visit.instrument, visit.detector, visit.groupId, snap_id,
                                     exposure_num, visit.filters)
             # r+b required by replace_header_key.
             with tempfile.TemporaryFile(mode="r+b") as buffer:
                 src_bucket.download_fileobj(src_blob.key, buffer)
-                replace_header_key(buffer, exposure_key, exposure_header)
+                for header_key in headers:
+                    replace_header_key(buffer, header_key, headers[header_key])
                 buffer.seek(0)  # Assumed by upload_fileobj.
                 dest_bucket.upload_fileobj(buffer, filename)
+            _log.debug(f"{filename} is uploaded to {dest_bucket}")
+
+            if instrument in _LSST_CAMERA_LIST:
+                # Upload a corresponding sidecar json file
+                sidecar = ResourcePath("s3://" + src_blob.bucket_name).join(
+                    src_blob.key.removesuffix("fits") + "json"
+                )
+                filename_sidecar = filename.removesuffix("fits") + "json"
+                with sidecar.open("r") as f:
+                    md = json.load(f)
+                    for header_key in headers:
+                        md[header_key] = headers[header_key]
+                    dest_bucket.put_object(Body=json.dumps(md), Key=filename_sidecar)
 
         process_group(kafka_url, visit_infos, upload_from_pool)
 

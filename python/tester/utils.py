@@ -19,7 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["get_last_group", "make_exposure_id", "replace_header_key", "send_next_visit"]
+__all__ = [
+    "get_last_group",
+    "make_exposure_id",
+    "replace_header_key",
+    "send_next_visit",
+    "make_group",
+    "decode_group",
+    "increment_group",
+]
 
 import calendar
 from dataclasses import asdict
@@ -30,6 +38,9 @@ import requests
 
 from astropy.io import fits
 
+from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
+
+from activator.raw import _LSST_CAMERA_LIST
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)
@@ -45,9 +56,10 @@ exposure IDs are in Middleware (integer) format, not native format.
 
 
 def get_last_group(bucket, instrument, date):
-    """Identify the largest group number or a new group number.
+    """Identify the largest group ID or a new group ID.
 
-    This number helps decide the next group number so it will not
+    This checks the last file existing in the bucket,
+    and helps decide the next group ID so it will not
     collide with any previous groups.
 
     Parameters
@@ -61,26 +73,35 @@ def get_last_group(bucket, instrument, date):
 
     Returns
     -------
-    group : `int`
+    group : `str`
         The largest existing group for ``instrument``, or a newly generated
         group if none exist.
     """
-    preblobs = bucket.objects.filter(
-        Prefix=f"{instrument}/",
-    )
-    detector = min((int(preblob.key.split("/")[1]) for preblob in preblobs), default=0)
-
-    blobs = preblobs.filter(
-        Prefix=f"{instrument}/{detector}/{date}"
-    )
-    prefixes = [int(blob.key.split("/")[2]) for blob in blobs]
-    if len(prefixes) == 0:
-        return int(date) * 100_000
+    if instrument in _LSST_CAMERA_LIST:
+        blobs = bucket.objects.filter(
+            Prefix=f"{instrument}/{date}/",
+        )
+        numbers = [int(blob.key.split("/")[2].split("_")[-1]) for blob in blobs]
     else:
-        return max(prefixes)
+        preblobs = bucket.objects.filter(
+            Prefix=f"{instrument}/",
+        )
+        detector = min(
+            (int(preblob.key.split("/")[1]) for preblob in preblobs), default=0
+        )
+
+        group_prefix = "-".join([date[:4], date[4:6:], date[-2:]])
+        blobs = preblobs.filter(Prefix=f"{instrument}/{detector}/{group_prefix}")
+        numbers = [int(blob.key.split("/")[2][-6:]) for blob in blobs]
+
+    if numbers:
+        last_number = max(numbers)
+    else:
+        last_number = 0
+    return make_group(date, last_number)
 
 
-def make_exposure_id(instrument, group_num, snap):
+def make_exposure_id(instrument, group_id, snap):
     """Generate an exposure ID from an exposure's other metadata.
 
     The exposure ID is designed for insertion into an image header, and is
@@ -90,31 +111,31 @@ def make_exposure_id(instrument, group_num, snap):
     ----------
     instrument : `str`
         The short name of the instrument.
-    group_num : `int`
-        The integer used to generate a group ID.
+    group_id : `str`
+        A group ID.
     snap : `int`
         A snap ID.
 
     Returns
     -------
-    exposure_key : `str`
-        The header key under which ``instrument`` stores the exposure ID.
-    exposure_header : `str`
-        An exposure ID that is likely to be unique for each combination of
-        ``group_num`` and ``snap``, for a given ``instrument``, in the format
-        for ``instrument``'s header.
     exposure_num : `int`
-        An exposure ID equivalent to ``exposure_header`` in the format expected
-        by Gen 3 Middleware.
+        An exposure ID that is likely to be unique for each combination of
+        ``group_num`` and ``snap``, for a given ``instrument``, in the
+        format expected by Gen 3 Middleware.
+    headers : `dict`
+        The header key-value pairs to accompany with the exposure ID in the
+        format for ``instrument``'s header.
     """
     match instrument:
         case "HSC":
-            return "EXP-ID", *make_hsc_id(group_num, snap)
+            return make_hsc_id(group_id, snap)
+        case "LATISS":
+            return make_latiss_id(group_id, snap)
         case _:
             raise NotImplementedError(f"Exposure ID generation not supported for {instrument}.")
 
 
-def make_hsc_id(group_num, snap):
+def make_hsc_id(group_id, snap):
     """Generate an exposure ID that the Butler can parse as a valid HSC ID.
 
     This function returns a value in the "HSCE########" format (introduced June
@@ -122,34 +143,62 @@ def make_hsc_id(group_num, snap):
 
     Parameters
     ----------
-    group_num : `int`
-        The integer used to generate a group ID.
+    group_id : `str`
+        A group ID.
     snap : `int`
         A snap ID.
 
     Returns
     -------
-    exposure_header : `str`
-        An exposure ID that is likely to be unique for each combination of
-        ``group`` and ``snap``, in the form it appears in HSC headers.
     exposure_num : `int`
-        The exposure ID genereated by Middleware from ``exposure_header``.
+        The exposure ID genereated by Middleware from ``headers``. It is
+        likely to be unique for each combination of ``group_num`` and ``snap``.
+    headers : `dict`
+        The key-value pairs to represent ``exposure_num` in HSC headers.
 
     Notes
     -----
     The current implementation gives illegal exposure IDs after September 2024.
     If this generator is still needed after that, it will need to be tweaked.
     """
-    # This is a bit too dependent on how group_num is generated, but I want the
+    # This is a bit too dependent on how group_id is generated, but I want the
     # group number to be discernible even after compressing to 8 digits.
-    year = (group_num // 100_00_00000) - 2023          # Always 1 digit, 0-1
-    night_id = (group_num % 100_00_00000) // 100000    # Always 4 digits up to 1231
-    run_id = group_num % 100_000                       # Up to 5 digits, but usually 2-3
+    date, run_id = decode_group(group_id)  # run_id has up to 5 digits, but usually 2-3
+    year = int(date[:4]) - 2023            # Always 1 digit, 0-1
+    night_id = int(date[-4:])              # Always 4 digits up to 1231
     exposure_id = (year*1200 + night_id) * 10000 + (run_id % 10000)  # Always 8 digits
     if exposure_id > max_exposure["HSC"]:
-        raise RuntimeError(f"{group_num} translated to expId {exposure_id}, "
+        raise RuntimeError(f"{group_id} translated to expId {exposure_id}, "
                            f"max allowed is { max_exposure['HSC']}.")
-    return f"HSCE{exposure_id:08d}", exposure_id
+    return exposure_id, {"EXP-ID": f"HSCE{exposure_id:08d}"}
+
+
+def make_latiss_id(group_id, snap):
+    """Generate an exposure ID that the Butler can parse as a valid LATISS ID.
+
+    Parameters
+    ----------
+    group_id : `str`
+        The mocked group ID.
+    snap : `int`
+        A snap ID.
+
+    Returns
+    -------
+    exposure_number :
+        An exposure ID in the format expected by Gen 3 Middleware.
+    headers : `dict`
+        The key-value pairs are in the form to appear in LATISS headers.
+    """
+    day_obs, seq_num = decode_group(group_id)
+    exposure_num = LsstBaseTranslator.compute_exposure_id(day_obs, seq_num)
+    obs_id = f"AT_O_{day_obs}_{seq_num:06d}"
+    return exposure_num, {
+        "DAYOBS": day_obs,
+        "SEQNUM": seq_num,
+        "OBSID": obs_id,
+        "GROUPID": group_id,
+    }
 
 
 def send_next_visit(url, group, visit_infos):
@@ -229,3 +278,68 @@ def day_obs_to_unix_utc(day_obs):
         tzinfo=datetime.timezone(-datetime.timedelta(hours=4))
     ) + datetime.timedelta(days=1)  # Day advances at midnight
     return calendar.timegm(midnight.utctimetuple())
+
+
+def make_group(day_obs, seq_num):
+    """Make up a LSST-like group ID to be used in testers.
+
+    Parameters
+    ----------
+    day_obs : `str`
+        Day of observation in YYYYMMDD format.
+    seq_num : `int`
+        Sequence number.
+
+    Returns
+    -------
+    group_id : `str`
+        A group ID in the LSST style.
+    """
+    return datetime.datetime.strptime(f"{day_obs}{seq_num:06d}", "%Y%m%d%f").isoformat(
+        timespec="microseconds"
+    )
+
+
+def decode_group(group):
+    """Interpret a group ID made by `make_group`
+
+    Parameters
+    ----------
+    group_id : `str`
+        A group ID made by `make_group`.
+
+    Returns
+    -------
+    day_obs : `str`
+        Day of observation in YYYYMMDD format.
+    seq_num : `int`
+        Sequence number.
+    """
+    timestamp = datetime.datetime.fromisoformat(group)
+    day_obs = timestamp.strftime("%Y%m%d")
+    seq_num = int(timestamp.strftime("%f"))
+    return day_obs, seq_num
+
+
+def increment_group(instrument, group_base, amount):
+    """Make a larger group ID.
+
+    Parameters
+    ----------
+    instrument : `str`
+        The short name of the active instrument.
+    group_base : `str`
+        The group ID from which to increase to a new group ID.
+    amount : `int`
+        The amount by which to increase from ``group_base``.
+
+    Returns
+    -------
+    new_group : `str`
+        A new group ID that is ``amount`` larger than ``group_base``.
+        The numerical amount depends on the implementation for ths
+        ``intrument``.
+    """
+    day_obs, seq_num = decode_group(group_base)
+    seq_num += amount
+    return make_group(day_obs, seq_num)

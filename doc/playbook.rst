@@ -325,15 +325,18 @@ They then upload a batch of files representing the snaps of the visit to the ``r
 
 Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
 
-``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC only) and the number of groups of images to send.
+``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC or LATISS) and the number of groups of images to send.
 
 Sample command line:
 
 .. code-block:: sh
 
    python upload.py HSC 3
+   python upload.py LATISS 2
 
-This draw images from 4 groups, in total 10 raw files, stored in the ``rubin:rubin-pp-users`` bucket.
+This script draws images stored in the ``rubin:rubin-pp-users`` bucket.
+For HSC, 4 groups, in total 10 raw files, are curated.
+For LATISS, 2 groups, in total 2 raw fits files and their corresponding json metadata files, are curated.
 
 ``python/tester/upload_hsc_rc2.py``: Command line argument is the number of groups of images to send.
 

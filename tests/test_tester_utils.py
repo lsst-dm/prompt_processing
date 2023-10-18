@@ -33,7 +33,14 @@ import lsst.meas.base
 from lsst.obs.subaru import HyperSuprimeCam
 
 from activator.raw import get_raw_path
-from tester.utils import get_last_group, make_exposure_id, day_obs_to_unix_utc
+from tester.utils import (
+    get_last_group,
+    make_exposure_id,
+    day_obs_to_unix_utc,
+    make_group,
+    decode_group,
+    increment_group,
+)
 
 
 class TesterUtilsTest(unittest.TestCase):
@@ -47,10 +54,14 @@ class TesterUtilsTest(unittest.TestCase):
         s3 = boto3.resource("s3")
         s3.create_bucket(Bucket=self.bucket_name)
 
-        path = get_raw_path("TestCam", 123, "2022110200001", 2, 30, "TestFilter")
+        path = get_raw_path(
+            "TestCam", 123, "2022-11-02T00:00:00.000001", 2, 30, "TestFilter"
+        )
         obj = s3.Object(self.bucket_name, path)
         obj.put(Body=b'test1')
-        path = get_raw_path("TestCam", 123, "2022110200002", 2, 30, "TestFilter")
+        path = get_raw_path(
+            "TestCam", 123, "2022-11-02T00:00:00.000002", 2, 30, "TestFilter"
+        )
         obj = s3.Object(self.bucket_name, path)
         obj.put(Body=b'test2')
 
@@ -78,11 +89,11 @@ class TesterUtilsTest(unittest.TestCase):
         bucket = s3.Bucket(self.bucket_name)
 
         last_group = get_last_group(bucket, "TestCam", "20221102")
-        self.assertEqual(last_group, 2022110200002)
+        self.assertEqual(last_group, "2022-11-02T00:00:00.000002")
 
         # Test the case of no match
         last_group = get_last_group(bucket, "TestCam", "20110101")
-        self.assertEqual(last_group, int(20110101) * 100_000)
+        self.assertEqual(last_group, "2011-01-01T00:00:00.000000")
 
     def test_exposure_id_hsc(self):
         group = "2023011100026"
@@ -95,10 +106,11 @@ class TesterUtilsTest(unittest.TestCase):
             self.assertEqual(len(instruments), 1)
             exp_max = instruments[0].exposure_max
 
-            _, str_exp_id, exp_id = make_exposure_id("HSC", int(group), 0)
+            exp_id, headers = make_exposure_id("HSC", group, 0)
             butler_tests.addDataIdValue(butler, "visit", exp_id)
             data_id = butler.registry.expandDataId({"instrument": "HSC", "visit": exp_id, "detector": 111})
 
+        str_exp_id = headers["EXP-ID"]
         self.assertEqual(str_exp_id, "HSCE%08d" % exp_id)
         # Above assertion passes if exp_id has 9+ digits, but such IDs aren't valid.
         self.assertEqual(len(str_exp_id[4:]), 8)
@@ -110,10 +122,10 @@ class TesterUtilsTest(unittest.TestCase):
     def test_exposure_id_hsc_limits(self):
         # Confirm that the exposure ID generator works as long as advertised:
         # until the end of September 2024.
-        _, _, exp_id = make_exposure_id("HSC", 2024093009999, 0)
+        exp_id, _ = make_exposure_id("HSC", "2024-09-30T00:00:00.009999", 0)
         self.assertEqual(exp_id, 21309999)
         with self.assertRaises(RuntimeError):
-            make_exposure_id("HSC", 2024100100000, 0)
+            make_exposure_id("HSC", "2024-10-01T00:00:00.000000", 0)
 
 
 class TesterDateHandlingTest(unittest.TestCase):
@@ -130,3 +142,31 @@ class TesterDateHandlingTest(unittest.TestCase):
                           (2000, 1, 1),
                           ]:
             self._check_day_obs(y, m, d)
+
+
+class TesterGoupIdTest(unittest.TestCase):
+    """Test the utilities on the made-up group ID"""
+
+    def test_round_trip(self):
+        for day_obs, seq_num in [
+            ("20230123", 456),
+            ("20241231", 1000),
+        ]:
+            self.assertEqual(
+                (day_obs, seq_num), decode_group(make_group(day_obs, seq_num))
+            )
+
+        for group_id in ["2023-01-23T00:00:00.000456", "2024-12-31T00:00:00.001000"]:
+            self.assertEqual(group_id, make_group(*decode_group(group_id)))
+
+    def test_increment_group(self):
+        group_base = "2024-12-31T00:00:00.001000"
+        offsets = {
+            1: "2024-12-31T00:00:00.001001",
+            99: "2024-12-31T00:00:00.001099",
+            1345: "2024-12-31T00:00:00.002345",
+        }
+        for amount in offsets:
+            self.assertEqual(
+                offsets[amount], increment_group("LATISS", group_base, amount)
+            )

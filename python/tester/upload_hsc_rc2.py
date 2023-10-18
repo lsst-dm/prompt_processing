@@ -35,8 +35,14 @@ from lsst.daf.butler import Butler
 
 from activator.raw import get_raw_path
 from activator.visit import SummitVisit
-from tester.utils import get_last_group, make_exposure_id, replace_header_key, send_next_visit, \
-    day_obs_to_unix_utc
+from tester.utils import (
+    get_last_group,
+    increment_group,
+    make_exposure_id,
+    replace_header_key,
+    send_next_visit,
+    day_obs_to_unix_utc,
+)
 
 
 EXPOSURE_INTERVAL = 18
@@ -81,8 +87,8 @@ def main():
     _set_s3_bucket()
 
     last_group = get_last_group(dest_bucket, "HSC", date)
-    group_num = last_group + random.randrange(10, 19)
-    _log.debug(f"Last group {last_group}; new group base {group_num}")
+    group = increment_group("HSC", last_group, random.randrange(10, 19))
+    _log.debug(f"Last group {last_group}; new group base {group}")
 
     butler = Butler("/repo/main")
     visit_list = get_hsc_visit_list(butler, n_groups)
@@ -98,14 +104,14 @@ def main():
     with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool, \
             tempfile.TemporaryDirectory() as temp_dir:
         for visit in visit_list:
-            group_num += 1
-            refs = prepare_one_visit(kafka_url, str(group_num), butler, visit)
-            _log.info(f"Slewing to group {group_num}, with HSC visit {visit}")
+            group = increment_group("HSC", group, 1)
+            refs = prepare_one_visit(kafka_url, group, butler, visit)
+            _log.info(f"Slewing to group {group}, with HSC visit {visit}")
             time.sleep(SLEW_INTERVAL)
-            _log.info(f"Taking exposure for group {group_num}")
+            _log.info(f"Taking exposure for group {group}")
             time.sleep(EXPOSURE_INTERVAL)
-            _log.info(f"Uploading detector images for group {group_num}")
-            upload_hsc_images(pool, temp_dir, str(group_num), butler, refs)
+            _log.info(f"Uploading detector images for group {group}")
+            upload_hsc_images(pool, temp_dir, group, butler, refs)
         pool.close()
         _log.info("Waiting for uploads to finish...")
         pool.join()
@@ -251,7 +257,7 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
         The dataset to upload.
     """
     with time_this(log=_log, msg="Single-image processing", prefix=None):
-        exposure_key, exposure_header, exposure_num = make_exposure_id("HSC", int(group_id), 0)
+        exposure_num, headers = make_exposure_id("HSC", group_id, 0)
         dest_key = get_raw_path(
             "HSC",
             ref.dataId["detector"],
@@ -278,7 +284,8 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
             f"Raw file for {ref.dataId} was copied from Butler to {path}"
         )
         with open(path, "r+b") as temp_file:
-            replace_header_key(temp_file, exposure_key, exposure_header)
+            for header_key in headers:
+                replace_header_key(temp_file, header_key, headers[header_key])
         dest_bucket.upload_file(path, dest_key)
         _log.debug(f"{dest_key} was written at {dest_bucket}")
 
