@@ -68,6 +68,8 @@ This is the only situation in which a change to ``BASE_TAG_LIST`` should be comm
 Buckets
 =======
 
+`This document <https://confluence.lsstcorp.org/display/LSSTOps/USDF+S3+Bucket+Organization>`_ describes the overall organization of S3 buckets and access at USDF.
+
 The bucket ``rubin:rubin-pp`` holds incoming raw images.
 
 The bucket ``rubin:rubin-pp-users`` holds:
@@ -80,7 +82,7 @@ The bucket ``rubin:rubin-pp-users`` holds:
 ``rubin:rubin-pp`` has had notifications configured for it; these publish to a Kafka topic.
 
 The default Rubin users' setup on ``rubin-devl`` includes an AWS credential file at the environment variable ``AWS_SHARED_CREDENTIALS_FILE`` and a default profile without read permission to the prompt processing buckets.
-A separate credential for prompt processing developers is at  `vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-prompt-processing-dev/s3-buckets>`_ and can be set up as another credential profile for Butler or AWS Command Line Interface.
+A separate credential for prompt processing developers is at  `vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-prompt-processing-dev/s3-buckets>`_ and can be set up as another credential profile for Butler or command line tools such as AWS Command Line Interface and MinIO Client.
 One way to set up this profile is with the AWS CLI:
 
 .. code-block:: sh
@@ -101,8 +103,10 @@ The AWS CLI can be used to inspect non-tenenat buckets:
 
    You must pass the ``--endpoint-url`` argument even if you have ``S3_ENDPOINT_URL`` defined.
 
-The prompt processing buckets are Ceph tenant buckets and require a tenant prefix.
-To inspect them with the MinIO Client ``mc`` tool, first set up an alias (e.g. ``usdf-pp``) and then can use commands:
+Some of the prompt processing buckets are Ceph tenant buckets and require a tenant prefix, which violates the bucket name standard and is not supported by AWS CLI.
+The MinIO Client ``mc`` tool may be used.
+One version can be accessed at ``/sdf/group/rubin/sw/bin/mc`` at USDF.
+To inspect buckets with the MinIO Client ``mc`` tool, first set up an alias (e.g. ``usdf-pp``) and then can use commands:
 
 .. code-block:: sh
 
