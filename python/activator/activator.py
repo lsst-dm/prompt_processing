@@ -178,10 +178,10 @@ def next_visit_handler() -> Tuple[str, int]:
         sig = signal.sigwait({signal.SIGTERM})
         _log.info(f"Signal {signal.Signals(sig).name} detected. Shutting down...")
 
-        # Let the pod be killed
-        time.sleep(120.0)
+        # Simulate a yellow-light shutdown
+        time.sleep(10.0)
 
-        return "Unexpected failure to timeout", 200
+        return "Processing completed at the last minute", 200
     finally:
         consumer.unsubscribe()
         # Want to know when the handler exited for any reason.
