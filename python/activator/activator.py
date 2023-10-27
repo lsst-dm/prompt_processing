@@ -239,7 +239,7 @@ def next_visit_handler() -> Tuple[str, int]:
 
     try:
         # Do nothing until timeout sequence starts
-        sig = signal.sigwait({signal.SIGTERM})
+        sig = signal.sigwait({signal.SIGTERM, signal.SIGABRT})
         _log.info(f"Signal {sig} detected. Shutting down...")
 
         # Simulate a yellow-light shutdown
