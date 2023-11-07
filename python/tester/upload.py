@@ -155,9 +155,6 @@ def get_samples_non_lsst(bucket, instrument):
     # TODO: set up a lookup-friendly class to represent the return value
 
     # TODO: replace this dict with something more scalable.
-    #     One option is to attach metadata to the Google Storage objects at
-    #     upload time, another is to download the blob and actually read
-    #     its header.
     hsc_metadata = {
         59126: {"ra": 149.28531249999997, "dec": 2.935002777777778, "rot": 270.0, "time": 1457332820.0},
         59134: {"ra": 149.45749166666664, "dec": 2.926961111111111, "rot": 270.0, "time": 1457333685.0},
