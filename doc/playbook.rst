@@ -18,30 +18,51 @@ Containers
 ==========
 
 The prototype consists of two containers.
-The first is a base container with the Science Pipelines "stack" code and Google Cloud Platform utilities.
+The first is a base container with the Science Pipelines "stack" code and networking utilities.
 The second is a service container made from the base that has the Prompt Processing prototype service code.
+All containers are managed by `GitHub Container Registry <https://github.com/orgs/lsst-dm/packages?repo_name=prompt_prototype>`_ and are built using GitHub Actions.
 
-To build the base container using Google Cloud Build:
+To build the base container:
 
-.. code-block:: sh
+* If there are changes to the container, push them to a branch, then open a PR.
+  The container should be built automatically.
+* If there are no changes (typically because you want to use an updated Science Pipelines container), go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_prototype/actions/workflows/build-base.yml>`_ and select "Run workflow".
+  From the dropdown, select the branch whose container definition will be used, and the label of the Science Pipelines container.
+* New containers built from ``main`` are tagged with the corresponding Science Pipelines release (plus ``w_latest`` or ``d_latest`` if the release was requested by that name).
+  For automatic ``main`` builds, or if the corresponding box in the manual build is checked, the new container also has the ``latest`` label.
+  Containers built from a branch use the same scheme, but prefixed by the ticket number or, for user branches, the branch topic.
 
-   cd base
-   gcloud builds submit --tag us-central1-docker.pkg.dev/prompt-proto/prompt/prompt-proto-base
+.. note::
+
+   If a PR automatically builds both the base and the service container, the service build will *not* use the new base container unless you specifically override it (see below).
+   Even then, the service build will not wait for the base build to finish.
+   You may need to manually rerun the service container build to get it to use the newly built base.
 
 To build the service container:
 
-.. code-block:: sh
-
-   cd activator
-   gcloud builds submit --tag us-central1-docker.pkg.dev/prompt-proto/prompt/prompt-proto-service
-
-These commands publish to Google Artifact Registry.
-
-You will need to authenticate to Google Cloud first using :command:`gcloud auth login`.
+* If there are changes to the service, push them to a branch, then open a PR.
+  The container should be built automatically using the ``latest`` base container.
+* To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_prototype/actions/workflows/build-service.yml>`_ and select "Run workflow".
+  From the dropdown, select the branch whose code should be built.
+  The container will be built using the ``latest`` base container, even if there is a branch build of the base.
+* To use a base other than ``latest``, edit ``.github/workflows/build-service.yml`` on the branch and override the ``BASE_TAG_LIST`` variable.
+  Be careful not to merge the temporary override to ``main``!
+* New service containers built from ``main`` have the tags of their base container.
+  Containers built from a branch are prefixed by the ticket number or, for user branches, the branch topic.
 
 .. note::
 
    The ``PYTHONUNBUFFERED`` environment variable defined in the Dockerfiles for the containers ensures that container logs are emitted in real-time.
+
+Stable Base Containers
+----------------------
+
+In general, the ``latest`` base container is built from a weekly or other stable Science Pipelines release.
+However, it may happen that the ``latest`` base is used for development while production runs should use an older build.
+If this comes up, edit ``.github/workflows/build-service.yml`` and append the desired base build to the ``BASE_TAG_LIST`` variable.
+Any subsequent builds of the service container will build against both bases.
+
+This is the only situation in which a change to ``BASE_TAG_LIST`` should be committed to ``main``.
 
 
 Buckets
