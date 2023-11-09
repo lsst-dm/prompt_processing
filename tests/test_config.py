@@ -119,6 +119,24 @@ class PipelinesConfigTest(unittest.TestCase):
             [os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipe lines", "Isr.yaml"))]
         )
 
+    def test_extrachars(self):
+        config = PipelinesConfig('(survey="stylish-modern-survey")=[/etc/pipelines/SingleFrame.yaml] '
+                                 '(survey="ScriptParams4,6")=[${AP_PIPE_DIR}/pipelines/Isr.yaml] '
+                                 '(survey="slash/and\backslash")=[Default.yaml] '
+                                 )
+        self.assertEqual(
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey="stylish-modern-survey")),
+            [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
+        )
+        self.assertEqual(
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey="ScriptParams4,6")),
+            [os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml"))]
+        )
+        self.assertEqual(
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey="slash/and\backslash")),
+            ["Default.yaml"]
+        )
+
     def test_none(self):
         config = PipelinesConfig('(survey="TestSurvey")=[None shall pass/pipelines/SingleFrame.yaml] '
                                  '(survey="Camera Test")=None '
@@ -154,6 +172,16 @@ class PipelinesConfigTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/SingleFrame.yaml],'
                             '(survey="CameraTest")=[${AP_PIPE_DIR}/pipelines/Isr.yaml] '
+                            )
+
+    def test_bad_line_breaks(self):
+        with self.assertRaises(ValueError):
+            PipelinesConfig('''(survey="Test
+                               Survey")=[/etc/pipelines/SingleFrame.yaml]'''
+                            )
+        with self.assertRaises(ValueError):
+            PipelinesConfig('''(survey="TestSurvey")=[/etc/pipelines/
+                                                      SingleFrame.yaml]'''
                             )
 
     def test_unlabeled(self):

@@ -122,7 +122,7 @@ class PipelinesConfig:
         # when the input is invalid. If pickier matching is needed in the
         # future, use a separate regex for filelist instead of making node
         # more complex.
-        node = re.compile(r'\s*\(survey="(?P<survey>[\w\s]*)"\)='
+        node = re.compile(r'\s*\(survey="(?P<survey>[^"\n=]*)"\)='
                           r'(?:\[(?P<filelist>[^]]*)\]|none)(?:\s+|$)',
                           re.IGNORECASE)
 
@@ -130,9 +130,13 @@ class PipelinesConfig:
         pos = 0
         match = node.match(config, pos)
         while match:
-            if match['filelist'] is not None:
-                filenames = [file.strip() for file in match['filelist'].split(',')] \
-                    if match['filelist'] else []
+            if match['filelist']:  # exclude None and ""; latter gives unexpected behavior with split
+                filenames = []
+                for file in match['filelist'].split(','):
+                    file = file.strip()
+                    if "\n" in file:
+                        raise ValueError(f"Unexpected newline in '{file}'.")
+                    filenames.append(file)
                 items[match['survey']] = filenames
             else:
                 items[match['survey']] = []
