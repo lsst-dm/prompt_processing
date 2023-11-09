@@ -8,92 +8,65 @@ Table of Contents
 =================
 
 * `Containers`_
-* `Pub/Sub Topics`_
 * `Buckets`_
 * `Prototype Service`_
 * `tester`_
 * `Databases`_
-* `Middleware Worker VM`_
 
 
 Containers
 ==========
 
 The prototype consists of two containers.
-The first is a base container with the Science Pipelines "stack" code and Google Cloud Platform utilities.
+The first is a base container with the Science Pipelines "stack" code and networking utilities.
 The second is a service container made from the base that has the Prompt Processing prototype service code.
+All containers are managed by `GitHub Container Registry <https://github.com/orgs/lsst-dm/packages?repo_name=prompt_prototype>`_ and are built using GitHub Actions.
 
-To build the base container using Google Cloud Build:
+To build the base container:
 
-.. code-block:: sh
+* If there are changes to the container, push them to a branch, then open a PR.
+  The container should be built automatically.
+* If there are no changes (typically because you want to use an updated Science Pipelines container), go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_prototype/actions/workflows/build-base.yml>`_ and select "Run workflow".
+  From the dropdown, select the branch whose container definition will be used, and the label of the Science Pipelines container.
+* New containers built from ``main`` are tagged with the corresponding Science Pipelines release (plus ``w_latest`` or ``d_latest`` if the release was requested by that name).
+  For automatic ``main`` builds, or if the corresponding box in the manual build is checked, the new container also has the ``latest`` label.
+  Containers built from a branch use the same scheme, but prefixed by the ticket number or, for user branches, the branch topic.
 
-   cd base
-   gcloud builds submit --tag us-central1-docker.pkg.dev/prompt-proto/prompt/prompt-proto-base
+.. note::
+
+   If a PR automatically builds both the base and the service container, the service build will *not* use the new base container unless you specifically override it (see below).
+   Even then, the service build will not wait for the base build to finish.
+   You may need to manually rerun the service container build to get it to use the newly built base.
 
 To build the service container:
 
-.. code-block:: sh
-
-   cd activator
-   gcloud builds submit --tag us-central1-docker.pkg.dev/prompt-proto/prompt/prompt-proto-service
-
-These commands publish to Google Artifact Registry.
-
-You will need to authenticate to Google Cloud first using :command:`gcloud auth login`.
+* If there are changes to the service, push them to a branch, then open a PR.
+  The container should be built automatically using the ``latest`` base container.
+* To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_prototype/actions/workflows/build-service.yml>`_ and select "Run workflow".
+  From the dropdown, select the branch whose code should be built.
+  The container will be built using the ``latest`` base container, even if there is a branch build of the base.
+* To use a base other than ``latest``, edit ``.github/workflows/build-service.yml`` on the branch and override the ``BASE_TAG_LIST`` variable.
+  Be careful not to merge the temporary override to ``main``!
+* New service containers built from ``main`` have the tags of their base container.
+  Containers built from a branch are prefixed by the ticket number or, for user branches, the branch topic.
 
 .. note::
 
    The ``PYTHONUNBUFFERED`` environment variable defined in the Dockerfiles for the containers ensures that container logs are emitted in real-time.
 
+Stable Base Containers
+----------------------
 
-Pub/Sub Topics
-==============
+In general, the ``latest`` base container is built from a weekly or other stable Science Pipelines release.
+However, it may happen that the ``latest`` base is used for development while production runs should use an older build.
+If this comes up, edit ``.github/workflows/build-service.yml`` and append the desired base build to the ``BASE_TAG_LIST`` variable.
+Any subsequent builds of the service container will build against both bases.
 
-One Google Pub/Sub topic is used for ``nextVisit`` events.
-Additional topics are used for images from each instrument, where the instrument is one of ``LSSTCam``, ``LSSTComCam``, ``LATISS``, ``DECam``, or ``HSC``.
-
-To create the topic, in the Google Cloud Console for the ``prompt-proto`` project:
-
-* Choose "Pub/Sub"
-* Choose "Create Topic"
-* Set "Topic ID" to ``nextVisit`` or ``{instrument}-image``, replacing ``{instrument}`` with the name from the list above.
-
-The single ``nextVisit`` topic is used for multiple messages per visit, one per detector.
-It is also expected that it can be used with multiple instruments, with filtering on the subscription distinguishing between them.
-Using a single topic this way could simplify the translator from SAL/DDS.
-On the other hand, using multiple topics is also simple to do.
+This is the only situation in which a change to ``BASE_TAG_LIST`` should be committed to ``main``.
 
 
 Buckets
 =======
-
-Google Cloud
-------------
-
-A single bucket named ``rubin-prompt-proto-main`` has been created to hold the central repository described in `DMTN-219`_, as well as incoming raw images.
-
-The bucket ``rubin-prompt-proto-support-data-template`` contains a pristine copy of the calibration datasets and templates.
-This bucket is not intended for direct use by the prototype, but can be used to restore the central repository to its state at the start of an observing run.
-
-The bucket ``rubin-prompt-proto-unobserved`` contains raw files that the upload script(s) can draw from to create incoming raws for ``rubin-prompt-proto-main``.
-
-The ``-main`` bucket has had notifications configured for it; these publish to a Google Pub/Sub topic as mentioned in the previous section.
-To configure these notifications, in a shell:
-
-.. code-block:: sh
-
-   gsutil notification create \
-       -t project/prompt-proto/topics/{instrument}-image \
-       -f json \
-       -e OBJECT_FINALIZE \
-       -p {instrument}/ \
-       gs://rubin-prompt-proto-main
-
-This creates a notification on the given topic using JSON format when an object has been finalized (transfer of it has completed).
-Notifications are only sent on this topic for objects with the instrument name as a prefix.
-
-USDF
-----
 
 The bucket ``rubin:rubin-pp`` holds incoming raw images.
 
@@ -142,74 +115,6 @@ For Butler not to complain about the bucket names, set the environment variable 
 Prototype Service
 =================
 
-Google Cloud
-------------
-
-The service can be controlled by Google Cloud Run, which will automatically trigger instances based on ``nextVisit`` messages and can autoscale the number of them depending on load.
-Each time the service container is updated, a new revision of the service should be edited and deployed.
-(Continuous deployment has not yet been set up.)
-
-To create or edit the Cloud Run service in the Google Cloud Console:
-
-* Choose "Create Service" or "Edit & Deploy New Revision"
-* Select the container image URL from "Artifact Registry > prompt-proto-service"
-* In the Variables & Secrets tab, set the following required parameters:
-
-  * RUBIN_INSTRUMENT: the "short" instrument name
-  * PUBSUB_VERIFICATION_TOKEN: choose an arbitrary string matching the Pub/Sub endpoint URL below
-  * IMAGE_BUCKET: bucket containing raw images (``rubin-prompt-proto-main``)
-  * CALIB_REPO: URI to repo containing calibrations (and templates)
-  * IP_APDB: IP address or hostname and port of the APDB (see `Databases`_, below)
-  * IP_REGISTRY: IP address or hostname and port of the registry database (see `Databases`_)
-  * DB_APDB: PostgreSQL database name for the APDB
-  * DB_REGISTRY: PostgreSQL database name for the registry database
-
-* There are also five optional parameters:
-
-  * IMAGE_TIMEOUT: timeout in seconds to wait after expected script completion for raw image arrival, default 20 sec.
-  * LOCAL_REPOS: absolute path (in the container) where local repos are created, default ``/tmp``.
-  * USER_APDB: database user for the APDB, default "postgres"
-  * USER_REGISTRY: database user for the registry database, default "postgres"
-  * NAMESPACE_APDB: the database namespace for the APDB, defaults to the DB's default namespace
-
-* One variable is set by Cloud Run and should not be overridden:
-
-  * PORT
-
-* Also in the Variables & Secrets tab, reference the following secrets:
-
-  * ``butler-registry-db-pass``, as the environment variable ``PSQL_REGISTRY_PASS``
-  * ``apdb-db-pass``, as the environment variable ``PSQL_APDB_PASS``
-
-* In the Connections tab, select the ``db-connector`` VPC connector. Do *not* create anything under "Cloud SQL connections"
-* Set the "Request timeout" to 600 seconds (if a worker has not responded by then, it will be killed).
-* Set the "Maximum requests per container" to 1.
-* Under "Autoscaling", the minimum number should be set to 0 to save money while debugging, but it would be a multiple of the number of detectors in production.
-  The maximum number depends on how many simultaneous visits could be in process.
-
-The Cloud Run service URL is given at the top of the service details page.
-Copy it for use in the Pub/Sub subscription.
-
-One subscription needs to be created (once) for the ``nextVisit`` topic.
-It accepts messages and gateways them to Cloud Run.
-
-* Choose "Pub/Sub"
-* Choose "Subscriptions"
-* Choose "Create Subscription"
-* Set "Subscription ID" to "nextVisit-sub"
-* Select the ``projects/prompt-proto/topics/nextVisit`` topic
-* Set "Delivery type" to "Push"
-* Set the "Endpoint URL" to the service URL from Cloud Run, with ``?token={PUBSUB_VERIFICATION_TOKEN}`` appended to it.
-  As mentioned, the string ``{PUBSUB_VERIFICATION_TOKEN}`` should be replaced by an arbitrary string matching the variable set above.
-* Enable authentication using a service account that has Artifact Registry Reader, Cloud Run Invoker, Pub/Sub Editor, Pub/Sub Subscriber, and Storage Object Viewer roles
-* Set "Message retention duration" to 10 minutes
-* Do not "Retain acknowledged messages", and do not expire the subscription
-* Set the acknowledgement deadline to 600 seconds
-* Set the "Retry policy" to "Retry immediately"
-
-USDF
-----
-
 The service can be controlled with ``kubectl`` from ``rubin-devl``.
 You must first `get credentials for the development cluster <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev>`_ on the web; ignore the installation instructions and copy the commands from the second box.
 Credentials must be renewed if you get a "cannot fetch token: 400 Bad Request" error when running ``kubectl``.
@@ -251,10 +156,10 @@ A few useful commands for managing the service:
   ``kubectl logs`` also offers the ``-f`` flag for streaming output.
 
 Troubleshooting
-^^^^^^^^^^^^^^^
+---------------
 
 Deleting Old Services
-"""""""""""""""""""""
+^^^^^^^^^^^^^^^^^^^^^
 
 Normally, old revisions of a service are automatically removed when a new revision is deployed.
 However, sometimes an old revision will stick around; this seems to be related to Python errors from bad code.
@@ -272,7 +177,7 @@ To delete such services manually:
    There's no point to deleting the pod itself, because the service will just recreate it.
 
 Identifying a Pod's Codebase
-""""""""""""""""""""""""""""
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To identify which version of ``prompt-prototype`` a pod is running, run
 
@@ -286,7 +191,7 @@ Actually mapping the hash to a branch version may require a bit of detective wor
 To find the version of Science Pipelines used, find the container's page in the GitHub registry, then search for ``EUPS_TAG``.
 
 Inspecting a Pod
-""""""""""""""""
+^^^^^^^^^^^^^^^^
 
 To inspect the state of a pod (e.g., the local repo):
 
@@ -361,59 +266,6 @@ The visits are randomly selected and uploaded as one new group for each visit.
 Databases
 =========
 
-Google Cloud
-------------
-
-Two PostgreSQL databases have been created on Cloud SQL: ``butler-registry`` and ``apdb``.
-
-To access these for manual operations, start by creating a virtual machine in Google Compute Engine.
-
-* In the Cloud Console, go to "Compute Engine > VM instances".
-* Select "Create Instance" at the top.
-* Enter an instance name (e.g. ``ktl-db-client``).
-* Under "Identity and API access / Access scopes", select "Set access for each API".
-* Select "Enabled" for "Cloud SQL".
-  If desired, change "Storage" to "Read Write" and "Cloud Pub/Sub" to "Enabled".
-* Expand "Networking, Disks, Security, Management, Sole-Tenancy".
-* Under "Networking", add the tag ``ssh``.
-  This enables the firewall rule to allow connections from the Google Identity-Aware Proxy to the ssh port on the machine.
-* You can leave all the rest at their defaults unless you think you need more CPU or memory.
-  If you do (e.g. if you wanted to run Pipelines code on the VM), it's probably better to switch to an N2 series machine.
-* With the project owner role, you should have appropriate permissions to connect to the machine and also to ``sudo`` to ``root`` on it, allowing installation of software.
-* When the green check shows up in the status column, click "SSH" under "Connect" to start an in-browser shell to the machine.
-* Then execute the following to install client software, set up proxy forwarding, and connect to the database:
-
-.. code-block:: sh
-
-   sudo apt-get update
-   sudo apt-get install postgresql-client-11 cloudsql-proxy
-   cloud_sql_proxy -instances=prompt-proto:us-central1:butler-registry=tcp:5432 &
-   psql -h localhost -U postgres
-
-A separate ``cloud_sql_proxy`` using a different port will be needed to communicate with the ``apdb`` database.
-
-For passwordless login, create a ``~/.pgpass`` file with contents ``localhost:5432:postgres:postgres:PASSWORD`` and execute ``chmod 0600 ~/.pgpass``.
-   
-On a VM with the Science Pipelines installed, a new APDB schema can be created in the usual way: 
-
-.. code-block:: sh
-
-    make_apdb.py -c db_url="postgresql://postgres@localhost:<PORT>/postgres"
-
-Resetting the APDB
-^^^^^^^^^^^^^^^^^^
-
-To restore the APDB to a clean state, run the following (replacing 5433 with the appropriate port on your machine):
-
-.. code-block:: sh
-
-   psql -h localhost -U postgres -p 5433 -c 'drop table "DiaForcedSource", "DiaObject", "DiaObject_To_Object_Match", "DiaSource", "SSObject" cascade;'
-   make_apdb.py -c db_url="postgresql://postgres@localhost:5433/postgres"
-
-
-USDF
-----
-
 A database server is running at ``postgresql:://usdf-prompt-processing-dev.slac.stanford.edu``.
 The server runs two databases: ``ppcentralbutler`` (for the Butler registry) and ``lsst-devl`` (for the APDB).
 
@@ -447,7 +299,7 @@ From ``rubin-devl``, a new APDB schema can be created in the usual way:
        -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
 
 Resetting the APDB
-^^^^^^^^^^^^^^^^^^
+------------------
 
 To restore the APDB to a clean state, run the following:
 
@@ -456,72 +308,3 @@ To restore the APDB to a clean state, run the following:
    psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb" cascade;'
    make_apdb.py -c namespace="pp_apdb" \
        -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
-
-
-Middleware Worker VM
-====================
-
-The ``rubin-utility-middleware`` VM on Google Compute Engine is intended as a general-purpose environment for working with Butler repositories.
-It can work with both local repositories and ones based on Google Storage.
-However, it has limited computing power, and is not suited for things like pipeline runs.
-
-Built-in support:
-
-* a complete install of the Science Pipelines in ``/software/lsst_stack/``
-* a running instance of ``cloud_sql_proxy`` mapping the ``butler-registry`` database to port 5432
-* global configuration pointing Butler ``s3://`` URIs to Google Storage buckets (though ``gs://`` URIs now work as well)
-
-The user is responsible for:
-
-* running ``source /software/lsst_stack/loadLSST.sh`` on login
-* database authentication (see `Databases`_, above)
-* `Google Storage Authentication`_
-
-
-Google Storage Authentication
------------------------------
-
-To access `Google Storage-Backed Repositories`_, you must first set up Boto authentication.
-If you don't have one, `create an HMAC key`_ (this is *not* the same as the token for running the `tester`_); the relevant service account is ``service-620570835826@gs-project-accounts.iam.gserviceaccount.com``.
-Then create a ``~/.aws/credentials`` file with the contents::
-
-    [default]
-    aws_access_key_id=<access key>
-    aws_secret_access_key=<secret key>
-
-and execute ``chmod go-rwx ~/.aws/credentials``.
-
-.. _create an HMAC key: https://cloud.google.com/storage/docs/authentication/managing-hmackeys#create
-
-PostgreSQL-Backed Repositories
-------------------------------
-
-By default, ``butler create`` creates a repository whose registry is stored in SQLite.
-To instead store the registry in the ``butler-registry`` database, create a seed config YAML such as:
-
-.. code-block:: yaml
-
-   registry:
-     db: postgresql://postgres@localhost:5432/
-     namespace: <unique namespace>
-
-Then run ``butler create --seed-config seedconfig.yaml <repo location>`` to create the repository.
-
-Each repository needs its own ``namespace`` value, corresponding to a PostgreSQL schema.
-Schemas can be listed from within ``psql`` using the ``\dn`` command, and corrupted or outdated registries can be deleted using the ``DROP SCHEMA`` command.
-
-.. warning::
-
-   Be sure to always provide a unique namespace.
-   Otherwise, the registry will be created in the database's ``public`` schema, making it very difficult to clean up later.
-
-
-Google Storage-Backed Repositories
-----------------------------------
-
-All Google Storage repositories must also be `PostgreSQL-Backed Repositories`_.
-Otherwise, no special configuration is needed to create one.
-
-To create or access a Google Storage repository, give the repository location as a URI, e.g.::
-
-    butler query-collections gs://<bucket name>/<repo location in bucket>

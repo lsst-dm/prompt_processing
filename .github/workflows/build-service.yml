@@ -92,12 +92,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Login to Google Artifact Registry
-        uses: docker/login-action@v2
-        with:
-          registry: us-central1-docker.pkg.dev
-          username: _json_key_base64
-          password: ${{ secrets.GAR_JSON_B64 }}
       - name: Determine eups tag
         run: |
           docker run ghcr.io/${{ github.repository_owner }}/prompt-proto-base:"$BASE_TAG" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag
@@ -115,8 +109,7 @@ jobs:
           BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
           [ "$BRANCH" == "merge" ] && BRANCH=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
 
-          for IMAGE_ID in "ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME" \
-                          "us-central1-docker.pkg.dev/prompt-proto/prompt/$IMAGE_NAME"; do
+          for IMAGE_ID in "ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME"; do
             if [ "$BRANCH" == "main" ]; then
               VERSION="$BASE_TAG"
             else

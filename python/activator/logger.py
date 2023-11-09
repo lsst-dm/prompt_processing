@@ -19,8 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["GCloudStructuredLogFormatter", "UsdfJsonFormatter", "setup_google_logger", "setup_usdf_logger",
-           "RecordFactoryContextAdapter"]
+__all__ = ["UsdfJsonFormatter", "setup_usdf_logger", "RecordFactoryContextAdapter"]
 
 import collections.abc
 from contextlib import contextmanager
@@ -99,34 +98,6 @@ def _set_context_logger():
     logging.setLogRecordFactory(RecordFactoryContextAdapter(logging.getLogRecordFactory()))
 
 
-# TODO: replace with something more extensible, once we know what needs to
-# vary besides the formatter (handler type?).
-def setup_google_logger(labels=None):
-    """Set global logging settings for prompt_prototype.
-
-    Calling this function makes `GCloudStructuredLogFormatter` the root
-    formatter and redirects all warnings to go through it.
-
-    Parameters
-    ----------
-    labels : `dict` [`str`, `str`]
-        Any metadata that should be attached to all logs. See
-        ``LogEntry.labels`` in Google Cloud REST API documentation.
-
-    Returns
-    -------
-    handler : `logging.Handler`
-        The handler used by the root logger.
-    """
-    _set_context_logger()
-    log_handler = logging.StreamHandler()
-    log_handler.setFormatter(GCloudStructuredLogFormatter(labels))
-    logging.basicConfig(handlers=[log_handler])
-    _channel_all_to_pylog()
-    _set_lsst_logging_levels()
-    return log_handler
-
-
 def setup_usdf_logger(labels=None):
     """Set global logging settings for prompt_prototype.
 
@@ -149,38 +120,6 @@ def setup_usdf_logger(labels=None):
     _channel_all_to_pylog()
     _set_lsst_logging_levels()
     return log_handler
-
-
-class GCloudStructuredLogFormatter(logging.Formatter):
-    """A formatter that can be parsed by the Google Cloud logging agent.
-
-    The formatter's output is a JSON-encoded message containing keywords
-    recognized by the logging agent.
-
-    Parameters
-    ----------
-    labels : `dict` [`str`, `str`]
-        Any metadata that should be attached to the log. See ``LogEntry.labels``
-        in Google Cloud REST API documentation.
-    """
-    def __init__(self, labels=None):
-        super().__init__()
-
-        if labels:
-            self._labels = labels
-        else:
-            self._labels = {}
-
-    def format(self, record):
-        # format updates record.message, but the full info is *only* in the return value.
-        msg = super().format(record)
-
-        entry = {
-            "severity": record.levelname,
-            "logging.googleapis.com/labels": self._labels | record.logging_context,
-            "message": msg,
-        }
-        return json.dumps(entry, default=_encode_json_extras)
 
 
 class UsdfJsonFormatter(logging.Formatter):

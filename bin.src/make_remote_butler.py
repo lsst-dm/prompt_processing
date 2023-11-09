@@ -24,11 +24,6 @@
 """Simple script for creating a repository at a remote URI, given
 a source repository and export file.
 
-For most values of --target-repo and --seed-config, this script is only useful
-if run from the prompt-proto project on Google Cloud (because of access
-restrictions to **both** the repository's storage location and its registry
-database).
-
 The user is responsible for clearing any old copies of the repository from
 both the target URI and the registry database.
 """
