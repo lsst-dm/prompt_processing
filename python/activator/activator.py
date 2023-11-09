@@ -160,7 +160,9 @@ def parse_next_visit(http_request):
 
     # Message format is determined by the nextvisit-start deployment.
     data = json.loads(event.data)
-    return FannedOutVisit(**data)
+    visit = FannedOutVisit(**data)
+    _log.debug("Unpacked message as %r.", visit)
+    return visit
 
 
 def _filter_messages(messages):
