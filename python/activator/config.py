@@ -130,9 +130,13 @@ class PipelinesConfig:
         pos = 0
         match = node.match(config, pos)
         while match:
-            if match['filelist'] is not None:
-                filenames = [file.strip() for file in match['filelist'].split(',')] \
-                    if match['filelist'] else []
+            if match['filelist']:  # exclude None and ""; latter gives unexpected behavior with split
+                filenames = []
+                for file in match['filelist'].split(','):
+                    file = file.strip()
+                    if "\n" in file:
+                        raise ValueError(f"Unexpected newline in '{file}'.")
+                    filenames.append(file)
                 items[match['survey']] = filenames
             else:
                 items[match['survey']] = []

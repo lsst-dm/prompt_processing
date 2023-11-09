@@ -174,6 +174,16 @@ class PipelinesConfigTest(unittest.TestCase):
                             '(survey="CameraTest")=[${AP_PIPE_DIR}/pipelines/Isr.yaml] '
                             )
 
+    def test_bad_line_breaks(self):
+        with self.assertRaises(ValueError):
+            PipelinesConfig('''(survey="Test
+                               Survey")=[/etc/pipelines/SingleFrame.yaml]'''
+                            )
+        with self.assertRaises(ValueError):
+            PipelinesConfig('''(survey="TestSurvey")=[/etc/pipelines/
+                                                      SingleFrame.yaml]'''
+                            )
+
     def test_unlabeled(self):
         with self.assertRaises(ValueError):
             PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/SingleFrame.yaml], '
