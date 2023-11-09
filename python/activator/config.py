@@ -122,7 +122,7 @@ class PipelinesConfig:
         # when the input is invalid. If pickier matching is needed in the
         # future, use a separate regex for filelist instead of making node
         # more complex.
-        node = re.compile(r'\s*\(survey="(?P<survey>[\w\s]*)"\)='
+        node = re.compile(r'\s*\(survey="(?P<survey>[^"\n=]*)"\)='
                           r'(?:\[(?P<filelist>[^]]*)\]|none)(?:\s+|$)',
                           re.IGNORECASE)
 
