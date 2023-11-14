@@ -146,8 +146,7 @@ This file fully supports the Go template syntax.
 
 A few useful commands for managing the service:
 
-* ``kubectl config set-context usdf-prompt-processing-dev --namespace=prompt-proto-service`` sets the default namespace for the following ``kubectl`` commands to ``prompt-proto-service``.
-  Note that many of the workflows in `slaclab/rubin-usdf-prompt-processing`_ run in the ``knative-serving`` or ``knative-eventing`` namespaces; to examine the resources of these workflows, add e.g. ``-n knative-eventing`` to the examples below.
+* ``kubectl config set-context usdf-prompt-processing-dev --namespace=prompt-proto-service-<instrument>`` sets the default namespace for the following ``kubectl`` commands to ``prompt-proto-service-<instrument>``.
 * ``kubectl get serving`` summarizes the state of the service, including which revision(s) are currently handling messages.
   A revision with 0 replicas is inactive.
 * ``kubectl get pods`` lists the Kubernetes pods that are currently running, how long they have been active, and how recently they crashed.
