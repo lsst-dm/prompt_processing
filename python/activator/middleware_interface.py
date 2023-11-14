@@ -482,6 +482,7 @@ class MiddlewareInterface:
         # specified as a class kwarg, so that we only load one here?
         # TODO: alternately, we need to extract it from the pipeline? (best?)
         try:
+            _log.debug("Searching for templates in tract %d, patches %s...", tract.tract_id, patches_str)
             templates = set(_filter_datasets(
                 self.central_butler, self.butler,
                 "*Coadd",
