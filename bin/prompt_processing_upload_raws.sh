@@ -21,7 +21,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 # This script uploads the raw files from the HSC PDR2 run to a bucket at USDF.
-# It renames the files to match prompt_prototype conventions. The user must
+# It renames the files to match prompt_processing conventions. The user must
 # have bucket access already configured.
 
 set -e  # Abort on any error

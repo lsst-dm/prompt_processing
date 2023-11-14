@@ -46,7 +46,7 @@ from .raw import (
 )
 from .visit import FannedOutVisit
 
-PROJECT_ID = "prompt-proto"
+PROJECT_ID = "prompt-processing"
 
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]

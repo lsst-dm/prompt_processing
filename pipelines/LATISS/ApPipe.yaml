@@ -2,7 +2,7 @@ description: Alert Production pipeline specialized for LATISS
 
 # This file should strive to contain just an import from ap_pipe.
 # Exceptions are allowed temporarily when urgent bug fixes and
-# prompt_prototype build can't wait for the lsst_distrib
+# prompt_processing build can't wait for the lsst_distrib
 # release schedule.
 imports:
   - location: $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml

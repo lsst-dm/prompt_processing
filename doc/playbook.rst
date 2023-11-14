@@ -1,6 +1,6 @@
-#########################################################
-Playbook for the Prompt Processing Proposal and Prototype
-#########################################################
+######################################################
+Developers' Playbook for the Prompt Processing Service
+######################################################
 
 .. _DMTN-219: https://dmtn-219.lsst.io/
 
@@ -9,7 +9,7 @@ Table of Contents
 
 * `Containers`_
 * `Buckets`_
-* `Prototype Service`_
+* `Development Service`_
 * `tester`_
 * `Databases`_
 
@@ -17,9 +17,9 @@ Table of Contents
 Containers
 ==========
 
-The prototype consists of two containers.
+The service consists of two containers.
 The first is a base container with the Science Pipelines "stack" code and networking utilities.
-The second is a service container made from the base that has the Prompt Processing prototype service code.
+The second is a service container made from the base that has the Prompt Processing service code.
 All containers are managed by `GitHub Container Registry <https://github.com/orgs/lsst-dm/packages?repo_name=prompt_processing>`_ and are built using GitHub Actions.
 
 To build the base container:
@@ -112,8 +112,8 @@ To inspect them with the MinIO Client ``mc`` tool, first set up an alias (e.g. `
 
 For Butler not to complain about the bucket names, set the environment variable ``LSST_DISABLE_BUCKET_VALIDATION=1``.
 
-Prototype Service
-=================
+Development Service
+===================
 
 The service can be controlled with ``kubectl`` from ``rubin-devl``.
 You must first `get credentials for the development cluster <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev>`_ on the web; ignore the installation instructions and copy the commands from the second box.
@@ -179,7 +179,7 @@ To delete such services manually:
 Identifying a Pod's Codebase
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To identify which version of ``prompt-prototype`` a pod is running, run
+To identify which version of Prompt Processing a pod is running, run
 
 .. code-block:: sh
 
@@ -218,7 +218,7 @@ It can be run from ``rubin-devl``, but requires the user to install the ``conflu
 
 You must have a profile set up for the ``rubin:rubin-pp`` bucket (see `Buckets`_, above).
 
-Install the prototype code, and set it up before use:
+Install the Prompt Processing code, and set it up before use:
 
 .. code-block:: sh
 

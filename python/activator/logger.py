@@ -99,7 +99,7 @@ def _set_context_logger():
 
 
 def setup_usdf_logger(labels=None):
-    """Set global logging settings for prompt_prototype.
+    """Set global logging settings for prompt_processing.
 
     Calling this function redirects all warnings to go through the logger.
 
