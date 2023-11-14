@@ -182,10 +182,10 @@ To identify which version of Prompt Processing a pod is running, run
 
 .. code-block:: sh
 
-   kubectl describe pod <pod name> | grep "prompt-proto-service@"
+   kubectl describe pod <pod name> | grep "prompt-service@"
 
 This gives the hash of the service container running on that pod.
-Actually mapping the hash to a branch version may require a bit of detective work; `the GitHub container registry <https://github.com/lsst-dm/prompt_processing/pkgs/container/prompt-proto-service>`_ (which calls hashes "Digests") is a good starting point.
+Actually mapping the hash to a branch version may require a bit of detective work; `the GitHub container registry <https://github.com/lsst-dm/prompt_processing/pkgs/container/prompt-service>`_ (which calls hashes "Digests") is a good starting point.
 
 To find the version of Science Pipelines used, find the container's page in the GitHub registry, then search for ``EUPS_TAG``.
 
