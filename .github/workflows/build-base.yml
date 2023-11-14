@@ -32,7 +32,7 @@ jobs:
     name: Update base image
     runs-on: ubuntu-latest
     env:
-      IMAGE_NAME: prompt-proto-base
+      IMAGE_NAME: prompt-base
       STACK_TAG: ${{ inputs.stackTag }}
     steps:
       - name: Checkout code

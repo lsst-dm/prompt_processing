@@ -1,6 +1,6 @@
 description: ISR-only pipeline specialized for LATISS
 
 imports:
-  - location: $PROMPT_PROTOTYPE_DIR/pipelines/LATISS/ApPipe.yaml
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LATISS/ApPipe.yaml
     include:
       - isr

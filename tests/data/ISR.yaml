@@ -1,6 +1,6 @@
 description: Test pipeline consisting only of ISR.
 
 imports:
-  - location: $PROMPT_PROTOTYPE_DIR/tests/data/ApPipe.yaml
+  - location: $PROMPT_PROCESSING_DIR/tests/data/ApPipe.yaml
     include:
       - isr

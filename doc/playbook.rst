@@ -1,6 +1,6 @@
-#########################################################
-Playbook for the Prompt Processing Proposal and Prototype
-#########################################################
+######################################################
+Developers' Playbook for the Prompt Processing Service
+######################################################
 
 .. _DMTN-219: https://dmtn-219.lsst.io/
 
@@ -9,7 +9,7 @@ Table of Contents
 
 * `Containers`_
 * `Buckets`_
-* `Prototype Service`_
+* `Development Service`_
 * `tester`_
 * `Databases`_
 
@@ -17,16 +17,16 @@ Table of Contents
 Containers
 ==========
 
-The prototype consists of two containers.
+The service consists of two containers.
 The first is a base container with the Science Pipelines "stack" code and networking utilities.
-The second is a service container made from the base that has the Prompt Processing prototype service code.
-All containers are managed by `GitHub Container Registry <https://github.com/orgs/lsst-dm/packages?repo_name=prompt_prototype>`_ and are built using GitHub Actions.
+The second is a service container made from the base that has the Prompt Processing service code.
+All containers are managed by `GitHub Container Registry <https://github.com/orgs/lsst-dm/packages?repo_name=prompt_processing>`_ and are built using GitHub Actions.
 
 To build the base container:
 
 * If there are changes to the container, push them to a branch, then open a PR.
   The container should be built automatically.
-* If there are no changes (typically because you want to use an updated Science Pipelines container), go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_prototype/actions/workflows/build-base.yml>`_ and select "Run workflow".
+* If there are no changes (typically because you want to use an updated Science Pipelines container), go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-base.yml>`_ and select "Run workflow".
   From the dropdown, select the branch whose container definition will be used, and the label of the Science Pipelines container.
 * New containers built from ``main`` are tagged with the corresponding Science Pipelines release (plus ``w_latest`` or ``d_latest`` if the release was requested by that name).
   For automatic ``main`` builds, or if the corresponding box in the manual build is checked, the new container also has the ``latest`` label.
@@ -42,7 +42,7 @@ To build the service container:
 
 * If there are changes to the service, push them to a branch, then open a PR.
   The container should be built automatically using the ``latest`` base container.
-* To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_prototype/actions/workflows/build-service.yml>`_ and select "Run workflow".
+* To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml>`_ and select "Run workflow".
   From the dropdown, select the branch whose code should be built.
   The container will be built using the ``latest`` base container, even if there is a branch build of the base.
 * To use a base other than ``latest``, edit ``.github/workflows/build-service.yml`` on the branch and override the ``BASE_TAG_LIST`` variable.
@@ -112,8 +112,8 @@ To inspect them with the MinIO Client ``mc`` tool, first set up an alias (e.g. `
 
 For Butler not to complain about the bucket names, set the environment variable ``LSST_DISABLE_BUCKET_VALIDATION=1``.
 
-Prototype Service
-=================
+Development Service
+===================
 
 The service can be controlled with ``kubectl`` from ``rubin-devl``.
 You must first `get credentials for the development cluster <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev>`_ on the web; ignore the installation instructions and copy the commands from the second box.
@@ -146,8 +146,7 @@ This file fully supports the Go template syntax.
 
 A few useful commands for managing the service:
 
-* ``kubectl config set-context usdf-prompt-processing-dev --namespace=prompt-proto-service`` sets the default namespace for the following ``kubectl`` commands to ``prompt-proto-service``.
-  Note that many of the workflows in `slaclab/rubin-usdf-prompt-processing`_ run in the ``knative-serving`` or ``knative-eventing`` namespaces; to examine the resources of these workflows, add e.g. ``-n knative-eventing`` to the examples below.
+* ``kubectl config set-context usdf-prompt-processing-dev --namespace=prompt-proto-service-<instrument>`` sets the default namespace for the following ``kubectl`` commands to ``prompt-proto-service-<instrument>``.
 * ``kubectl get serving`` summarizes the state of the service, including which revision(s) are currently handling messages.
   A revision with 0 replicas is inactive.
 * ``kubectl get pods`` lists the Kubernetes pods that are currently running, how long they have been active, and how recently they crashed.
@@ -179,14 +178,14 @@ To delete such services manually:
 Identifying a Pod's Codebase
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To identify which version of ``prompt-prototype`` a pod is running, run
+To identify which version of Prompt Processing a pod is running, run
 
 .. code-block:: sh
 
-   kubectl describe pod <pod name> | grep "prompt-proto-service@"
+   kubectl describe pod <pod name> | grep "prompt-service@"
 
 This gives the hash of the service container running on that pod.
-Actually mapping the hash to a branch version may require a bit of detective work; `the GitHub container registry <https://github.com/lsst-dm/prompt_prototype/pkgs/container/prompt-proto-service>`_ (which calls hashes "Digests") is a good starting point.
+Actually mapping the hash to a branch version may require a bit of detective work; `the GitHub container registry <https://github.com/lsst-dm/prompt_processing/pkgs/container/prompt-service>`_ (which calls hashes "Digests") is a good starting point.
 
 To find the version of Science Pipelines used, find the container's page in the GitHub registry, then search for ``EUPS_TAG``.
 
@@ -218,12 +217,12 @@ It can be run from ``rubin-devl``, but requires the user to install the ``conflu
 
 You must have a profile set up for the ``rubin:rubin-pp`` bucket (see `Buckets`_, above).
 
-Install the prototype code, and set it up before use:
+Install the Prompt Processing code, and set it up before use:
 
 .. code-block:: sh
 
-    git clone https://github.com/lsst-dm/prompt_prototype
-    setup -r prompt_prototype
+    git clone https://github.com/lsst-dm/prompt_processing
+    setup -r prompt_processing
 
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin:rubin-pp`` S3 bucket, simulating incoming raw images.

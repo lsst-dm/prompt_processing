@@ -61,14 +61,14 @@ jobs:
       - name: Run tests
         run: |
           docker run \
-              -v $GITHUB_WORKSPACE:/home/lsst/prompt_prototype \
-              ghcr.io/${{ github.repository_owner }}/prompt-proto-base:${{ matrix.baseTag }} \
+              -v $GITHUB_WORKSPACE:/home/lsst/prompt_processing \
+              ghcr.io/${{ github.repository_owner }}/prompt-base:${{ matrix.baseTag }} \
               bash -c '
-                  cd /home/lsst/prompt_prototype
+                  cd /home/lsst/prompt_processing
                   source /opt/lsst/software/stack/loadLSST.bash
                   setup -r .
                   # Fix permissions; arg must be absolute path.
-                  git config --global --add safe.directory /home/lsst/prompt_prototype
+                  git config --global --add safe.directory /home/lsst/prompt_processing
                   scons'
 
   update-service-image:
@@ -81,7 +81,7 @@ jobs:
       matrix:
         baseTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
     env:
-      IMAGE_NAME: prompt-proto-service
+      IMAGE_NAME: prompt-service
       BASE_TAG: ${{ matrix.baseTag }}
     steps:
       - name: Checkout code
@@ -94,7 +94,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Determine eups tag
         run: |
-          docker run ghcr.io/${{ github.repository_owner }}/prompt-proto-base:"$BASE_TAG" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag
+          docker run ghcr.io/${{ github.repository_owner }}/prompt-base:"$BASE_TAG" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag
           echo "Eups tag = $(< eups.tag)"
       - name: Build image
         run: |

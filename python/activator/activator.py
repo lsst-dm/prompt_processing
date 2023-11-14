@@ -1,4 +1,4 @@
-# This file is part of prompt_prototype.
+# This file is part of prompt_processing.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -46,7 +46,7 @@ from .raw import (
 )
 from .visit import FannedOutVisit
 
-PROJECT_ID = "prompt-proto"
+PROJECT_ID = "prompt-processing"
 
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]

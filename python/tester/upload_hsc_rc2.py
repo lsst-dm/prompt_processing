@@ -1,4 +1,4 @@
-# This file is part of prompt_prototype.
+# This file is part of prompt_processing.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -149,10 +149,8 @@ def get_hsc_visit_list(butler, n_sample):
 def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     """Extract metadata and send next_visit events for one HSC-RC2 visit
 
-    One ``next_visit`` message is sent for each detector, to mimic the
-    current prototype design in which a single message is sent from the
-    Summit to the USDF and then a USDF-based server translates it into
-    multiple messages.
+    One ``next_visit`` message is sent to the development fan-out service,
+    which translates it into multiple messages.
 
     Parameters
     ----------
