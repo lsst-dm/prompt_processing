@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# This file is part of prompt_prototype.
+# This file is part of prompt_processing.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -49,7 +49,7 @@ def _make_parser():
     parser.add_argument("--target-repo", required=True,
                         help="The URI of the repository to create.")
     parser.add_argument("--seed-config",
-                        default=os.path.join(getPackageDir("prompt_prototype"), "etc", "db_butler.yaml"),
+                        default=os.path.join(getPackageDir("prompt_processing"), "etc", "db_butler.yaml"),
                         help="The config file to use for the new repository. Defaults to etc/db_butler.yaml.")
     parser.add_argument("--export-file", default="export.yaml",
                         help="The export file containing the repository contents. Defaults to ./export.yaml.")

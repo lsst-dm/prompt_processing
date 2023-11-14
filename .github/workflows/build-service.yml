@@ -61,14 +61,14 @@ jobs:
       - name: Run tests
         run: |
           docker run \
-              -v $GITHUB_WORKSPACE:/home/lsst/prompt_prototype \
+              -v $GITHUB_WORKSPACE:/home/lsst/prompt_processing \
               ghcr.io/${{ github.repository_owner }}/prompt-proto-base:${{ matrix.baseTag }} \
               bash -c '
-                  cd /home/lsst/prompt_prototype
+                  cd /home/lsst/prompt_processing
                   source /opt/lsst/software/stack/loadLSST.bash
                   setup -r .
                   # Fix permissions; arg must be absolute path.
-                  git config --global --add safe.directory /home/lsst/prompt_prototype
+                  git config --global --add safe.directory /home/lsst/prompt_processing
                   scons'
 
   update-service-image:

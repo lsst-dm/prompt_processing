@@ -1,5 +1,5 @@
 #!/bin/bash
-# This file is part of prompt_prototype.
+# This file is part of prompt_processing.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project

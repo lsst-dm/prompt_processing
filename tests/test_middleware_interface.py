@@ -1,4 +1,4 @@
-# This file is part of prompt_prototype.
+# This file is part of prompt_processing.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -55,8 +55,8 @@ skymap_name = "decam_rings_v1"
 # A pipelines config that returns the test pipelines.
 # Unless a test imposes otherwise, the first pipeline should run, and
 # the second should not be attempted.
-pipelines = PipelinesConfig('''(survey="SURVEY")=[${PROMPT_PROTOTYPE_DIR}/tests/data/ApPipe.yaml,
-                                                  ${PROMPT_PROTOTYPE_DIR}/tests/data/SingleFrame.yaml]
+pipelines = PipelinesConfig('''(survey="SURVEY")=[${PROMPT_PROCESSING_DIR}/tests/data/ApPipe.yaml,
+                                                  ${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml]
                             '''
                             )
 

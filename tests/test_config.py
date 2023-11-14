@@ -1,4 +1,4 @@
-# This file is part of prompt_prototype.
+# This file is part of prompt_processing.
 #
 # Developed for the LSST Data Management System.
 # This product includes software developed by the LSST Project
@@ -58,7 +58,7 @@ class PipelinesConfigTest(unittest.TestCase):
 
     def test_main_survey(self):
         config = PipelinesConfig(
-            ' (survey="TestSurvey")=[${PROMPT_PROTOTYPE_DIR}/pipelines/NotACam/ApPipe.yaml]')
+            ' (survey="TestSurvey")=[${PROMPT_PROCESSING_DIR}/pipelines/NotACam/ApPipe.yaml]')
         self.assertEqual(
             config.get_pipeline_files(self.visit),
             [os.path.normpath(os.path.join(TESTDIR, "..", "pipelines", "NotACam", "ApPipe.yaml"))]
