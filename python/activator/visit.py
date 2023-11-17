@@ -54,9 +54,12 @@ class BareVisit:
         OPEN = 2
         EITHER = 3
 
-    salIndex: int               # this maps to an instrument
+    # script queue that generated the event. One queue usually runs one telescope, but they can switch
+    salIndex: int
     scriptSalIndex: int
-    groupId: str                # observatory-specific ID; not the same as visit number
+    # Observatory-specific ID. Same as Butler's group_name, not the same as
+    # Butler's group_id or visit number
+    groupId: str
     coordinateSystem: CoordSys  # coordinate system of position
     # (ra, dec) or (az, alt) in degrees. Use compare=False to exclude from hash.
     position: list[float] = field(compare=False)
@@ -104,11 +107,11 @@ class FannedOutVisit(BareVisit):
 @dataclass(frozen=True, kw_only=True)
 class SummitVisit(BareVisit):
     # Extra fields are in the NextVisit messages from the summit
-    private_efdStamp: float = 0.0
+    private_efdStamp: float = 0.0  # time of visit publication; UTC in unix seconds
     private_kafkaStamp: float = 0.0
     private_identity: str = "ScriptQueue"
     private_revCode: str = "c9aab3df"
     private_origin: int = 0
-    private_seqNum: int = 0
+    private_seqNum: int = 0        # counts script calls since queue start. Not the same as Butler seq_num
     private_rcvStamp: float = 0.0
-    private_sndStamp: float = 0.0
+    private_sndStamp: float = 0.0  # time of visit publication; TAI in unix seconds

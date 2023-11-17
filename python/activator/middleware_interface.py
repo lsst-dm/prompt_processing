@@ -430,6 +430,7 @@ class MiddlewareInterface:
         # with another solution ASAP.
         possible_refcats = ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110",
                             "atlas_refcat2_20220201", "gaia_dr3_20230707"]
+        _log.debug("Searching for refcats in %s...", shard_ids)
         refcats = set(_filter_datasets(
                       self.central_butler, self.butler,
                       possible_refcats,
@@ -481,6 +482,7 @@ class MiddlewareInterface:
         # specified as a class kwarg, so that we only load one here?
         # TODO: alternately, we need to extract it from the pipeline? (best?)
         try:
+            _log.debug("Searching for templates in tract %d, patches %s...", tract.tract_id, patches_str)
             templates = set(_filter_datasets(
                 self.central_butler, self.butler,
                 "*Coadd",
