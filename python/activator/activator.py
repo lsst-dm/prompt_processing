@@ -293,7 +293,7 @@ def next_visit_handler() -> Tuple[str, int]:
 
             _log.debug("Waiting for snaps...")
             start = time.time()
-            while len(expid_set) < expected_snaps:
+            while len(expid_set) < expected_snaps and time.time() - start < timeout:
                 if startup_response:
                     response = startup_response
                 else:
@@ -301,16 +301,12 @@ def next_visit_handler() -> Tuple[str, int]:
                 end = time.time()
                 messages = _filter_messages(response)
                 response = []
-                if len(messages) == 0:
-                    if end - start < timeout and not startup_response:
-                        _log.debug(f"Empty consume after {end - start}s.")
-                        continue
-                    _log.warning(
-                        f"Timed out waiting for image after receiving exposures {expid_set}."
-                    )
-                    break
+                if len(messages) == 0 and end - start < timeout and not startup_response:
+                    _log.debug(f"Empty consume after {end - start}s.")
+                    continue
                 startup_response = []
 
+                # Not all notifications are for this group/detector
                 for received in messages:
                     for oid in _parse_bucket_notifications(received.value()):
                         try:
@@ -329,6 +325,8 @@ def next_visit_handler() -> Tuple[str, int]:
                     # that will later be assigned to this worker, but those cases
                     # should be caught by the "already arrived" check.
                     consumer.commit(message=received)
+            if len(expid_set) < expected_snaps:
+                _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
 
             if expid_set:
                 with log_factory.add_context(exposures=expid_set):
