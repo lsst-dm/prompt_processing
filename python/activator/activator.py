@@ -297,7 +297,8 @@ def next_visit_handler() -> Tuple[str, int]:
                 if startup_response:
                     response = startup_response
                 else:
-                    response = consumer.consume(num_messages=1, timeout=timeout)
+                    time_remaining = max(0.0, timeout - (time.time() - start))
+                    response = consumer.consume(num_messages=1, timeout=time_remaining + 1.0)
                 end = time.time()
                 messages = _filter_messages(response)
                 response = []
