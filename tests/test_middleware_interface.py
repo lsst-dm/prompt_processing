@@ -989,10 +989,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
             0)
 
-    def test_export_outputs_bad_exposure(self):
-        with self.assertRaises(ValueError):
-            self.interface.export_outputs({88})
-
     def test_export_outputs_retry(self):
         self.interface.export_outputs({self.raw_data_id["exposure"]})
         self.second_interface.export_outputs({self.second_data_id["exposure"]})

@@ -857,7 +857,7 @@ class MiddlewareInterface:
                 exported = True
                 _log.info(f"Pipeline products saved to collection '{output_run}'.")
         if not exported:
-            raise ValueError(f"No datasets match visit={self.visit} and exposures={exposure_ids}.")
+            _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
 
     @staticmethod
     def _get_safe_dataset_types(butler):
