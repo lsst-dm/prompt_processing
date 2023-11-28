@@ -97,9 +97,10 @@ def _export_for_copy(butler, target_butler):
         )
         contents.saveDatasets(records)
 
-        logging.debug("Selecting refcats datasets")
+        refcats = {"atlas_refcat2_20220201", "gaia_dr3_20230707"}
+        logging.debug(f"Selecting refcats datasets {refcats}")
         records = _filter_datasets(
-            butler, target_butler, datasetType=..., collections="refcats*"
+            butler, target_butler, datasetType=refcats, collections="refcats*"
         )
         contents.saveDatasets(records)
 
