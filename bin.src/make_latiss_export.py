@@ -126,11 +126,8 @@ def _export_for_copy(butler, target_butler):
         for collection in butler.registry.queryCollections(
             expression="LATISS/calib",
             flattenChains=True,
+            includeChains=True,
         ) + [
-            "LATISS/calib",
-            "LATISS/calib/DM-36719",
-            "LATISS/calib/DM-38946",
-            "LATISS/calib/DM-39505",
             "LATISS/templates",
             "LATISS/calib/unbounded",
         ]:
