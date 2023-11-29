@@ -30,6 +30,7 @@ import warnings
 
 import astropy.coordinates
 import astropy.units as u
+import psycopg2
 
 import astro_metadata_translator
 import lsst.pex.config
@@ -42,6 +43,7 @@ from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
 from activator.config import PipelinesConfig
+from activator.exception import NonRetriableError
 from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface, \
     _filter_datasets, _prepend_collection, _remove_from_chain, _filter_calibs_by_date, _MissingDatasetError
@@ -556,6 +558,51 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "No data to process"):
             self.interface.run_pipeline({2})
+
+    def test_run_pipeline_early_exception(self):
+        """Test behavior when execution fails in single-frame processing.
+        """
+        self._prepare_run_pipeline()
+
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsCcdVisit") as mock_query:
+            mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
+            mock_query.return_value = False
+            with self.assertRaises(RuntimeError):
+                self.interface.run_pipeline({1})
+
+    def test_run_pipeline_late_exception(self):
+        """Test behavior when execution fails in diaPipe cleanup.
+        """
+        self._prepare_run_pipeline()
+
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsCcdVisit") as mock_query:
+            mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
+            mock_query.return_value = True
+            with self.assertRaises(NonRetriableError):
+                self.interface.run_pipeline({1})
+
+    def test_run_pipeline_cascading_exception(self):
+        """Test behavior when Butler and/or APDB access has failed completely.
+        """
+        self._prepare_run_pipeline()
+
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsCcdVisit") as mock_query:
+            mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
+            mock_query.side_effect = psycopg2.OperationalError("Database? What database?")
+            with self.assertRaises(NonRetriableError):
+                self.interface.run_pipeline({1})
 
     def test_get_output_run(self):
         filename = "ApPipe.yaml"

@@ -37,12 +37,14 @@ from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
 from lsst.ctrl.mpexec import SeparablePipelineExecutor
 from lsst.daf.butler import Butler, CollectionType
+import lsst.dax.apdb
 import lsst.geom
 from lsst.meas.algorithms.htmIndexer import HtmIndexer
 import lsst.obs.base
 import lsst.pipe.base
 
 from .config import PipelinesConfig
+from .exception import NonRetriableError
 from .visit import FannedOutVisit
 
 _log = logging.getLogger("lsst." + __name__)
@@ -715,6 +717,15 @@ class MiddlewareInterface:
             _log.debug("diaPipe is not in this pipeline.")
         return pipeline
 
+    # TODO: unify with _prep_pipeline after DM-41549
+    def _make_apdb(self) -> lsst.dax.apdb.Apdb:
+        """Create an Apdb object for accessing this service's APDB.
+        """
+        config = lsst.dax.apdb.ApdbSql.ConfigClass()
+        config.db_url = self._apdb_uri
+        config.namespace = self._apdb_namespace
+        return lsst.dax.apdb.ApdbSql(config)
+
     def _download(self, remote):
         """Download an image located on a remote store.
 
@@ -826,8 +837,34 @@ class MiddlewareInterface:
             # TODO: after DM-38041, move pre-execution to one-time repo setup.
             executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
             _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
-            executor.run_pipeline(qgraph)
-            _log.info("Pipeline successfully run.")
+            try:
+                executor.run_pipeline(qgraph)
+                _log.info("Pipeline successfully run.")
+            except Exception as e:
+                state_changed = True  # better safe than sorry
+                try:
+                    data_ids = set(self.butler.registry.queryDataIds(
+                        ["instrument", "visit", "detector"], where=where).expanded())
+                    if len(data_ids) == 1:
+                        data_id = list(data_ids)[0]
+                        packer = self.instrument.make_default_dimension_packer(data_id, is_exposure=False)
+                        ccd_visit_id = packer.pack(data_id, returnMaxBits=False)
+                        apdb = self._make_apdb()
+                        # HACK: this method only works for ApdbSql; not needed after DM-41671
+                        if not apdb.containsCcdVisit(ccd_visit_id):
+                            state_changed = False
+                    else:
+                        # Don't know how this could happen, so won't try to handle it gracefully.
+                        _log.warning("Unexpected visit ids: %s. Assuming APDB modified.", data_ids)
+                except Exception:
+                    # Failure in registry or APDB queries
+                    _log.exception("Could not determine APDB state, assuming modified.")
+                    raise NonRetriableError("APDB potentially modified") from e
+                else:
+                    if state_changed:
+                        raise NonRetriableError("APDB modified") from e
+                    else:
+                        raise
             break
         else:
             # TODO: a good place for a custom exception?
