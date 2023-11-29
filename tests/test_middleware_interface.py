@@ -659,10 +659,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         butler.dimensions,
                                         self.interface.instrument,
                                         self.next_visit)
-        processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.items()}
+        processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.required.items()}
         butler_tests.addDataIdValue(butler, "exposure", raw_data_id["exposure"])
         butler_tests.addDataIdValue(butler, "visit", processed_data_id["visit"])
-        butler_tests.addDatasetType(butler, "raw", raw_data_id.keys(), "Exposure")
+        butler_tests.addDatasetType(butler, "raw", raw_data_id.required.keys(), "Exposure")
         butler_tests.addDatasetType(butler, "src", processed_data_id.keys(), "SourceCatalog")
         butler_tests.addDatasetType(butler, "calexp", processed_data_id.keys(), "ExposureF")
 
@@ -973,9 +973,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         """Create a mock pipeline execution that stores a calexp for self.raw_data_id.
         """
         exp = lsst.afw.image.ExposureF(20, 20)
-        self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
+        self.processed_data_id = {(k if k != "exposure" else "visit"): v
+                                  for k, v in self.raw_data_id.required.items()}
         self.second_processed_data_id = {(k if k != "exposure" else "visit"): v
-                                         for k, v in self.second_data_id.items()}
+                                         for k, v in self.second_data_id.required.items()}
         # Dataset types defined for local Butler on pipeline run, but code
         # assumes output types already exist in central repo.
         butler_tests.addDatasetType(self.interface.central_butler, "calexp",
