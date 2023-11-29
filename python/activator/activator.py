@@ -361,8 +361,12 @@ def next_visit_handler() -> Tuple[str, int]:
                     _log.info("Running pipeline...")
                     try:
                         mwi.run_pipeline(expid_set)
-                        # TODO: broadcast alerts here
-                        mwi.export_outputs(expid_set)
+                        try:
+                            # TODO: broadcast alerts here
+                            mwi.export_outputs(expid_set)
+                        except Exception as e:
+                            raise NonRetriableError("APDB and possibly alerts or central repo modified") \
+                                from e
                     except RetriableError as e:
                         error = e.nested if e.nested else e
                         _log.error("Processing failed: ", exc_info=error)
