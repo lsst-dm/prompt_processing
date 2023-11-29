@@ -879,21 +879,19 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
         """
-        exported = False
         # Rather than determining which pipeline was run, just try to export all of them.
-        for pipeline_file in self._get_pipeline_files():
-            output_run = self._get_output_run(pipeline_file, self._day_obs)
-            exports = self._export_subset(exposure_ids,
-                                          # TODO: find a way to merge datasets like *_config
-                                          # or *_schema that are duplicated across multiple
-                                          # workers.
-                                          self._get_safe_dataset_types(self.butler),
-                                          in_collections=output_run,
-                                          )
-            if exports:
-                exported = True
-                _log.info(f"Pipeline products saved to collection '{output_run}'.")
-        if not exported:
+        output_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pipeline_files()]
+        exports = self._export_subset(exposure_ids,
+                                      # TODO: find a way to merge datasets like *_config
+                                      # or *_schema that are duplicated across multiple
+                                      # workers.
+                                      self._get_safe_dataset_types(self.butler),
+                                      in_collections=output_runs,
+                                      )
+        if exports:
+            populated_runs = {ref.run for ref in exports}
+            _log.info(f"Pipeline products saved to collections {populated_runs}.")
+        else:
             _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
 
     @staticmethod
