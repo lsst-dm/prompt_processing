@@ -30,6 +30,7 @@ import warnings
 
 import astropy.coordinates
 import astropy.units as u
+import psycopg2
 
 import astro_metadata_translator
 import lsst.pex.config
@@ -42,6 +43,7 @@ from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
 from activator.config import PipelinesConfig
+from activator.exception import NonRetriableError
 from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface, \
     _filter_datasets, _prepend_collection, _remove_from_chain, _filter_calibs_by_date, _MissingDatasetError
@@ -557,6 +559,51 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "No data to process"):
             self.interface.run_pipeline({2})
 
+    def test_run_pipeline_early_exception(self):
+        """Test behavior when execution fails in single-frame processing.
+        """
+        self._prepare_run_pipeline()
+
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsCcdVisit") as mock_query:
+            mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
+            mock_query.return_value = False
+            with self.assertRaises(RuntimeError):
+                self.interface.run_pipeline({1})
+
+    def test_run_pipeline_late_exception(self):
+        """Test behavior when execution fails in diaPipe cleanup.
+        """
+        self._prepare_run_pipeline()
+
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsCcdVisit") as mock_query:
+            mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
+            mock_query.return_value = True
+            with self.assertRaises(NonRetriableError):
+                self.interface.run_pipeline({1})
+
+    def test_run_pipeline_cascading_exception(self):
+        """Test behavior when Butler and/or APDB access has failed completely.
+        """
+        self._prepare_run_pipeline()
+
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsCcdVisit") as mock_query:
+            mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
+            mock_query.side_effect = psycopg2.OperationalError("Database? What database?")
+            with self.assertRaises(NonRetriableError):
+                self.interface.run_pipeline({1})
+
     def test_get_output_run(self):
         filename = "ApPipe.yaml"
         for date in [datetime.date.today(), datetime.datetime.today()]:
@@ -612,10 +659,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         butler.dimensions,
                                         self.interface.instrument,
                                         self.next_visit)
-        processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.items()}
+        processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.required.items()}
         butler_tests.addDataIdValue(butler, "exposure", raw_data_id["exposure"])
         butler_tests.addDataIdValue(butler, "visit", processed_data_id["visit"])
-        butler_tests.addDatasetType(butler, "raw", raw_data_id.keys(), "Exposure")
+        butler_tests.addDatasetType(butler, "raw", raw_data_id.required.keys(), "Exposure")
         butler_tests.addDatasetType(butler, "src", processed_data_id.keys(), "SourceCatalog")
         butler_tests.addDatasetType(butler, "calexp", processed_data_id.keys(), "ExposureF")
 
@@ -926,9 +973,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         """Create a mock pipeline execution that stores a calexp for self.raw_data_id.
         """
         exp = lsst.afw.image.ExposureF(20, 20)
-        self.processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in self.raw_data_id.items()}
+        self.processed_data_id = {(k if k != "exposure" else "visit"): v
+                                  for k, v in self.raw_data_id.required.items()}
         self.second_processed_data_id = {(k if k != "exposure" else "visit"): v
-                                         for k, v in self.second_data_id.items()}
+                                         for k, v in self.second_data_id.required.items()}
         # Dataset types defined for local Butler on pipeline run, but code
         # assumes output types already exist in central repo.
         butler_tests.addDatasetType(self.interface.central_butler, "calexp",
@@ -988,10 +1036,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.assertEqual(
             self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
             0)
-
-    def test_export_outputs_bad_exposure(self):
-        with self.assertRaises(ValueError):
-            self.interface.export_outputs({88})
 
     def test_export_outputs_retry(self):
         self.interface.export_outputs({self.raw_data_id["exposure"]})

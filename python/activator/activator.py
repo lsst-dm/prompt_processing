@@ -34,8 +34,10 @@ from botocore.handlers import validate_bucket_name
 import cloudevents.http
 import confluent_kafka as kafka
 from flask import Flask, request
+from werkzeug.exceptions import ServiceUnavailable
 
 from .config import PipelinesConfig
+from .exception import NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
 from .middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface
 from .raw import (
@@ -221,6 +223,25 @@ def _parse_bucket_notifications(payload):
             _log.error("Invalid S3 bucket notification: %s", e)
 
 
+def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logger) -> bool:
+    """Attempt to export pipeline products, logging any failure.
+
+    This method is designed to be safely run from within exception handlers.
+
+    Returns
+    -------
+    exported : `bool`
+        `True` if the export was successful, `False` for a (possibly partial)
+        failure.
+    """
+    try:
+        mwi.export_outputs(exposures)
+        return True
+    except Exception:
+        log.exception("Central repo export failed. Some output products may be lost.")
+        return False
+
+
 @app.route("/next-visit", methods=["POST"])
 def next_visit_handler() -> Tuple[str, int]:
     """A Flask view function for handling next-visit events.
@@ -340,9 +361,29 @@ def next_visit_handler() -> Tuple[str, int]:
                     _log.info("Running pipeline...")
                     try:
                         mwi.run_pipeline(expid_set)
-                        # TODO: broadcast alerts here
-                        # TODO: call export_outputs on success or permanent failure in DM-34141
-                        mwi.export_outputs(expid_set)
+                        try:
+                            # TODO: broadcast alerts here
+                            mwi.export_outputs(expid_set)
+                        except Exception as e:
+                            raise NonRetriableError("APDB and possibly alerts or central repo modified") \
+                                from e
+                    except RetriableError as e:
+                        error = e.nested if e.nested else e
+                        _log.error("Processing failed: ", exc_info=error)
+                        # Do not export, to leave room for the next attempt
+                        # Service unavailable is not quite right, but no better standard response
+                        raise ServiceUnavailable(f"A temporary error occurred during processing: {error}",
+                                                 retry_after=10) from None
+                    except NonRetriableError as e:
+                        error = e.nested if e.nested else e
+                        _log.error("Processing failed: ", exc_info=error)
+                        _try_export(mwi, expid_set, _log)
+                        return f"An error occurred during processing: {error}.\nThe system's state has " \
+                               "permanently changed, so this request should **NOT** be retried.", 500
+                    except Exception as e:
+                        _log.error("Processing failed: ", exc_info=e)
+                        _try_export(mwi, expid_set, _log)
+                        return f"An error occurred during processing: {e}.", 500
                     finally:
                         # TODO: run_pipeline requires a clean run until DM-38041.
                         mwi.clean_local_repo(expid_set)

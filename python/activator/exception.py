@@ -1,0 +1,74 @@
+# This file is part of prompt_processing.
+#
+# Developed for the LSST Data Management System.
+# This product includes software developed by the LSST Project
+# (https://www.lsst.org).
+# See the COPYRIGHT file at the top-level directory of this distribution
+# for details of code ownership.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+
+__all__ = ["NonRetriableError", "RetriableError"]
+
+
+class NonRetriableError(Exception):
+    """A processing failure that must not be retried, regardless of the
+    underlying error.
+
+    This class is intended as an adapter for another exception, and exposes
+    the ``nested`` field for this purpose.
+    """
+
+    @property
+    def nested(self):
+        """The exception nested inside this one (`BaseException`, read-only).
+
+        This property is guaranteed non-raising, to make it easier to use
+        inside exception handlers. If there is no nested exception, it is equal
+        to `None`.
+        """
+        if self.__cause__:
+            return self.__cause__
+        elif self.__context__ and not self.__suppress_context__:
+            return self.__context__
+        else:
+            return None
+
+
+class RetriableError(Exception):
+    """A processing failure that can be safely retried.
+
+    This class serves as an abstraction layer between the activator (which is
+    responsible for retry behavior) and the Middleware interface (which has the
+    information to determine whether retries are safe).
+
+    This class is intended as an adapter for another exception, and exposes
+    the ``nested`` field for this purpose.
+    """
+
+    @property
+    def nested(self):
+        """The exception nested inside this one (`BaseException`, read-only).
+
+        This property is guaranteed non-raising, to make it easier to use
+        inside exception handlers. If there is no nested exception, it is equal
+        to `None`.
+        """
+        if self.__cause__:
+            return self.__cause__
+        elif self.__context__ and not self.__suppress_context__:
+            return self.__context__
+        else:
+            return None
