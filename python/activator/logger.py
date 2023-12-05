@@ -235,7 +235,7 @@ class RecordFactoryContextAdapter:
     def _context(self, value):
         self._store.context = value
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, name, level, fn, lno, msg, args, exc_info, func=None, sinfo=None, **kwargs):
         """Create a log record from the provided arguments.
 
         See `logging.setLogRecordFactory` for the parameters.
@@ -247,7 +247,7 @@ class RecordFactoryContextAdapter:
             maps strings to arbitrary values, as determined by any enclosing
             calls to `add_context`.
         """
-        record = self._old_factory(*args, **kwargs)
+        record = self._old_factory(name, level, fn, lno, msg, args, exc_info, func, sinfo, **kwargs)
         # _context is mutable; make sure record can't be changed after the fact.
         record.logging_context = self._context.copy()
         return record
