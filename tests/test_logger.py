@@ -315,7 +315,8 @@ class AddLogContextTest(unittest.TestCase):
                 try:
                     with factory.add_context(pid=42):
                         raise RuntimeError("Something failed")
-                except RuntimeError:
+                except RuntimeError as e:
+                    self.assertEqual(e.logging_context, {"color": "blue", "pid": 42})
                     # pid=42 should have been removed here
                     self.log.error("Exception caught")
 
@@ -324,6 +325,16 @@ class AddLogContextTest(unittest.TestCase):
                              [{"color": "blue"},
                               {"color": "blue"},
                               ])
+
+    def test_overwriting_exception_handling(self):
+        factory = logging.getLogRecordFactory()
+        try:
+            with factory.add_context(color="blue"):
+                with factory.add_context(color="red"):
+                    raise RuntimeError("Something failed")
+        except RuntimeError as e:
+            # Was original context preserved while escaping multiple managers?
+            self.assertEqual(e.logging_context, {"color": "red"})
 
     # This decorator works with scons/unittest as well
     @pytest.mark.filterwarnings("error::pytest.PytestUnhandledThreadExceptionWarning")

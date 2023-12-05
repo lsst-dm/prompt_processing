@@ -258,7 +258,8 @@ class RecordFactoryContextAdapter:
         inside it.
 
         This manager adds key-value pairs to the ``logging_context`` mapping in
-        this factory's log records.
+        this factory's log records. It also adds a mapping of that name to any
+        exceptions that escape.
 
         Parameters
         ----------
@@ -285,6 +286,11 @@ class RecordFactoryContextAdapter:
         try:
             self._context.update(**context)
             yield
+        except BaseException as e:
+            # In logging, inner context overrules outer context. Need the same for exceptions.
+            inner_context = e.logging_context if hasattr(e, "logging_context") else {}
+            e.logging_context = self._context.copy() | inner_context
+            raise
         finally:
             # This replacement is safe because self._context cannot have been
             # changed by other threads. Changes can only have been made by
