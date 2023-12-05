@@ -319,22 +319,61 @@ class AddLogContextTest(unittest.TestCase):
                     self.assertEqual(e.logging_context, {"color": "blue", "pid": 42})
                     # pid=42 should have been removed here
                     self.log.error("Exception caught")
+                    # Exception should hang on to old state
+                    self.log.exception("Exception detected")
+                    self.log.warning("Implied exception", exc_info=True)
+                    self.log.critical("Explicit exception", exc_info=e)
 
-            self.assertEqual(len(recorder.records), 2)
+            self.assertEqual(len(recorder.records), 5)
             self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
                              [{"color": "blue"},
                               {"color": "blue"},
+                              {"color": "blue", "pid": 42},
+                              {"color": "blue", "pid": 42},
+                              {"color": "blue", "pid": 42},
                               ])
 
     def test_overwriting_exception_handling(self):
         factory = logging.getLogRecordFactory()
-        try:
-            with factory.add_context(color="blue"):
-                with factory.add_context(color="red"):
-                    raise RuntimeError("Something failed")
-        except RuntimeError as e:
-            # Was original context preserved while escaping multiple managers?
-            self.assertEqual(e.logging_context, {"color": "red"})
+        with self.assertLogs(self.log, "DEBUG") as recorder:
+            try:
+                with factory.add_context(color="blue"):
+                    with factory.add_context(color="red"):
+                        raise RuntimeError("Something failed")
+            except RuntimeError as e:
+                # Was original context preserved while escaping multiple managers?
+                self.assertEqual(e.logging_context, {"color": "red"})
+                # Is original context used *only* when logging the exception?
+                self.log.error("Exception follows")
+                self.log.exception("Exceptional exception")
+                self.log.warning("Nothing to see here")
+
+            self.assertEqual(len(recorder.records), 3)
+            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+                             [{},
+                              {"color": "red"},
+                              {},
+                              ])
+
+    def test_bare_exception_handling(self):
+        with self.assertLogs(self.log, "DEBUG") as recorder:
+            self.log.info("This is a log!")
+            try:
+                raise RuntimeError("Something failed")
+            except RuntimeError as e:
+                self.assertFalse(hasattr(e, "logging_context"))
+                # Logger shouldn't choke on lack of logging_context
+                self.log.exception("Exception detected")
+                self.log.warning("Implied exception", exc_info=True)
+                self.log.critical("Explicit exception", exc_info=e)
+
+            self.assertEqual(len(recorder.records), 4)
+            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+                             [{},
+                              {},
+                              {},
+                              {},
+                              ])
 
     # This decorator works with scons/unittest as well
     @pytest.mark.filterwarnings("error::pytest.PytestUnhandledThreadExceptionWarning")

@@ -250,6 +250,11 @@ class RecordFactoryContextAdapter:
         record = self._old_factory(name, level, fn, lno, msg, args, exc_info, func, sinfo, **kwargs)
         # _context is mutable; make sure record can't be changed after the fact.
         record.logging_context = self._context.copy()
+        if exc_info is not None:
+            _, ex, _ = exc_info  # Only care about the exception object passed to the logger
+            if hasattr(ex, "logging_context"):
+                # Context at the point where the exception was raised takes precedence.
+                record.logging_context.update(ex.logging_context)
         return record
 
     @contextmanager
