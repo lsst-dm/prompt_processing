@@ -6,5 +6,7 @@ RUN source /opt/lsst/software/stack/loadLSST.bash \
         flask \
         gunicorn \
         python-confluent-kafka \
+        # This is a workaround; remove in DM-42035
+        openssl'<3.2' \
     && pip install --no-input \
         cloudevents
