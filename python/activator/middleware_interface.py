@@ -107,9 +107,11 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
         An object of the same type as returned by `tempfile.TemporaryDirectory`,
         pointing to the local repo location.
     """
+    dimension_config = central_butler.dimensions.dimensionConfig
     repo_dir = tempfile.TemporaryDirectory(dir=local_storage, prefix="butler-")
-    butler = Butler(Butler.makeRepo(repo_dir.name), writeable=True)
-    _log.info("Created local Butler repo at %s.", repo_dir.name)
+    butler = Butler(Butler.makeRepo(repo_dir.name, dimensionConfig=dimension_config), writeable=True)
+    _log.info("Created local Butler repo at %s with dimensions-config %s %d.",
+              repo_dir.name, dimension_config["namespace"], dimension_config["version"])
 
     # Run-once repository initialization
 
