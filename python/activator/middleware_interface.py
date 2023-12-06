@@ -818,12 +818,13 @@ class MiddlewareInterface:
                 raise RuntimeError from e
             init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
             output_run = self._get_output_run(pipeline_file, self._day_obs)
+            exec_butler = Butler(butler=self.butler,
+                                 collections=[output_run, init_output_run] + list(self.butler.collections),
+                                 run=output_run)
             executor = SeparablePipelineExecutor(
-                Butler(butler=self.butler,
-                       collections=[output_run, init_output_run] + list(self.butler.collections),
-                       run=output_run),
+                exec_butler,
                 clobber_output=False,
-                skip_existing_in=None
+                skip_existing_in=None,
             )
             qgraph = executor.make_quantum_graph(pipeline, where=where)
             if len(qgraph) == 0:
