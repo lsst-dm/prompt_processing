@@ -35,6 +35,7 @@ import astropy
 
 from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
+import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor
 from lsst.daf.butler import Butler, CollectionType
 import lsst.dax.apdb
@@ -821,10 +822,12 @@ class MiddlewareInterface:
             exec_butler = Butler(butler=self.butler,
                                  collections=[output_run, init_output_run] + list(self.butler.collections),
                                  run=output_run)
+            factory = lsst.ctrl.mpexec.TaskFactory()
             executor = SeparablePipelineExecutor(
                 exec_butler,
                 clobber_output=False,
                 skip_existing_in=None,
+                task_factory=factory,
             )
             qgraph = executor.make_quantum_graph(pipeline, where=where)
             if len(qgraph) == 0:
