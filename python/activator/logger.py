@@ -235,7 +235,7 @@ class RecordFactoryContextAdapter:
     def _context(self, value):
         self._store.context = value
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, name, level, fn, lno, msg, args, exc_info, func=None, sinfo=None, **kwargs):
         """Create a log record from the provided arguments.
 
         See `logging.setLogRecordFactory` for the parameters.
@@ -247,9 +247,14 @@ class RecordFactoryContextAdapter:
             maps strings to arbitrary values, as determined by any enclosing
             calls to `add_context`.
         """
-        record = self._old_factory(*args, **kwargs)
+        record = self._old_factory(name, level, fn, lno, msg, args, exc_info, func, sinfo, **kwargs)
         # _context is mutable; make sure record can't be changed after the fact.
         record.logging_context = self._context.copy()
+        if exc_info is not None:
+            _, ex, _ = exc_info  # Only care about the exception object passed to the logger
+            if hasattr(ex, "logging_context"):
+                # Context at the point where the exception was raised takes precedence.
+                record.logging_context.update(ex.logging_context)
         return record
 
     @contextmanager
@@ -258,7 +263,8 @@ class RecordFactoryContextAdapter:
         inside it.
 
         This manager adds key-value pairs to the ``logging_context`` mapping in
-        this factory's log records.
+        this factory's log records. It also adds a mapping of that name to any
+        exceptions that escape.
 
         Parameters
         ----------
@@ -285,6 +291,11 @@ class RecordFactoryContextAdapter:
         try:
             self._context.update(**context)
             yield
+        except BaseException as e:
+            # In logging, inner context overrules outer context. Need the same for exceptions.
+            inner_context = e.logging_context if hasattr(e, "logging_context") else {}
+            e.logging_context = self._context.copy() | inner_context
+            raise
         finally:
             # This replacement is safe because self._context cannot have been
             # changed by other threads. Changes can only have been made by
