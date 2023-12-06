@@ -36,7 +36,7 @@ import astropy
 from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
-from lsst.ctrl.mpexec import SeparablePipelineExecutor
+from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
 from lsst.daf.butler import Butler, CollectionType
 import lsst.dax.apdb
 import lsst.geom
@@ -777,6 +777,37 @@ class MiddlewareInterface:
         assert len(result) == 1, "Should have ingested exactly one image."
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
 
+    def _get_graph_executor(self, butler, factory):
+        """Create a QuantumGraphExecutor suitable for Prompt Processing.
+
+        Parameters
+        ----------
+        butler : `lsst.daf.butler.Butler`
+            The Butler for which the quantum graph will be generated
+            and executed. Should match the Butler passed to
+            SeparablePipelineExecutor.
+        factory : `lsst.pipe.base.TaskFactory`
+            The task factory used for pipeline execution. Should match
+            the factory passed to SeparablePipelineExecutor.
+
+        Returns
+        -------
+        executor : `lsst.ctrl.mpexec.QuantumGraphExecutor`
+            The executor to use.
+        """
+        quantum_executor = SingleQuantumExecutor(
+            butler,
+            factory,
+        )
+        graph_executor = MPGraphExecutor(
+            # TODO: re-enable parallel execution once we can log as desired with CliLog or a successor
+            # (see issues linked from DM-42063)
+            numProc=1,  # Avoid spawning processes, because they bypass our logger
+            timeout=2_592_000.0,  # In practice, timeout is never helpful; set to 30 days.
+            quantumExecutor=quantum_executor,
+        )
+        return graph_executor
+
     def run_pipeline(self, exposure_ids: set[int]) -> None:
         """Process the received image(s).
 
@@ -844,7 +875,7 @@ class MiddlewareInterface:
             executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
             _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
             try:
-                executor.run_pipeline(qgraph)
+                executor.run_pipeline(qgraph, graph_executor=self._get_graph_executor(exec_butler, factory))
                 _log.info("Pipeline successfully run.")
             except Exception as e:
                 state_changed = True  # better safe than sorry
