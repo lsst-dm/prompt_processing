@@ -290,7 +290,7 @@ def get_samples_lsst(bucket, instrument):
             dome=FannedOutVisit.Dome.OPEN,
             duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
             totalCheckpoints=1,
-            private_sndStamp=datetime.datetime.fromisoformat(md["DATE"]).timestamp(),
+            private_sndStamp=datetime.datetime.fromisoformat(md["DATE-BEG"]).timestamp(),
         )
         _log.debug(f"File {blob.key} parsed as visit {visit} and registered as group {md['GROUPID']}.")
         result[md["GROUPID"]] = {0: {visit: blob}}

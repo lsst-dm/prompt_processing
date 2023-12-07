@@ -521,7 +521,9 @@ class MiddlewareInterface:
         # TODO: we can't filter by validity range because it's not
         # supported in queryDatasets yet.
         calib_where = f"detector={detector_id} and physical_filter='{filter}'"
-        # private_sndStamp is in TAI, not UTC, but difference shouldn't matter
+        # TAI observation start time should be used for calib validity range.
+        # private_sndStamp is the visit publication time in TAI, not UTC,
+        # but difference shouldn't matter.
         calib_date = datetime.datetime.fromtimestamp(self.visit.private_sndStamp, tz=datetime.timezone.utc)
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
