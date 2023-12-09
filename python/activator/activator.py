@@ -410,6 +410,8 @@ def server_error(e) -> Tuple[str, int]:
 
 
 def main():
+    # This function is only called in test environments. Container
+    # deployments call `app()` through Gunicorn.
     app.run(host="127.0.0.1", port=8080, debug=True)
 
 
