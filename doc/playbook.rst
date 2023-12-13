@@ -240,11 +240,16 @@ Sample command line:
 .. code-block:: sh
 
    python upload.py HSC 3
-   python upload.py LATISS 2
+   python upload.py LATISS 3
 
 This script draws images stored in the ``rubin:rubin-pp-users`` bucket.
-For HSC, 4 groups, in total 10 raw files, are curated.
-For LATISS, 2 groups, in total 2 raw fits files and their corresponding json metadata files, are curated.
+
+* For HSC, 4 groups, in total 10 raw files, are curated.
+  They are the COSMOS data as curated in `ap_verify_ci_cosmos_pdr2 <Rhttps://github.com/lsst/ap_verify_ci_cosmos_pdr2>`_.
+* For LATISS, 3 groups, in total 3 raw fits files and their corresponding json metadata files, are curated.
+  One of the files, the unobserved group `2023-10-11T01:45:47.810`, has modified RA at a location with no templates.
+  Astrometry is also expected to fail in WCS fitting.
+  This visit can test pipeline fallback features.
 
 ``python/tester/upload_hsc_rc2.py``: Command line argument is the number of groups of images to send.
 
