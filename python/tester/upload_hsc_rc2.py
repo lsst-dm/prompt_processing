@@ -41,7 +41,6 @@ from tester.utils import (
     make_exposure_id,
     replace_header_key,
     send_next_visit,
-    day_obs_to_unix_utc,
 )
 
 
@@ -190,7 +189,7 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
             dome=SummitVisit.Dome.OPEN,
             duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
             totalCheckpoints=1,
-            private_sndStamp=day_obs_to_unix_utc(data_id.records["exposure"].day_obs),
+            private_sndStamp=data_id.records["exposure"].timespan.begin.unix_tai,
         )
         send_next_visit(kafka_url, group_id, {visit})
 
