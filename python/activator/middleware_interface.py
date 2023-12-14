@@ -866,7 +866,8 @@ class MiddlewareInterface:
                 task_factory=factory,
             )
             try:
-                qgraph = executor.make_quantum_graph(pipeline, where=where)
+                with lsst.utils.timer.time_this(_log, msg="make_quantum_graph", level=logging.DEBUG):
+                    qgraph = executor.make_quantum_graph(pipeline, where=where)
             except MissingDatasetTypeError as e:
                 _log.error(f"Building quantum graph for {pipeline_file} failed ", exc_info=e)
                 continue
@@ -928,20 +929,21 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
         """
-        # Rather than determining which pipeline was run, just try to export all of them.
-        output_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pipeline_files()]
-        exports = self._export_subset(exposure_ids,
-                                      # TODO: find a way to merge datasets like *_config
-                                      # or *_schema that are duplicated across multiple
-                                      # workers.
-                                      self._get_safe_dataset_types(self.butler),
-                                      in_collections=output_runs,
-                                      )
-        if exports:
-            populated_runs = {ref.run for ref in exports}
-            _log.info(f"Pipeline products saved to collections {populated_runs}.")
-        else:
-            _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
+        with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
+            # Rather than determining which pipeline was run, just try to export all of them.
+            output_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pipeline_files()]
+            exports = self._export_subset(exposure_ids,
+                                          # TODO: find a way to merge datasets like *_config
+                                          # or *_schema that are duplicated across multiple
+                                          # workers.
+                                          self._get_safe_dataset_types(self.butler),
+                                          in_collections=output_runs,
+                                          )
+            if exports:
+                populated_runs = {ref.run for ref in exports}
+                _log.info(f"Pipeline products saved to collections {populated_runs}.")
+            else:
+                _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
 
     @staticmethod
     def _get_safe_dataset_types(butler):
@@ -984,46 +986,50 @@ class MiddlewareInterface:
         # local repo may have been modified by other MWI instances.
         self.butler.registry.refresh()
 
-        try:
-            # Need to iterate over datasets at least twice, so list.
-            datasets = list(self.butler.registry.queryDatasets(
-                dataset_types,
-                collections=in_collections,
-                # in_collections may include other runs, so need to filter.
-                # Since AP processing is strictly visit-detector, these three
-                # dimensions should suffice.
-                # DO NOT assume that visit == exposure!
-                where="exposure in (exposure_ids)",
-                bind={"exposure_ids": exposure_ids},
-                instrument=self.instrument.getName(),
-                detector=self.visit.detector,
-            ).expanded())
-        except lsst.daf.butler.registry.DataIdError as e:
-            raise ValueError("Invalid visit or exposures.") from e
+        with lsst.utils.timer.time_this(_log, msg="export_outputs (find outputs)", level=logging.DEBUG):
+            try:
+                # Need to iterate over datasets at least twice, so list.
+                datasets = list(self.butler.registry.queryDatasets(
+                    dataset_types,
+                    collections=in_collections,
+                    # in_collections may include other runs, so need to filter.
+                    # Since AP processing is strictly visit-detector, these three
+                    # dimensions should suffice.
+                    # DO NOT assume that visit == exposure!
+                    where="exposure in (exposure_ids)",
+                    bind={"exposure_ids": exposure_ids},
+                    instrument=self.instrument.getName(),
+                    detector=self.visit.detector,
+                ).expanded())
+            except lsst.daf.butler.registry.DataIdError as e:
+                raise ValueError("Invalid visit or exposures.") from e
 
-        # central repo may have been modified by other MWI instances.
-        # TODO: get a proper synchronization API for Butler
-        self.central_butler.registry.refresh()
+        with lsst.utils.timer.time_this(_log, msg="export_outputs (refresh)", level=logging.DEBUG):
+            # central repo may have been modified by other MWI instances.
+            # TODO: get a proper synchronization API for Butler
+            self.central_butler.registry.refresh()
 
-        # Transferring governor dimensions in parallel can cause deadlocks in
-        # central registry. We need to transfer our exposure/visit dimensions,
-        # so handle those manually.
-        for dimension in ["exposure",
-                          "visit",
-                          "visit_definition",
-                          "visit_detector_region",
-                          "visit_system",
-                          "visit_system_membership",
-                          ]:
-            for record in self.butler.registry.queryDimensionRecords(
-                dimension,
-                where="exposure in (exposure_ids)",
-                bind={"exposure_ids": exposure_ids},
-                instrument=self.instrument.getName(),
-                detector=self.visit.detector,
-            ):
-                self.central_butler.registry.syncDimensionData(dimension, record, update=False)
-        self.central_butler.transfer_from(self.butler, datasets, transfer="copy", transfer_dimensions=False)
+        with lsst.utils.timer.time_this(_log, msg="export_outputs (transfer)", level=logging.DEBUG):
+            # Transferring governor dimensions in parallel can cause deadlocks in
+            # central registry. We need to transfer our exposure/visit dimensions,
+            # so handle those manually.
+            for dimension in ["exposure",
+                              "visit",
+                              "visit_definition",
+                              "visit_detector_region",
+                              "visit_system",
+                              "visit_system_membership",
+                              ]:
+                for record in self.butler.registry.queryDimensionRecords(
+                    dimension,
+                    where="exposure in (exposure_ids)",
+                    bind={"exposure_ids": exposure_ids},
+                    instrument=self.instrument.getName(),
+                    detector=self.visit.detector,
+                ):
+                    self.central_butler.registry.syncDimensionData(dimension, record, update=False)
+            self.central_butler.transfer_from(self.butler, datasets,
+                                              transfer="copy", transfer_dimensions=False)
 
         return datasets
 
@@ -1037,21 +1043,22 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures to be removed.
         """
-        self.butler.registry.refresh()
-        raws = self.butler.registry.queryDatasets(
-            'raw',
-            collections=self.instrument.makeDefaultRawIngestRunName(),
-            where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
-            instrument=self.visit.instrument,
-            detector=self.visit.detector,
-        )
-        self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
-        # Outputs are all in their own runs, so just drop them.
-        for pipeline_file in self._get_pipeline_files():
-            output_run = self._get_output_run(pipeline_file, self._day_obs)
-            for chain in self.butler.registry.getCollectionParentChains(output_run):
-                _remove_from_chain(self.butler, chain, [output_run])
-            self.butler.removeRuns([output_run], unstore=True)
+        with lsst.utils.timer.time_this(_log, msg="clean_local_repo", level=logging.DEBUG):
+            self.butler.registry.refresh()
+            raws = self.butler.registry.queryDatasets(
+                'raw',
+                collections=self.instrument.makeDefaultRawIngestRunName(),
+                where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
+                instrument=self.visit.instrument,
+                detector=self.visit.detector,
+            )
+            self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
+            # Outputs are all in their own runs, so just drop them.
+            for pipeline_file in self._get_pipeline_files():
+                output_run = self._get_output_run(pipeline_file, self._day_obs)
+                for chain in self.butler.registry.getCollectionParentChains(output_run):
+                    _remove_from_chain(self.butler, chain, [output_run])
+                self.butler.removeRuns([output_run], unstore=True)
 
 
 class _MissingDatasetError(RuntimeError):
@@ -1200,20 +1207,21 @@ def _filter_calibs_by_date(butler: Butler,
         guaranteed to be the same `~lsst.daf.butler.DatasetRef` objects passesd
         to ``unfiltered_calibs``, but guaranteed to be fully expanded.
     """
-    # Unfiltered_calibs can have up to one copy of each calib per certify cycle.
-    # Minimize redundant queries to find_dataset.
-    unique_ids = {(ref.datasetType, ref.dataId) for ref in unfiltered_calibs}
-    t = Timespan.fromInstant(date)
-    _log_trace.debug("Looking up calibs for %s in %s.", t, collections)
-    filtered_calibs = []
-    for dataset_type, data_id in unique_ids:
-        # Use find_dataset to simultaneously filter by validity and chain order
-        found_ref = butler.find_dataset(dataset_type,
-                                        data_id,
-                                        collections=collections,
-                                        timespan=t,
-                                        dimension_records=True,
-                                        )
-        if found_ref:
-            filtered_calibs.append(found_ref)
-    return filtered_calibs
+    with lsst.utils.timer.time_this(_log, msg="filter_calibs", level=logging.DEBUG):
+        # Unfiltered_calibs can have up to one copy of each calib per certify cycle.
+        # Minimize redundant queries to find_dataset.
+        unique_ids = {(ref.datasetType, ref.dataId) for ref in unfiltered_calibs}
+        t = Timespan.fromInstant(date)
+        _log_trace.debug("Looking up calibs for %s in %s.", t, collections)
+        filtered_calibs = []
+        for dataset_type, data_id in unique_ids:
+            # Use find_dataset to simultaneously filter by validity and chain order
+            found_ref = butler.find_dataset(dataset_type,
+                                            data_id,
+                                            collections=collections,
+                                            timespan=t,
+                                            dimension_records=True,
+                                            )
+            if found_ref:
+                filtered_calibs.append(found_ref)
+        return filtered_calibs
