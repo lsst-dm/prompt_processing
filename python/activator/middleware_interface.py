@@ -32,6 +32,7 @@ import typing
 
 import astropy
 
+import lsst.utils.timer
 from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
@@ -369,40 +370,51 @@ class MiddlewareInterface:
         ``visit`` dimensions, respectively. It may contain other data that would
         not be loaded when processing the visit.
         """
-        _log.info(f"Preparing Butler for visit {self.visit!r}")
+        with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
+            _log.info(f"Preparing Butler for visit {self.visit!r}")
 
-        detector = self.camera[self.visit.detector]
-        wcs = self._predict_wcs(detector)
-        center, radius = self._detector_bounding_circle(detector, wcs)
+            detector = self.camera[self.visit.detector]
+            wcs = self._predict_wcs(detector)
+            center, radius = self._detector_bounding_circle(detector, wcs)
 
-        # repos may have been modified by other MWI instances.
-        # TODO: get a proper synchronization API for Butler
-        self.central_butler.registry.refresh()
-        self.butler.registry.refresh()
+            # repos may have been modified by other MWI instances.
+            # TODO: get a proper synchronization API for Butler
+            self.central_butler.registry.refresh()
+            self.butler.registry.refresh()
 
-        refcat_datasets = list(self._export_refcats(center, radius))
-        template_datasets = list(self._export_skymap_and_templates(center, detector, wcs, self.visit.filters))
-        calib_datasets = list(self._export_calibs(self.visit.detector, self.visit.filters))
-        self.butler.transfer_from(self.central_butler,
-                                  refcat_datasets + template_datasets + calib_datasets,
-                                  transfer="copy",
-                                  skip_missing=True,
-                                  register_dataset_types=True,
-                                  transfer_dimensions=True,
-                                  )
+            with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)", level=logging.DEBUG):
+                refcat_datasets = list(self._export_refcats(center, radius))
+            with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)", level=logging.DEBUG):
+                template_datasets = list(self._export_skymap_and_templates(
+                    center, detector, wcs, self.visit.filters))
+            with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)", level=logging.DEBUG):
+                calib_datasets = list(self._export_calibs(self.visit.detector, self.visit.filters))
+            with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)", level=logging.DEBUG):
+                self.butler.transfer_from(self.central_butler,
+                                          refcat_datasets + template_datasets + calib_datasets,
+                                          transfer="copy",
+                                          skip_missing=True,
+                                          register_dataset_types=True,
+                                          transfer_dimensions=True,
+                                          )
 
-        self._export_collections(self._get_template_collection())
-        self._export_collections(self.instrument.makeUmbrellaCollectionName())
-        self._export_calib_associations(self.instrument.makeCalibrationCollectionName(), calib_datasets)
+            with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)",
+                                            level=logging.DEBUG):
+                self._export_collections(self._get_template_collection())
+                self._export_collections(self.instrument.makeUmbrellaCollectionName())
+            with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)",
+                                            level=logging.DEBUG):
+                self._export_calib_associations(self.instrument.makeCalibrationCollectionName(),
+                                                calib_datasets)
 
-        # Temporary workarounds until we have a prompt-processing default top-level collection
-        # in shared repos, and raw collection in dev repo, and then we can organize collections
-        # without worrying about DRP use cases.
-        _prepend_collection(self.butler,
-                            self.instrument.makeUmbrellaCollectionName(),
-                            [self._get_template_collection(),
-                             self.instrument.makeDefaultRawIngestRunName(),
-                             ])
+            # Temporary workarounds until we have a prompt-processing default top-level collection
+            # in shared repos, and raw collection in dev repo, and then we can organize collections
+            # without worrying about DRP use cases.
+            _prepend_collection(self.butler,
+                                self.instrument.makeUmbrellaCollectionName(),
+                                [self._get_template_collection(),
+                                 self.instrument.makeDefaultRawIngestRunName(),
+                                 ])
 
     def _get_template_collection(self):
         """Get the collection name for templates
