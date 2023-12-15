@@ -9,6 +9,7 @@ Table of Contents
 
 * `Containers`_
 * `Buckets`_
+* `Central Repo`_
 * `Development Service`_
 * `tester`_
 * `Databases`_
@@ -115,6 +116,39 @@ To inspect buckets with the MinIO Client ``mc`` tool, first set up an alias (e.g
 
 
 For Butler not to complain about the bucket names, set the environment variable ``LSST_DISABLE_BUCKET_VALIDATION=1``.
+
+Central Repo
+============
+
+The central repo for development use is located at ``s3://rubin:rubin-pp-users/central_repo/``.
+You need developer credentials to access it, as described under `Buckets`_.
+
+Migrating the Repo
+------------------
+
+``/repo/embargo`` is occasionally migrated to newer schema versions.
+We should keep the development repo in sync so that it's representative of the production system.
+
+To perform a schema migration, download the ``migrate`` extension to ``butler``:
+
+.. code-block:: sh
+
+   git clone https://github.com/lsst-dm/daf_butler_migrate/
+   cd daf_butler_migrate
+   setup -r .
+   scons -j 6
+
+This activates ``butler migrate``.
+Next, follow the instructions in the `daf.butler_migrate documentation <https://github.com/lsst-dm/daf_butler_migrate/blob/main/doc/lsst.daf.butler_migrate/typical-tasks.rst>`_.
+In our case, we want to migrate to the versions that ``/repo/embargo`` is using, which are not necessarily the latest; you can check the desired version by running ``butler migrate show-current`` on ``/repo/embargo``.
+
+.. note::
+
+   Because our local repos both import from and export to the central repo, they must have exactly the same version of ``dimensions-config`` as the central repo.
+   This is automatically taken care of on pod start.
+   However, when using ``butler migrate`` to update ``dimensions-config``, you should delete all existing pods to ensure that their replacements have the correct version.
+   This can be done using ``kubectl delete pod`` or from Argo CD (see `Development Service`_).
+
 
 Development Service
 ===================
