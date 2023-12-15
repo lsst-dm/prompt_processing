@@ -1192,20 +1192,20 @@ def _filter_calibs_by_date(butler: Butler,
         guaranteed to be the same `~lsst.daf.butler.DatasetRef` objects passesd
         to ``unfiltered_calibs``, but guaranteed to be fully expanded.
     """
+    # Unfiltered_calibs can have up to one copy of each calib per certify cycle.
+    # Minimize redundant queries to find_dataset.
+    unique_ids = {(ref.datasetType, ref.dataId) for ref in unfiltered_calibs}
     t = Timespan.fromInstant(astropy.time.Time(date, scale='utc'))
     _log_trace.debug("Looking up calibs for %s in %s.", t, collections)
-    filtered_calibs = set()
-    for ref in unfiltered_calibs:
+    filtered_calibs = []
+    for dataset_type, data_id in unique_ids:
         # Use find_dataset to simultaneously filter by validity and chain order
-        found_ref = butler.find_dataset(ref.datasetType,
-                                        ref.dataId,
+        found_ref = butler.find_dataset(dataset_type,
+                                        data_id,
                                         collections=collections,
                                         timespan=t,
                                         dimension_records=True,
                                         )
         if found_ref:
-            filtered_calibs.add(found_ref)
-            _log_trace.debug("%s matches %s.", ref, t)
-        else:
-            _log_trace.debug("%s does not match %s.", ref, t)
+            filtered_calibs.append(found_ref)
     return filtered_calibs
