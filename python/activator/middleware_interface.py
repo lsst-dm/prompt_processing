@@ -37,7 +37,7 @@ from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
-from lsst.daf.butler import Butler, CollectionType
+from lsst.daf.butler import Butler, CollectionType, Timespan
 import lsst.dax.apdb
 import lsst.geom
 from lsst.meas.algorithms.htmIndexer import HtmIndexer
@@ -1188,28 +1188,24 @@ def _filter_calibs_by_date(butler: Butler,
     Returns
     -------
     filtered_calibs : iterable [`lsst.daf.butler.DatasetRef`]
-        The subset of ``unfiltered_calibs`` that is valid on ``date``.
+        The datasets in ``unfiltered_calibs`` that are valid on ``date``. Not
+        guaranteed to be the same `~lsst.daf.butler.DatasetRef` objects passesd
+        to ``unfiltered_calibs``, but guaranteed to be fully expanded.
     """
-    dataset_types = {ref.datasetType for ref in unfiltered_calibs}
-    associations = {}
-    for dataset_type in dataset_types:
-        associations.update(
-            (a.ref, a) for a in butler.registry.queryDatasetAssociations(
-                dataset_type, collections, collectionTypes={CollectionType.CALIBRATION}, flattenChains=True
-            )
-        )
-
-    t = astropy.time.Time(date, scale='utc')
+    # Unfiltered_calibs can have up to one copy of each calib per certify cycle.
+    # Minimize redundant queries to find_dataset.
+    unique_ids = {(ref.datasetType, ref.dataId) for ref in unfiltered_calibs}
+    t = Timespan.fromInstant(astropy.time.Time(date, scale='utc'))
     _log_trace.debug("Looking up calibs for %s in %s.", t, collections)
-    # DatasetAssociation.timespan guaranteed not None
     filtered_calibs = []
-    for ref in unfiltered_calibs:
-        if ref in associations:
-            if associations[ref].timespan.contains(t):
-                filtered_calibs.append(ref)
-                _log_trace.debug("%s (valid over %s) matches %s.", ref, associations[ref].timespan, t)
-            else:
-                _log_trace.debug("%s (valid over %s) does not match %s.", ref, associations[ref].timespan, t)
-        else:
-            _log_trace.debug("No calib associations for %s.", ref)
+    for dataset_type, data_id in unique_ids:
+        # Use find_dataset to simultaneously filter by validity and chain order
+        found_ref = butler.find_dataset(dataset_type,
+                                        data_id,
+                                        collections=collections,
+                                        timespan=t,
+                                        dimension_records=True,
+                                        )
+        if found_ref:
+            filtered_calibs.append(found_ref)
     return filtered_calibs
