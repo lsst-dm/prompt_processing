@@ -329,7 +329,8 @@ For passwordless login, create a ``~/.pgpass`` file with contents:
 .. code-block::
 
    usdf-prompt-processing-dev.slac.stanford.edu:5432:lsst-devl:rubin:PASSWORD
-   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:pp:PASSWORD
+   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:latiss_prompt:PASSWORD
+   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:hsc_prompt:PASSWORD
 
 and execute ``chmod 0600 ~/.pgpass``.
 
