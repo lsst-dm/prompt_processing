@@ -44,10 +44,12 @@ import lsst.geom
 from lsst.meas.algorithms.htmIndexer import HtmIndexer
 import lsst.obs.base
 import lsst.pipe.base
+import lsst.analysis.tools
 
 from .config import PipelinesConfig
 from .exception import NonRetriableError
 from .visit import FannedOutVisit
+from .timer import time_this_to_bundle
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -182,6 +184,9 @@ class MiddlewareInterface:
     """
     _COLLECTION_SKYMAP = "skymaps"
     """The collection used for skymaps.
+    """
+    DATASET_IDENTIFIER = "Live"
+    """The dataset ID used for Sasquatch uploads.
     """
 
     # Class invariants:
@@ -370,42 +375,56 @@ class MiddlewareInterface:
         ``visit`` dimensions, respectively. It may contain other data that would
         not be loaded when processing the visit.
         """
-        with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
-            _log.info(f"Preparing Butler for visit {self.visit!r}")
+        # Timing metrics can't be saved to Butler (exposure/visit might not be
+        # defined), so manage them purely in-memory.
+        action_id = "prepButlerTimeMetric"  # For consistency with analysis_tools outputs
+        bundle = lsst.analysis.tools.interfaces.MetricMeasurementBundle(
+            dataset_identifier=self.DATASET_IDENTIFIER,
+        )
+        with time_this_to_bundle(bundle, action_id, "prep_butlerTotalTime"):
+            with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
+                _log.info(f"Preparing Butler for visit {self.visit!r}")
 
-            detector = self.camera[self.visit.detector]
-            wcs = self._predict_wcs(detector)
-            center, radius = self._detector_bounding_circle(detector, wcs)
+                detector = self.camera[self.visit.detector]
+                wcs = self._predict_wcs(detector)
+                center, radius = self._detector_bounding_circle(detector, wcs)
 
-            # repos may have been modified by other MWI instances.
-            # TODO: get a proper synchronization API for Butler
-            self.central_butler.registry.refresh()
-            self.butler.registry.refresh()
+                # repos may have been modified by other MWI instances.
+                # TODO: get a proper synchronization API for Butler
+                self.central_butler.registry.refresh()
+                self.butler.registry.refresh()
 
-            with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)", level=logging.DEBUG):
-                refcat_datasets = list(self._export_refcats(center, radius))
-            with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)", level=logging.DEBUG):
-                template_datasets = list(self._export_skymap_and_templates(
-                    center, detector, wcs, self.visit.filters))
-            with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)", level=logging.DEBUG):
-                calib_datasets = list(self._export_calibs(self.visit.detector, self.visit.filters))
-            with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)", level=logging.DEBUG):
-                self.butler.transfer_from(self.central_butler,
-                                          refcat_datasets + template_datasets + calib_datasets,
-                                          transfer="copy",
-                                          skip_missing=True,
-                                          register_dataset_types=True,
-                                          transfer_dimensions=True,
-                                          )
+                with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
+                    with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)",
+                                                    level=logging.DEBUG):
+                        refcat_datasets = list(self._export_refcats(center, radius))
+                    with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)",
+                                                    level=logging.DEBUG):
+                        template_datasets = list(self._export_skymap_and_templates(
+                            center, detector, wcs, self.visit.filters))
+                    with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)",
+                                                    level=logging.DEBUG):
+                        calib_datasets = list(self._export_calibs(self.visit.detector, self.visit.filters))
 
-            with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)",
-                                            level=logging.DEBUG):
-                self._export_collections(self._get_template_collection())
-                self._export_collections(self.instrument.makeUmbrellaCollectionName())
-            with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)",
-                                            level=logging.DEBUG):
-                self._export_calib_associations(self.instrument.makeCalibrationCollectionName(),
-                                                calib_datasets)
+                with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
+                    with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)",
+                                                    level=logging.DEBUG):
+                        self.butler.transfer_from(self.central_butler,
+                                                  refcat_datasets + template_datasets + calib_datasets,
+                                                  transfer="copy",
+                                                  skip_missing=True,
+                                                  register_dataset_types=True,
+                                                  transfer_dimensions=True,
+                                                  )
+
+                    with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)",
+                                                    level=logging.DEBUG):
+                        self._export_collections(self._get_template_collection())
+                        self._export_collections(self.instrument.makeUmbrellaCollectionName())
+                    with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)",
+                                                    level=logging.DEBUG):
+                        self._export_calib_associations(self.instrument.makeCalibrationCollectionName(),
+                                                        calib_datasets)
 
             # Temporary workarounds until we have a prompt-processing default top-level collection
             # in shared repos, and raw collection in dev repo, and then we can organize collections
