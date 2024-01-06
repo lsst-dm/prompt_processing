@@ -49,7 +49,7 @@ import lsst.analysis.tools
 from .config import PipelinesConfig
 from .exception import NonRetriableError
 from .visit import FannedOutVisit
-from .timer import time_this_to_bundle
+from .timer import enforce_schema, time_this_to_bundle
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -434,6 +434,12 @@ class MiddlewareInterface:
                                 [self._get_template_collection(),
                                  self.instrument.makeDefaultRawIngestRunName(),
                                  ])
+
+        # IMPORTANT: do not remove or rename entries in this list. New entries can be added as needed.
+        enforce_schema(bundle, {action_id: ["prep_butlerTotalTime",
+                                            "prep_butlerSearchTime",
+                                            "prep_butlerTransferTime",
+                                            ]})
 
     def _get_template_collection(self):
         """Get the collection name for templates

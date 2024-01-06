@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["time_this_to_bundle"]
+__all__ = ["time_this_to_bundle", "enforce_schema"]
 
 
 from contextlib import contextmanager
@@ -51,3 +51,41 @@ def time_this_to_bundle(bundle, action_id, metric):
             yield
     finally:
         bundle.setdefault(action_id, []).append(meas)
+
+
+def enforce_schema(bundle, metrics):
+    """Ensure that a bundle contains a predetermined set of metrics.
+
+    Any metrics in the list are added if missing. Any excess metrics raise an
+    exception, to warn the developer that the required schema is out of date.
+
+    Parameters
+    ----------
+    bundle : `lsst.analysis.tools.interfaces.MetricMeasurementBundle`
+        The bundle to validate and correct.
+    metrics : mapping [`str`, `list` [`str` or `lsst.verify.Name`]]
+        A mapping from the identifer of an action to a list of metrics for
+        which values are expected to be produced by that action.
+
+    Raises
+    ------
+    RuntimeError
+        Raised if ``bundle`` contains metrics _not_ in ``metrics``.
+
+    Notes
+    -----
+    This function guards against Kafka-side schema compatibility constraints.
+    See `the Sasquatch docs <https://sasquatch.lsst.io/user-guide/avro.html>`__
+    for details.
+    """
+    action_ids = bundle.keys() | metrics.keys()
+    for action in action_ids:
+        # actions mapping to an empty list are allowed, in either direction
+        bundle_metrics = {meas.metric_name for meas in bundle.get(action, [])}
+        required_metrics = {lsst.verify.Name(metric=name) for name in metrics.get(action, [])}
+
+        if bundle_metrics - required_metrics:
+            raise RuntimeError(f"Action {action} has unexpected metrics {bundle_metrics - required_metrics}.")
+        # Add empty (null) measurements
+        for metric in required_metrics - bundle_metrics:
+            bundle.setdefault(action, []).append(lsst.verify.Measurement(metric))
