@@ -45,6 +45,7 @@ from lsst.meas.algorithms.htmIndexer import HtmIndexer
 import lsst.obs.base
 import lsst.pipe.base
 import lsst.analysis.tools
+from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can't use fully-qualified name
 
 from .config import PipelinesConfig
 from .exception import NonRetriableError
@@ -128,6 +129,22 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
                                        CollectionType.RUN)
 
     return repo_dir
+
+
+def _get_sasquatch_dispatcher():
+    """Get a SasquatchDispatcher object ready for use by Prompt Processing.
+
+    Returns
+    -------
+    dispatcher : `lsst.analysis.tools.interfaces.datastore.SasquatchDispatcher` \
+            or `None`
+        The object to handle all Sasquatch uploads from this module. If `None`,
+        the service is not configured to use Sasquatch.
+    """
+    url = os.environ.get("SASQUATCH_URL", "")
+    if not url:
+        return None
+    return SasquatchDispatcher(url=url, token="", namespace="lsst.prompt")
 
 
 # Offset used to define exposures' day_obs value.
@@ -440,6 +457,24 @@ class MiddlewareInterface:
                                             "prep_butlerSearchTime",
                                             "prep_butlerTransferTime",
                                             ]})
+        dispatcher = _get_sasquatch_dispatcher()
+        if dispatcher:
+            dispatcher.dispatch(
+                bundle,
+                run=self._get_output_run("Preload", self._day_obs),
+                datasetType="promptPreload_metrics",  # In case we have real Butler datasets in the future
+                identifierFields={"instrument": self.instrument.getName(),
+                                  "skymap": self.skymap_name,
+                                  "detector": self.visit.detector,
+                                  "physical_filter": self.visit.filters,
+                                  "band": self.butler.registry.expandDataId(
+                                      instrument=self.instrument.getName(),
+                                      physical_filter=self.visit.filters)["band"],
+                                  },
+                extraFields={"group": self.visit.groupId,
+                             },
+            )
+            _log.debug(f"Uploaded preload metrics to {dispatcher.url}.")
 
     def _get_template_collection(self):
         """Get the collection name for templates

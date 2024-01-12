@@ -46,7 +46,8 @@ import lsst.resources
 from activator.config import PipelinesConfig
 from activator.exception import NonRetriableError
 from activator.visit import FannedOutVisit
-from activator.middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface, \
+from activator.middleware_interface import get_central_butler, make_local_repo, _get_sasquatch_dispatcher, \
+    MiddlewareInterface, \
     _filter_datasets, _prepend_collection, _remove_from_chain, _filter_calibs_by_date, _MissingDatasetError
 
 # The short name of the instrument used in the test repo.
@@ -661,6 +662,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         return lsst.daf.butler.DatasetRef(registry.getDatasetType(dtype), data_id, run=run) \
             .expanded(registry.expandDataId(data_id))
+
+    def test_get_sasquatch_dispatcher(self):
+        self.assertIsNone(_get_sasquatch_dispatcher())
+        with unittest.mock.patch.dict(os.environ,
+                                      {"SASQUATCH_URL": "https://localhost/dummy",
+                                       }):
+            self.assertIsNotNone(_get_sasquatch_dispatcher())
 
     def test_filter_datasets(self):
         """Test that _filter_datasets provides the correct values.
