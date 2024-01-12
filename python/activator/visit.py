@@ -71,6 +71,7 @@ class BareVisit:
     dome: Dome
     duration: float             # script execution, not exposure
     nimages: int                # number of snaps expected, 0 if unknown
+    instrument: str             # short name
     survey: str                 # survey name
     totalCheckpoints: int
 
@@ -78,13 +79,13 @@ class BareVisit:
         """Return a short string that represents the visit but does not
         include complete metadata.
         """
-        return f"(groupId={self.groupId}, survey={self.survey}, salIndex={self.salIndex})"
+        return f"(groupId={self.groupId}, survey={self.survey}, " \
+               f"salIndex={self.salIndex}, instrument={self.instrument})"
 
 
 @dataclass(frozen=True, kw_only=True)
 class FannedOutVisit(BareVisit):
     # Extra information is added by the fan-out service at USDF.
-    instrument: str             # short name
     detector: int
     private_sndStamp: float     # time of visit publication; TAI in unix seconds
 
@@ -92,13 +93,12 @@ class FannedOutVisit(BareVisit):
         """Return a short string that disambiguates the visit but does not
         include "metadata" fields.
         """
-        return f"(instrument={self.instrument}, groupId={self.groupId}, survey={self.survey} " \
+        return f"(groupId={self.groupId}, survey={self.survey}, " \
                f"detector={self.detector})"
 
     def get_bare_visit(self):
         """Return visit-level info as a dict"""
         info = asdict(self)
-        info.pop("instrument")
         info.pop("detector")
         info.pop("private_sndStamp")
         return info
