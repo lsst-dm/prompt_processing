@@ -182,6 +182,7 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
             filters=data_id.records["physical_filter"].name,
             coordinateSystem=SummitVisit.CoordSys.ICRS,
             position=[data_id.records["exposure"].tracking_ra, data_id.records["exposure"].tracking_dec],
+            startTime=data_id.records["exposure"].timespan.begin.unix_tai,
             rotationSystem=SummitVisit.RotSys.SKY,
             cameraAngle=data_id.records["exposure"].sky_angle,
             survey="SURVEY",

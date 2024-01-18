@@ -45,6 +45,7 @@ class PipelinesConfigTest(unittest.TestCase):
             filters="k2022",
             coordinateSystem=FannedOutVisit.CoordSys.ICRS,
             position=[134.5454, -65.3261],
+            startTime=1_674_516_900.0,
             rotationSystem=FannedOutVisit.RotSys.SKY,
             cameraAngle=135.0,
             survey="TestSurvey",
