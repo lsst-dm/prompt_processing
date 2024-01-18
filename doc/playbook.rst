@@ -55,6 +55,34 @@ To build the service container:
 
    The ``PYTHONUNBUFFERED`` environment variable defined in the Dockerfiles for the containers ensures that container logs are emitted in real-time.
 
+To build a release:
+
+Releases are largely automated through GitHub Actions (see the `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`  workflow file for details). When a semantic version tag is pushed to GitHub, Prompt Processing Docker images are published on GitHub and Docker Hub with that version.
+
+Regular releases happen from the ``main`` branch after changes have been merged.  From the ``main`` branch you can release a new major version (``X.0.0``), a new minor version of the current major version (``X.Y.0``), or a new patch of the current major-minor version (``X.Y.Z``).  Release tags are semantic version identifiers following the `pep 440 <https://peps.python.org/pep-0440/>` specification.
+
+1. Create a Release
+
+On GitHub.com, navigate to the main page of the repository.  To the right of the list of files, click **Releases**.  At the top of the page, click **Draft a new release**.  Type a tag using semantic versioning described in the previous section.  The Target should be the main branch.  
+
+Select **Generate Release Notes**.  This will generate a list of commit summaries and of submitters.   Add text as follows.
+* Add the specific motivation for the release(for example, including a specific feature, preparing for a specific observing run))
+* Science Pipelines version and rubin-env version
+* Changes to the APDB and Alerts schemas, to be replaced by version numbers once we have them.
+
+Select **Publish Release**.
+
+The `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>` GitHub Actions workflow uploads the new release to GitHub packages.
+
+2. Tag the release
+
+At the HEAD of the ``main`` branch, create and push a tag with the semantic version:
+
+.. code-block:: sh
+
+   git tag -s X.Y.Z -m "X.Y.Z"
+   git push --tags
+
 Stable Base Containers
 ----------------------
 
@@ -64,7 +92,6 @@ If this comes up, edit ``.github/workflows/build-service.yml`` and append the de
 Any subsequent builds of the service container will build against both bases.
 
 This is the only situation in which a change to ``BASE_TAG_LIST`` should be committed to ``main``.
-
 
 Buckets
 =======

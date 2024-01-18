@@ -4,13 +4,13 @@ on:
   push:
     paths:
       - '.github/workflows/build-base.yml'
-      - 'Dockerfile.main'
+      - 'base/Dockerfile'
     branches:
       - main
   pull_request:
     paths:
       - '.github/workflows/build-base.yml'
-      - 'Dockerfile.main'
+      - 'base/Dockerfile'
   workflow_dispatch:
     inputs:
       stackTag:
@@ -44,6 +44,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Determine base image eups tag
+        working-directory: base
         run: |
           if [[ -n "$STACK_TAG" ]]; then
             if [[ "$STACK_TAG" == "*_latest" ]]; then
@@ -60,6 +61,7 @@ jobs:
           echo "Eups tag = $(< eups.tag)"
       - name: Build image
         # Context-free build
+        working-directory: base
         run: |
           docker build - \
             --build-arg "STACK_TAG=$(< lsst.docker.tag)" \
@@ -67,8 +69,9 @@ jobs:
             --label "runnumber=${GITHUB_RUN_ID}" \
             --label "stacktag=$(< stack.tag)" \
             --label "eupstag=$(< eups.tag)" \
-            < Dockerfile.main
+            < Dockerfile
       - name: Push image to registries
+        working-directory: base
         run: |
           MAKE_LATEST="${{ inputs.makeLatest }}"
           [[ -n "$MAKE_LATEST" ]] || MAKE_LATEST="false"
