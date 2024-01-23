@@ -13,6 +13,7 @@ Table of Contents
 * `Central Repo`_
 * `Development Service`_
 * `Testers`_
+* `next_visit Events`_
 * `Databases`_
 
 
@@ -384,6 +385,24 @@ Images can be uploaded in parallel processes.
    This causes collisions in the APDB that crash the pipeline.
    To prevent this, follow the reset instructions under `Databases`_ before calling ``upload.py`` or ``upload_hsc_rc2.py`` again.
 
+
+next_visit Events
+=================
+
+The schema of the ``next_visit`` events from the summit can be found at `ScriptQueue documentation <https://ts-xml.lsst.io/sal_interfaces/ScriptQueue.html#nextvisit>`_.
+
+To implement schema changes in the development environment:
+
+* Update the ``*Visit`` classes in ``python/activator/visit.py`` accordingly.
+* Update the upload tester scripts ``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` where simulated ``next_visit`` events originate.
+* Update relevant unit tests.
+* Register the new schema to the Sasquatch's schema registry for the ``test.next-visit`` topic.
+  The `Sasquatch documentation <https://sasquatch.lsst.io/user-guide/avro.html>`_ describes the schema evolution.
+  The script ``test-msg-dev.sh`` in the `next_visit_fan_out <https://github.com/lsst-dm/next_visit_fan_out>`_ repo can be run on ``rubin-devl`` to send a test event with the new schema; the `Sasquatch REST Proxy <https://sasquatch.lsst.io/user-guide/restproxy.html>`_ will register the new schema and the new schema id will be sent back as ``value_schema_id`` in the HTTP response.
+  Use the new schema id in the ``send_next_visit`` utility function used in the testers.
+  The test events can be viewed on `Kafdrop <https://usdf-rsp-dev.slac.stanford.edu/kafdrop/topic/test.next-visit>`_.
+* Update the schema used in the `next_visit_fan_out <https://github.com/lsst-dm/next_visit_fan_out>`_ service.
+* Re-deploy and test services.
 
 Databases
 =========
