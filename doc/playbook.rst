@@ -358,7 +358,7 @@ Sample command line:
 This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 
 * For HSC, 4 groups, in total 10 raw files, are curated.
-  They are the COSMOS data as curated in `ap_verify_ci_cosmos_pdr2 <Rhttps://github.com/lsst/ap_verify_ci_cosmos_pdr2>`_.
+  They are the COSMOS data as curated in `ap_verify_ci_cosmos_pdr2 <https://github.com/lsst/ap_verify_ci_cosmos_pdr2>`_.
 * For LATISS, 3 groups, in total 3 raw fits files and their corresponding json metadata files, are curated.
   One of the files, the unobserved group `2023-10-11T01:45:47.810`, has modified RA at a location with no templates.
   Astrometry is also expected to fail in WCS fitting.
