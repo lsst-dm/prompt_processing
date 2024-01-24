@@ -523,9 +523,7 @@ class MiddlewareInterface:
         # supported in queryDatasets yet.
         calib_where = f"detector={detector_id} and physical_filter='{filter}'"
         # TAI observation start time should be used for calib validity range.
-        # private_sndStamp is the visit publication time in TAI, not UTC,
-        # but difference shouldn't matter.
-        calib_date = datetime.datetime.fromtimestamp(self.visit.private_sndStamp, tz=datetime.timezone.utc)
+        calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
         calibs = set(_filter_datasets(
@@ -1062,7 +1060,7 @@ class _MissingDatasetError(RuntimeError):
 def _filter_datasets(src_repo: Butler,
                      dest_repo: Butler,
                      *args,
-                     calib_date: datetime.datetime | None = None,
+                     calib_date: astropy.time.Time | None = None,
                      **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
     """Identify datasets in a source repository, filtering out those already
     present in a destination.
@@ -1076,10 +1074,9 @@ def _filter_datasets(src_repo: Butler,
         The repository in which a dataset must be present.
     dest_repo : `lsst.daf.butler.Butler`
         The repository in which a dataset must not be present.
-    calib_date : `datetime.datetime`, optional
+    calib_date : `astropy.time.Time`, optional
         If provided, also filter anything other than calibs valid at
         ``calib_date`` and check that at least one valid calib was found.
-        Any ``datetime`` object must be aware.
     *args, **kwargs
         Parameters for describing the dataset query. They have the same
         meanings as the parameters of `lsst.daf.butler.Registry.queryDatasets`.
@@ -1176,7 +1173,7 @@ def _remove_from_chain(butler: Butler, chain: str, old_collections: collections.
 def _filter_calibs_by_date(butler: Butler,
                            collections: typing.Any,
                            unfiltered_calibs: collections.abc.Collection[lsst.daf.butler.DatasetRef],
-                           date: datetime.datetime
+                           date: astropy.time.Time
                            ) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
     """Trim a set of calib datasets to those that are valid at a particular time.
 
@@ -1189,9 +1186,8 @@ def _filter_calibs_by_date(butler: Butler,
         collections, to query for validity data.
     unfiltered_calibs : collection [`lsst.daf.butler.DatasetRef`]
         The calibs to be filtered by validity. May be empty.
-    date : `datetime.datetime`
-        The time at which the calibs must be valid. Must be an
-        aware ``datetime``.
+    date : `astropy.time.Time`
+        The time at which the calibs must be valid.
 
     Returns
     -------
@@ -1203,7 +1199,7 @@ def _filter_calibs_by_date(butler: Butler,
     # Unfiltered_calibs can have up to one copy of each calib per certify cycle.
     # Minimize redundant queries to find_dataset.
     unique_ids = {(ref.datasetType, ref.dataId) for ref in unfiltered_calibs}
-    t = Timespan.fromInstant(astropy.time.Time(date, scale='utc'))
+    t = Timespan.fromInstant(date)
     _log_trace.debug("Looking up calibs for %s in %s.", t, collections)
     filtered_calibs = []
     for dataset_type, data_id in unique_ids:

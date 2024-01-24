@@ -29,6 +29,7 @@ import unittest.mock
 import warnings
 
 import astropy.coordinates
+import astropy.time
 import astropy.units as u
 import psycopg2
 
@@ -791,7 +792,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         all_calibs = list(self.central_butler.registry.queryDatasets("cpBias"))
         early_calibs = list(_filter_calibs_by_date(
             self.central_butler, "DECam/calib", all_calibs,
-            datetime.datetime(2015, 2, 26, tzinfo=datetime.timezone.utc)
+            astropy.time.Time("2015-02-26 00:00:00", scale="utc")
         ))
         self.assertEqual(len(early_calibs), 4)
         for calib in early_calibs:
@@ -802,7 +803,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         all_calibs = list(self.central_butler.registry.queryDatasets("cpFlat"))
         late_calibs = list(_filter_calibs_by_date(
             self.central_butler, "DECam/calib", all_calibs,
-            datetime.datetime(2015, 3, 16, tzinfo=datetime.timezone.utc)
+            astropy.time.Time("2015-03-16 00:00:00", scale="utc")
         ))
         self.assertEqual(len(late_calibs), 4)
         for calib in late_calibs:
@@ -816,7 +817,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             warnings.simplefilter("ignore", category=astropy.utils.exceptions.ErfaWarning)
             future_calibs = list(_filter_calibs_by_date(
                 self.central_butler, "DECam/calib", all_calibs,
-                datetime.datetime(2050, 1, 1, tzinfo=datetime.timezone.utc)
+                astropy.time.Time("2050-01-01 00:00:00", scale="utc")
             ))
         self.assertEqual(len(future_calibs), 0)
 
@@ -825,14 +826,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         all_calibs = set(self.central_butler.registry.queryDatasets(["camera", "crosstalk"]))
         valid_calibs = set(_filter_calibs_by_date(
             self.central_butler, "DECam/calib", all_calibs,
-            datetime.datetime(2015, 3, 15, tzinfo=datetime.timezone.utc)
+            astropy.time.Time("2015-03-15 00:00:00", scale="utc")
         ))
         self.assertEqual(valid_calibs, all_calibs)
 
     def test_filter_calibs_by_date_empty(self):
         valid_calibs = set(_filter_calibs_by_date(
             self.central_butler, "DECam/calib", [],
-            datetime.datetime(2015, 3, 15, tzinfo=datetime.timezone.utc)
+            astropy.time.Time("2015-03-15 00:00:00", scale="utc")
         ))
         self.assertEqual(len(valid_calibs), 0)
 
