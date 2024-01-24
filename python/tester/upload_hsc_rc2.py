@@ -176,6 +176,7 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     # all items in refs share the same visit info and one event is to be sent
     for data_id in refs.dataIds.limit(1).expanded():
         visit = SummitVisit(
+            instrument="HSC",
             groupId=group_id,
             nimages=1,
             filters=data_id.records["physical_filter"].name,

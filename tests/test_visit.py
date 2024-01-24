@@ -82,6 +82,7 @@ class BareVisitTest(unittest.TestCase):
         super().setUp()
 
         visit_info = dict(
+            instrument="NotACam",
             groupId="2023-01-23T23:33:14.762",
             nimages=2,
             filters="k2022",
@@ -98,7 +99,6 @@ class BareVisitTest(unittest.TestCase):
         )
         self.visit = BareVisit(**visit_info)
         self.fannedOutVisit = FannedOutVisit(
-            instrument="NotACam",
             detector=42,
             private_sndStamp=1_674_516_794.0,
             **visit_info

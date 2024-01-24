@@ -218,9 +218,9 @@ def send_next_visit(url, group, visit_infos):
     for info in visit_infos:
         _log.debug(f"Sending next_visit for group: {info.groupId} "
                    f"filters: {info.filters} ra: {info.position[0]} dec: {info.position[1]} "
-                   f"survey: {info.survey}")
+                   f"instrument: {info.instrument} survey: {info.survey}")
         records_level = dict(value=asdict(info))
-        value_schema_level = dict(value_schema_id=1, records=[records_level])
+        value_schema_level = dict(value_schema_id=97, records=[records_level])
 
         r = requests.post(url, data=json.dumps(value_schema_level), headers=header)
         _log.debug(r.content)
