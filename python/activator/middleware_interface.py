@@ -38,6 +38,7 @@ import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
 from lsst.daf.butler import Butler, CollectionType, Timespan
+from lsst.daf.butler.registry import MissingDatasetTypeError
 import lsst.dax.apdb
 import lsst.geom
 from lsst.meas.algorithms.htmIndexer import HtmIndexer
@@ -862,10 +863,14 @@ class MiddlewareInterface:
                 skip_existing_in=None,
                 task_factory=factory,
             )
-            qgraph = executor.make_quantum_graph(pipeline, where=where)
+            try:
+                qgraph = executor.make_quantum_graph(pipeline, where=where)
+            except MissingDatasetTypeError as e:
+                _log.error(f"Building quantum graph for {pipeline_file} failed ", exc_info=e)
+                continue
             if len(qgraph) == 0:
                 # Diagnostic logs are the responsibility of GraphBuilder.
-                _log.error(f"Could not build quantum graph for {pipeline_file}; "
+                _log.error(f"Empty quantum graph for {pipeline_file}; "
                            "see previous logs for details.")
                 continue
             # Past this point, partial execution creates datasets.
