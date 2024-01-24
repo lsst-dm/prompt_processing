@@ -904,6 +904,9 @@ class MiddlewareInterface:
                         raise NonRetriableError("APDB modified") from e
                     else:
                         raise
+            finally:
+                # Refresh so that registry queries know the processed products.
+                self.butler.registry.refresh()
             break
         else:
             # TODO: a good place for a custom exception?
