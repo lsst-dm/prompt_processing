@@ -221,8 +221,7 @@ class MiddlewareInterface:
         self.instrument = lsst.obs.base.Instrument.from_string(visit.instrument, central_butler.registry)
         self.pipelines = pipelines
 
-        # Guard against a processing run starting on one day and ending the next.
-        self._day_obs = datetime.datetime.now(_DAY_OBS_TZ)
+        self._day_obs = datetime.datetime.now(_DAY_OBS_TZ).strftime("%Y-%m-%d")
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self._prep_collections()
@@ -625,7 +624,7 @@ class MiddlewareInterface:
 
     def _get_init_output_run(self,
                              pipeline_file: str,
-                             date: datetime.date) -> str:
+                             date: str) -> str:
         """Generate a deterministic init-output collection name that avoids
         configuration conflicts.
 
@@ -633,7 +632,7 @@ class MiddlewareInterface:
         ----------
         pipeline_file : `str`
             The pipeline file that the run will be used for.
-        date : `datetime.date`
+        date : `str`
             Date of the processing run (not observation!).
 
         Returns
@@ -647,7 +646,7 @@ class MiddlewareInterface:
 
     def _get_output_run(self,
                         pipeline_file: str,
-                        date: datetime.date) -> str:
+                        date: str) -> str:
         """Generate a deterministic collection name that avoids version or
         provenance conflicts.
 
@@ -655,7 +654,7 @@ class MiddlewareInterface:
         ----------
         pipeline_file : `str`
             The pipeline file that the run will be used for.
-        date : `datetime.date`
+        date : `str`
             Date of the processing run (not observation!).
 
         Returns
@@ -666,7 +665,7 @@ class MiddlewareInterface:
         pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
         # Order optimized for S3 bucket -- filter out as many files as soon as possible.
         return self.instrument.makeCollectionName(
-            "prompt", f"output-{date:%Y-%m-%d}", pipeline_name, self._deployment)
+            "prompt", f"output-{date}", pipeline_name, self._deployment)
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.

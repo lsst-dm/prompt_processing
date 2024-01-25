@@ -598,17 +598,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
     def test_get_output_run(self):
         filename = "ApPipe.yaml"
-        for date in [datetime.date.today(), datetime.datetime.today()]:
-            out_run = self.interface._get_output_run(filename, date)
-            self.assertEqual(out_run,
-                             f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
-                             "/ApPipe/prompt-proto-service-042"
-                             )
-            init_run = self.interface._get_init_output_run(filename, date)
-            self.assertEqual(init_run,
-                             f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
-                             "/ApPipe/prompt-proto-service-042"
-                             )
+        date = "2023-01-22"
+        out_run = self.interface._get_output_run(filename, date)
+        self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
+        init_run = self.interface._get_init_output_run(filename, date)
+        self.assertEqual(init_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
 
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
         # Pass iff any dataset matches the query, no need to check them all.
