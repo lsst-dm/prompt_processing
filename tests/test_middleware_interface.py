@@ -117,13 +117,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
     """
     def setUp(self):
-        env_patcher = unittest.mock.patch.dict(os.environ,
-                                               {"URL_APDB": "postgresql://localhost/postgres",
-                                                "K_REVISION": "prompt-proto-service-042",
-                                                })
-        env_patcher.start()
-        self.addCleanup(env_patcher.stop)
-
         self.data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.central_repo = os.path.join(self.data_dir, "central_repo")
         self.umbrella = f"{instname}/defaults"
@@ -133,6 +126,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                      inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
+
+        env_patcher = unittest.mock.patch.dict(os.environ,
+                                               {"URL_APDB": f"sqlite:///{self.local_repo.name}/apdb.db",
+                                                "K_REVISION": "prompt-proto-service-042",
+                                                })
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
         ra = 155.4702849608958
@@ -869,13 +869,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
 
     def setUp(self):
-        env_patcher = unittest.mock.patch.dict(os.environ,
-                                               {"URL_APDB": "postgresql://localhost/postgres",
-                                                "K_REVISION": "prompt-proto-service-042",
-                                                })
-        env_patcher.start()
-        self.addCleanup(env_patcher.stop)
-
         self._create_copied_repo()
         central_butler = Butler(self.central_repo.name,
                                 instrument=instname,
@@ -891,6 +884,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # getting garbage-collected.
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, second_local_repo)
+
+        env_patcher = unittest.mock.patch.dict(os.environ,
+                                               {"URL_APDB": f"sqlite:///{local_repo.name}/apdb.db",
+                                                "K_REVISION": "prompt-proto-service-042",
+                                                })
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
         ra = 155.4702849608958
