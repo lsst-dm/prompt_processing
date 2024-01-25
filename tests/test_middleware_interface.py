@@ -116,23 +116,14 @@ def fake_file_data(filename, dimensions, instrument, visit):
 class MiddlewareInterfaceTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
     """
-    @classmethod
-    def setUpClass(cls):
-        cls.env_patcher = unittest.mock.patch.dict(os.environ,
-                                                   {"URL_APDB": "postgresql://localhost/postgres",
-                                                    "K_REVISION": "prompt-proto-service-042",
-                                                    })
-        cls.env_patcher.start()
-
-        super().setUpClass()
-
-    @classmethod
-    def tearDownClass(cls):
-        super().tearDownClass()
-
-        cls.env_patcher.stop()
-
     def setUp(self):
+        env_patcher = unittest.mock.patch.dict(os.environ,
+                                               {"URL_APDB": "postgresql://localhost/postgres",
+                                                "K_REVISION": "prompt-proto-service-042",
+                                                })
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
+
         self.data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.central_repo = os.path.join(self.data_dir, "central_repo")
         self.umbrella = f"{instname}/defaults"
@@ -853,22 +844,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
     setup takes longer than for MiddlewareInterfaceTest, so it should be
     used sparingly.
     """
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-
-        cls.env_patcher = unittest.mock.patch.dict(os.environ,
-                                                   {"URL_APDB": "postgresql://localhost/postgres",
-                                                    "K_REVISION": "prompt-proto-service-042",
-                                                    })
-        cls.env_patcher.start()
-
-    @classmethod
-    def tearDownClass(cls):
-        super().tearDownClass()
-
-        cls.env_patcher.stop()
-
     def _create_copied_repo(self):
         """Create a fresh repository that's a copy of the test data.
 
@@ -894,6 +869,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
 
     def setUp(self):
+        env_patcher = unittest.mock.patch.dict(os.environ,
+                                               {"URL_APDB": "postgresql://localhost/postgres",
+                                                "K_REVISION": "prompt-proto-service-042",
+                                                })
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
+
         self._create_copied_repo()
         central_butler = Butler(self.central_repo.name,
                                 instrument=instname,
