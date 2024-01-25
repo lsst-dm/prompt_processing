@@ -625,7 +625,7 @@ class MiddlewareInterface:
 
     def _get_init_output_run(self,
                              pipeline_file: str,
-                             date: datetime.date | None = None) -> str:
+                             date: datetime.date) -> str:
         """Generate a deterministic init-output collection name that avoids
         configuration conflicts.
 
@@ -633,24 +633,21 @@ class MiddlewareInterface:
         ----------
         pipeline_file : `str`
             The pipeline file that the run will be used for.
-        date : `datetime.date`, optional
-            Date of the processing run (not observation!), defaults to the
-            day_obs this method was called.
+        date : `datetime.date`
+            Date of the processing run (not observation!).
 
         Returns
         -------
         run : `str`
             The run in which to place pipeline init-outputs.
         """
-        if date is None:
-            date = datetime.datetime.now(_DAY_OBS_TZ)
         # Current executor requires that init-outputs be in the same run as
         # outputs. This can be changed once DM-36162 is done.
         return self._get_output_run(pipeline_file, date)
 
     def _get_output_run(self,
                         pipeline_file: str,
-                        date: datetime.date | None = None) -> str:
+                        date: datetime.date) -> str:
         """Generate a deterministic collection name that avoids version or
         provenance conflicts.
 
@@ -658,17 +655,14 @@ class MiddlewareInterface:
         ----------
         pipeline_file : `str`
             The pipeline file that the run will be used for.
-        date : `datetime.date`, optional
-            Date of the processing run (not observation!), defaults to the
-            day_obs this method was called.
+        date : `datetime.date`
+            Date of the processing run (not observation!).
 
         Returns
         -------
         run : `str`
             The run in which to place processing outputs.
         """
-        if date is None:
-            date = datetime.datetime.now(_DAY_OBS_TZ)
         pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
         # Order optimized for S3 bucket -- filter out as many files as soon as possible.
         return self.instrument.makeCollectionName(
