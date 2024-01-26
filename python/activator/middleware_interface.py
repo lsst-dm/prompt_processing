@@ -22,7 +22,6 @@
 __all__ = ["get_central_butler", "make_local_repo", "MiddlewareInterface"]
 
 import collections.abc
-import datetime
 import hashlib
 import itertools
 import logging
@@ -128,8 +127,8 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
     return repo_dir
 
 
-# Time zone used to define exposures' day_obs value.
-_DAY_OBS_TZ = datetime.timezone(datetime.timedelta(hours=-12), name="day_obs")
+# Offset used to define exposures' day_obs value.
+_DAY_OBS_DELTA = astropy.time.TimeDelta(-12.0 * astropy.units.hour, scale="tai")
 
 
 class MiddlewareInterface:
@@ -221,7 +220,7 @@ class MiddlewareInterface:
         self.instrument = lsst.obs.base.Instrument.from_string(visit.instrument, central_butler.registry)
         self.pipelines = pipelines
 
-        self._day_obs = datetime.datetime.now(_DAY_OBS_TZ).strftime("%Y-%m-%d")
+        self._day_obs = (astropy.time.Time.now() + _DAY_OBS_DELTA).tai.to_value("iso", "date")
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self._prep_collections()
