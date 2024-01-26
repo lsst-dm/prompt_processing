@@ -29,6 +29,7 @@ import unittest.mock
 import warnings
 
 import astropy.coordinates
+import astropy.time
 import astropy.units as u
 import psycopg2
 
@@ -116,22 +117,6 @@ def fake_file_data(filename, dimensions, instrument, visit):
 class MiddlewareInterfaceTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
     """
-    @classmethod
-    def setUpClass(cls):
-        cls.env_patcher = unittest.mock.patch.dict(os.environ,
-                                                   {"URL_APDB": "postgresql://localhost/postgres",
-                                                    "K_REVISION": "prompt-proto-service-042",
-                                                    })
-        cls.env_patcher.start()
-
-        super().setUpClass()
-
-    @classmethod
-    def tearDownClass(cls):
-        super().tearDownClass()
-
-        cls.env_patcher.stop()
-
     def setUp(self):
         self.data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.central_repo = os.path.join(self.data_dir, "central_repo")
@@ -142,6 +127,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                      inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
+
+        env_patcher = unittest.mock.patch.dict(os.environ,
+                                               {"URL_APDB": f"sqlite:///{self.local_repo.name}/apdb.db",
+                                                "K_REVISION": "prompt-proto-service-042",
+                                                })
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
         ra = 155.4702849608958
@@ -606,37 +598,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
     def test_get_output_run(self):
         filename = "ApPipe.yaml"
-        for date in [datetime.date.today(), datetime.datetime.today()]:
-            out_run = self.interface._get_output_run(filename, date)
-            self.assertEqual(out_run,
-                             f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
-                             "/ApPipe/prompt-proto-service-042"
-                             )
-            init_run = self.interface._get_init_output_run(filename, date)
-            self.assertEqual(init_run,
-                             f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
-                             "/ApPipe/prompt-proto-service-042"
-                             )
-
-    def test_get_output_run_default(self):
-        # Workaround for mocking builtin class; see
-        # https://williambert.online/2011/07/how-to-unit-testing-in-django-with-mocking-and-patching/
-        class MockDatetime(datetime.datetime):
-            @classmethod
-            def now(cls, tz=None):
-                # This time will be the same day in CLT/CLST, but the previous day in day_obs.
-                utc = datetime.datetime(2023, 3, 15, 5, 42, 3, tzinfo=datetime.timezone.utc)
-                if tz:
-                    return utc.astimezone(tz)
-                else:
-                    return utc.replace(tzinfo=None)
-
-        filename = "ApPipe.yaml"
-        with unittest.mock.patch("datetime.datetime", MockDatetime):
-            out_run = self.interface._get_output_run(filename)
-            self.assertIn("output-2023-03-14", out_run)
-            init_run = self.interface._get_init_output_run(filename)
-            self.assertIn("output-2023-03-14", init_run)
+        date = "2023-01-22"
+        out_run = self.interface._get_output_run(filename, date)
+        self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
+        init_run = self.interface._get_init_output_run(filename, date)
+        self.assertEqual(init_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
 
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
         # Pass iff any dataset matches the query, no need to check them all.
@@ -670,7 +636,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         cat = lsst.afw.table.SourceCatalog()
         raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
         butler.registry.registerCollection(raw_collection, CollectionType.RUN)
-        out_collection = self.interface._get_output_run("ApPipe.yaml")
+        out_collection = self.interface._get_output_run("ApPipe.yaml", self.interface._day_obs)
         butler.registry.registerCollection(out_collection, CollectionType.RUN)
         chain = "generic-chain"
         butler.registry.registerCollection(chain, CollectionType.CHAINED)
@@ -800,7 +766,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         all_calibs = list(self.central_butler.registry.queryDatasets("cpBias"))
         early_calibs = list(_filter_calibs_by_date(
             self.central_butler, "DECam/calib", all_calibs,
-            datetime.datetime(2015, 2, 26, tzinfo=datetime.timezone.utc)
+            astropy.time.Time("2015-02-26 00:00:00", scale="utc")
         ))
         self.assertEqual(len(early_calibs), 4)
         for calib in early_calibs:
@@ -811,7 +777,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         all_calibs = list(self.central_butler.registry.queryDatasets("cpFlat"))
         late_calibs = list(_filter_calibs_by_date(
             self.central_butler, "DECam/calib", all_calibs,
-            datetime.datetime(2015, 3, 16, tzinfo=datetime.timezone.utc)
+            astropy.time.Time("2015-03-16 00:00:00", scale="utc")
         ))
         self.assertEqual(len(late_calibs), 4)
         for calib in late_calibs:
@@ -825,7 +791,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             warnings.simplefilter("ignore", category=astropy.utils.exceptions.ErfaWarning)
             future_calibs = list(_filter_calibs_by_date(
                 self.central_butler, "DECam/calib", all_calibs,
-                datetime.datetime(2050, 1, 1, tzinfo=datetime.timezone.utc)
+                astropy.time.Time("2050-01-01 00:00:00", scale="utc")
             ))
         self.assertEqual(len(future_calibs), 0)
 
@@ -834,14 +800,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         all_calibs = set(self.central_butler.registry.queryDatasets(["camera", "crosstalk"]))
         valid_calibs = set(_filter_calibs_by_date(
             self.central_butler, "DECam/calib", all_calibs,
-            datetime.datetime(2015, 3, 15, tzinfo=datetime.timezone.utc)
+            astropy.time.Time("2015-03-15 00:00:00", scale="utc")
         ))
         self.assertEqual(valid_calibs, all_calibs)
 
     def test_filter_calibs_by_date_empty(self):
         valid_calibs = set(_filter_calibs_by_date(
             self.central_butler, "DECam/calib", [],
-            datetime.datetime(2015, 3, 15, tzinfo=datetime.timezone.utc)
+            astropy.time.Time("2015-03-15 00:00:00", scale="utc")
         ))
         self.assertEqual(len(valid_calibs), 0)
 
@@ -853,22 +819,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
     setup takes longer than for MiddlewareInterfaceTest, so it should be
     used sparingly.
     """
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-
-        cls.env_patcher = unittest.mock.patch.dict(os.environ,
-                                                   {"URL_APDB": "postgresql://localhost/postgres",
-                                                    "K_REVISION": "prompt-proto-service-042",
-                                                    })
-        cls.env_patcher.start()
-
-    @classmethod
-    def tearDownClass(cls):
-        super().tearDownClass()
-
-        cls.env_patcher.stop()
-
     def _create_copied_repo(self):
         """Create a fresh repository that's a copy of the test data.
 
@@ -909,6 +859,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # getting garbage-collected.
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, second_local_repo)
+
+        env_patcher = unittest.mock.patch.dict(os.environ,
+                                               {"URL_APDB": f"sqlite:///{local_repo.name}/apdb.db",
+                                                "K_REVISION": "prompt-proto-service-042",
+                                                })
+        env_patcher.start()
+        self.addCleanup(env_patcher.stop)
 
         # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
         ra = 155.4702849608958

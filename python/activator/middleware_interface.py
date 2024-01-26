@@ -22,7 +22,6 @@
 __all__ = ["get_central_butler", "make_local_repo", "MiddlewareInterface"]
 
 import collections.abc
-import datetime
 import hashlib
 import itertools
 import logging
@@ -128,8 +127,8 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
     return repo_dir
 
 
-# Time zone used to define exposures' day_obs value.
-_DAY_OBS_TZ = datetime.timezone(datetime.timedelta(hours=-12), name="day_obs")
+# Offset used to define exposures' day_obs value.
+_DAY_OBS_DELTA = astropy.time.TimeDelta(-12.0 * astropy.units.hour, scale="tai")
 
 
 class MiddlewareInterface:
@@ -221,8 +220,7 @@ class MiddlewareInterface:
         self.instrument = lsst.obs.base.Instrument.from_string(visit.instrument, central_butler.registry)
         self.pipelines = pipelines
 
-        # Guard against a processing run starting on one day and ending the next.
-        self._day_obs = datetime.datetime.now(_DAY_OBS_TZ)
+        self._day_obs = (astropy.time.Time.now() + _DAY_OBS_DELTA).tai.to_value("iso", "date")
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self._prep_collections()
@@ -523,9 +521,7 @@ class MiddlewareInterface:
         # supported in queryDatasets yet.
         calib_where = f"detector={detector_id} and physical_filter='{filter}'"
         # TAI observation start time should be used for calib validity range.
-        # private_sndStamp is the visit publication time in TAI, not UTC,
-        # but difference shouldn't matter.
-        calib_date = datetime.datetime.fromtimestamp(self.visit.private_sndStamp, tz=datetime.timezone.utc)
+        calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
         calibs = set(_filter_datasets(
@@ -627,7 +623,7 @@ class MiddlewareInterface:
 
     def _get_init_output_run(self,
                              pipeline_file: str,
-                             date: datetime.date | None = None) -> str:
+                             date: str) -> str:
         """Generate a deterministic init-output collection name that avoids
         configuration conflicts.
 
@@ -635,24 +631,21 @@ class MiddlewareInterface:
         ----------
         pipeline_file : `str`
             The pipeline file that the run will be used for.
-        date : `datetime.date`, optional
-            Date of the processing run (not observation!), defaults to the
-            day_obs this method was called.
+        date : `str`
+            Date of the processing run (not observation!).
 
         Returns
         -------
         run : `str`
             The run in which to place pipeline init-outputs.
         """
-        if date is None:
-            date = datetime.datetime.now(_DAY_OBS_TZ)
         # Current executor requires that init-outputs be in the same run as
         # outputs. This can be changed once DM-36162 is done.
         return self._get_output_run(pipeline_file, date)
 
     def _get_output_run(self,
                         pipeline_file: str,
-                        date: datetime.date | None = None) -> str:
+                        date: str) -> str:
         """Generate a deterministic collection name that avoids version or
         provenance conflicts.
 
@@ -660,21 +653,18 @@ class MiddlewareInterface:
         ----------
         pipeline_file : `str`
             The pipeline file that the run will be used for.
-        date : `datetime.date`, optional
-            Date of the processing run (not observation!), defaults to the
-            day_obs this method was called.
+        date : `str`
+            Date of the processing run (not observation!).
 
         Returns
         -------
         run : `str`
             The run in which to place processing outputs.
         """
-        if date is None:
-            date = datetime.datetime.now(_DAY_OBS_TZ)
         pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
         # Order optimized for S3 bucket -- filter out as many files as soon as possible.
         return self.instrument.makeCollectionName(
-            "prompt", f"output-{date:%Y-%m-%d}", pipeline_name, self._deployment)
+            "prompt", f"output-{date}", pipeline_name, self._deployment)
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
@@ -1062,7 +1052,7 @@ class _MissingDatasetError(RuntimeError):
 def _filter_datasets(src_repo: Butler,
                      dest_repo: Butler,
                      *args,
-                     calib_date: datetime.datetime | None = None,
+                     calib_date: astropy.time.Time | None = None,
                      **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
     """Identify datasets in a source repository, filtering out those already
     present in a destination.
@@ -1076,10 +1066,9 @@ def _filter_datasets(src_repo: Butler,
         The repository in which a dataset must be present.
     dest_repo : `lsst.daf.butler.Butler`
         The repository in which a dataset must not be present.
-    calib_date : `datetime.datetime`, optional
+    calib_date : `astropy.time.Time`, optional
         If provided, also filter anything other than calibs valid at
         ``calib_date`` and check that at least one valid calib was found.
-        Any ``datetime`` object must be aware.
     *args, **kwargs
         Parameters for describing the dataset query. They have the same
         meanings as the parameters of `lsst.daf.butler.Registry.queryDatasets`.
@@ -1176,7 +1165,7 @@ def _remove_from_chain(butler: Butler, chain: str, old_collections: collections.
 def _filter_calibs_by_date(butler: Butler,
                            collections: typing.Any,
                            unfiltered_calibs: collections.abc.Collection[lsst.daf.butler.DatasetRef],
-                           date: datetime.datetime
+                           date: astropy.time.Time
                            ) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
     """Trim a set of calib datasets to those that are valid at a particular time.
 
@@ -1189,9 +1178,8 @@ def _filter_calibs_by_date(butler: Butler,
         collections, to query for validity data.
     unfiltered_calibs : collection [`lsst.daf.butler.DatasetRef`]
         The calibs to be filtered by validity. May be empty.
-    date : `datetime.datetime`
-        The time at which the calibs must be valid. Must be an
-        aware ``datetime``.
+    date : `astropy.time.Time`
+        The time at which the calibs must be valid.
 
     Returns
     -------
@@ -1203,7 +1191,7 @@ def _filter_calibs_by_date(butler: Butler,
     # Unfiltered_calibs can have up to one copy of each calib per certify cycle.
     # Minimize redundant queries to find_dataset.
     unique_ids = {(ref.datasetType, ref.dataId) for ref in unfiltered_calibs}
-    t = Timespan.fromInstant(astropy.time.Time(date, scale='utc'))
+    t = Timespan.fromInstant(date)
     _log_trace.debug("Looking up calibs for %s in %s.", t, collections)
     filtered_calibs = []
     for dataset_type, data_id in unique_ids:

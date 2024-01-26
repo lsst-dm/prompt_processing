@@ -20,7 +20,6 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import dataclasses
-import datetime
 import itertools
 import json
 import logging
@@ -30,6 +29,7 @@ import sys
 import tempfile
 import time
 
+import astropy.time
 import boto3
 from botocore.handlers import validate_bucket_name
 
@@ -290,7 +290,7 @@ def get_samples_lsst(bucket, instrument):
             dome=FannedOutVisit.Dome.OPEN,
             duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
             totalCheckpoints=1,
-            private_sndStamp=datetime.datetime.fromisoformat(md["DATE-BEG"]).timestamp(),
+            private_sndStamp=astropy.time.Time(md["DATE-BEG"], format="isot", scale="tai").unix_tai,
         )
         _log.debug(f"File {blob.key} parsed as visit {visit} and registered as group {md['GROUPID']}.")
         result[md["GROUPID"]] = {0: {visit: blob}}
