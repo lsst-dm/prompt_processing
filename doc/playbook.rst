@@ -112,16 +112,16 @@ Buckets
 
 `This document <https://confluence.lsstcorp.org/display/LSSTOps/USDF+S3+Bucket+Organization>`_ describes the overall organization of S3 buckets and access at USDF.
 
-The bucket ``rubin:rubin-pp`` holds incoming raw images.
+The bucket ``rubin-pp-dev`` holds incoming raw images.
 
-The bucket ``rubin:rubin-pp-users`` holds:
+The bucket ``rubin-pp-dev-users`` holds:
 
-* ``rubin:rubin-pp-users/central_repo/`` contains the central repository described in `DMTN-219`_.
+* ``rubin-pp-dev-users/central_repo/`` contains the central repository described in `DMTN-219`_.
   This repository currently contains a copy of HSC RC2 data, uploaded with ``make_hsc_rc2_export.py`` and ``make_template_export``.
 
-* ``rubin:rubin-pp-users/unobserved/`` contains raw files that the upload script(s) can draw from to create incoming raws.
+* ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload script(s) can draw from to create incoming raws.
 
-``rubin:rubin-pp`` has had notifications configured for it; these publish to a Kafka topic.
+``rubin-pp-dev`` has had notifications configured for it; these publish to a Kafka topic.
 
 The default Rubin users' setup on ``rubin-devl`` includes an AWS credential file at the environment variable ``AWS_SHARED_CREDENTIALS_FILE`` and a default profile without read permission to the prompt processing buckets.
 A separate credential for prompt processing developers is at  `vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-prompt-processing-dev/s3-buckets>`_ and can be set up as another credential profile for Butler or command line tools such as AWS Command Line Interface and MinIO Client.
@@ -161,7 +161,7 @@ For Butler not to complain about the bucket names, set the environment variable 
 Central Repo
 ============
 
-The central repo for development use is located at ``s3://rubin:rubin-pp-users/central_repo/``.
+The central repo for development use is located at ``s3://rubin-pp-dev-users/central_repo/``.
 You need developer credentials to access it, as described under `Buckets`_.
 
 Migrating the Repo
@@ -300,7 +300,7 @@ tester
 ``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` are scripts that simulate the CCS image writer.
 It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
 
-You must have a profile set up for the ``rubin:rubin-pp`` bucket (see `Buckets`_, above).
+You must have a profile set up for the ``rubin-pp-dev`` bucket (see `Buckets`_, above).
 
 Install the Prompt Processing code, and set it up before use:
 
@@ -310,7 +310,7 @@ Install the Prompt Processing code, and set it up before use:
     setup -r prompt_processing
 
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
-They then upload a batch of files representing the snaps of the visit to the ``rubin:rubin-pp`` S3 bucket, simulating incoming raw images.
+They then upload a batch of files representing the snaps of the visit to the ``rubin-pp-dev`` S3 bucket, simulating incoming raw images.
 
 ``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC or LATISS) and the number of groups of images to send.
 
@@ -321,7 +321,7 @@ Sample command line:
    python upload.py HSC 3
    python upload.py LATISS 3
 
-This script draws images stored in the ``rubin:rubin-pp-users`` bucket.
+This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 
 * For HSC, 4 groups, in total 10 raw files, are curated.
   They are the COSMOS data as curated in `ap_verify_ci_cosmos_pdr2 <Rhttps://github.com/lsst/ap_verify_ci_cosmos_pdr2>`_.

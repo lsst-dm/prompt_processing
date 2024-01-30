@@ -130,10 +130,10 @@ def main():
     kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
     endpoint_url = "https://s3dfrgw.slac.stanford.edu"
     s3 = boto3.resource("s3", endpoint_url=endpoint_url)
-    dest_bucket = s3.Bucket("rubin:rubin-pp")
+    dest_bucket = s3.Bucket("rubin-pp-dev")
     dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
-    src_bucket = s3.Bucket("rubin:rubin-pp-users")
+    src_bucket = s3.Bucket("rubin-pp-dev-users")
     src_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
     last_group = get_last_group(dest_bucket, instrument, date)
