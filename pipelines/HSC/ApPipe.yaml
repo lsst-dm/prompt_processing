@@ -1,7 +1,7 @@
 description: End to end Alert Production pipeline specialized for HSC-RC2
 
 imports:
-  - location: $AP_PIPE_DIR/pipelines/HyperSuprimeCam/ApPipe.yaml
+  - location: $AP_PIPE_DIR/pipelines/HSC/ApPipe.yaml
     exclude:
       # TODO: container does not yet support R/B analysis.
       - rbClassify
