@@ -6,3 +6,12 @@ description: Alert Production pipeline specialized for LATISS
 # release schedule.
 imports:
   - location: $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml
+tasks:
+  calibrate:
+    class: lsst.pipe.tasks.calibrate.CalibrateTask
+    config:
+      python: |
+        from lsst.pipe.tasks.colorterms import ColortermDict
+        config.photoCal.colorterms.data = {
+            "atlas_refcat2*": ColortermDict(data={})
+        }
