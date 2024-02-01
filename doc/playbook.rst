@@ -195,6 +195,12 @@ A few useful commands for managing the service:
 Troubleshooting
 ---------------
 
+Printing Timing Logs
+^^^^^^^^^^^^^^^^^^^^
+
+The code is filled with timing blocks, but by default their logs are not emitted.
+To see timer results, set ``SERVICE_LOG_LEVELS`` to include ``timer.lsst.activator=DEBUG`` in the Prompt Processing config.
+
 Deleting Old Services
 ^^^^^^^^^^^^^^^^^^^^^
 

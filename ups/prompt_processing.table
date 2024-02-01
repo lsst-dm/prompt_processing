@@ -11,12 +11,14 @@ setupRequired(ap_pipe)
 setupRequired(obs_lsst)
 
 # Used by middleware_interface
+setupRequired(analysis_tools)
 setupRequired(daf_butler)
 setupRequired(ctrl_mpexec)
 setupRequired(geom)
 setupRequired(meas_algorithms)
 setupRequired(obs_base)
 setupRequired(pipe_base)
+setupRequired(verify)
 
 # used by tests
 setupRequired(obs_decam)
