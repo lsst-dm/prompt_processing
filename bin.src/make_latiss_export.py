@@ -88,13 +88,12 @@ def _export_for_copy(butler, target_butler):
         verify if datasets are really identical.
     """
     with butler.export(format="yaml") as contents:
-        logging.debug("Selecting deepCoadd datasets")
+        logging.debug("Selecting goodSeeingCoadd datasets")
         records = _filter_datasets(
             butler,
             target_butler,
-            datasetType="deepCoadd",
-            collections="LATISS/runs/AUXTEL_DRP_IMAGING_2023-07AB-05AB/"
-                        "w_2023_19/PREOPS-3598/20230726T202836Z",
+            datasetType="goodSeeingCoadd",
+            collections="LATISS/templates",
         )
         contents.saveDatasets(records)
 
