@@ -1166,13 +1166,16 @@ def _filter_datasets(src_repo: Butler,
         Raised if the query on ``src_repo`` failed to find any datasets, or
         (if ``calib_date`` is set) if none of them are currently valid.
     """
+    formatted_args = "{}, {}".format(
+        ", ".join(repr(a) for a in args),
+        ", ".join(f"{k}={v!r}" for k, v in kwargs.items()),
+    )
     try:
-        known_datasets = set(dest_repo.registry.queryDatasets(*args, **kwargs))
+        with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
+                                        level=logging.DEBUG):
+            known_datasets = set(dest_repo.registry.queryDatasets(*args, **kwargs))
     except lsst.daf.butler.registry.DataIdValueError as e:
-        _log.debug("Pre-export query with args '%s, %s' failed with %s",
-                   ", ".join(repr(a) for a in args),
-                   ", ".join(f"{k}={v!r}" for k, v in kwargs.items()),
-                   e)
+        _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
         # If dimensions are invalid, then *any* such datasets are missing.
         known_datasets = set()
 
@@ -1180,7 +1183,9 @@ def _filter_datasets(src_repo: Butler,
     # this operation.
     # "expanded" dimension records are ignored for DataCoordinate equality
     # comparison, so we only need them on src_datasets.
-    src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs).expanded())
+    with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (source datasets)",
+                                    level=logging.DEBUG):
+        src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs).expanded())
     if calib_date:
         src_datasets = _filter_calibs_by_date(
             src_repo,
@@ -1190,11 +1195,7 @@ def _filter_datasets(src_repo: Butler,
         )
     if not src_datasets:
         raise _MissingDatasetError(
-            "Source repo query with args '{}, {}' found no matches.".format(
-                ", ".join(repr(a) for a in args),
-                ", ".join(f"{k}={v!r}" for k, v in kwargs.items())
-            )
-        )
+            "Source repo query with args '{}' found no matches.".format(formatted_args))
     return itertools.filterfalse(lambda ref: ref in known_datasets, src_datasets)
 
 
