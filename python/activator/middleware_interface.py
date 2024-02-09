@@ -427,13 +427,18 @@ class MiddlewareInterface:
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)",
                                                     level=logging.DEBUG):
-                        self.butler.transfer_from(self.central_butler,
-                                                  refcat_datasets + template_datasets + calib_datasets,
-                                                  transfer="copy",
-                                                  skip_missing=True,
-                                                  register_dataset_types=True,
-                                                  transfer_dimensions=True,
-                                                  )
+                        all_datasets = refcat_datasets + template_datasets + calib_datasets
+                        transferred = self.butler.transfer_from(self.central_butler,
+                                                                all_datasets,
+                                                                transfer="copy",
+                                                                skip_missing=True,
+                                                                register_dataset_types=True,
+                                                                transfer_dimensions=True,
+                                                                )
+                        if len(transferred) != len(all_datasets):
+                            _log.warning("Downloaded only %d datasets out of %d; missing %s.",
+                                         len(transferred), len(all_datasets),
+                                         set(all_datasets) - set(transferred))
 
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)",
                                                     level=logging.DEBUG):
@@ -1089,10 +1094,14 @@ class MiddlewareInterface:
                     detector=self.visit.detector,
                 ):
                     self.central_butler.registry.syncDimensionData(dimension, record, update=False)
-            self.central_butler.transfer_from(self.butler, datasets,
-                                              transfer="copy", transfer_dimensions=False)
+            transferred = self.central_butler.transfer_from(self.butler, datasets,
+                                                            transfer="copy", transfer_dimensions=False)
+            if len(transferred) != len(datasets):
+                _log.error("Uploaded only %d datasets out of %d; missing %s.",
+                           len(transferred), len(datasets),
+                           set(datasets) - set(transferred))
 
-        return datasets
+        return transferred
 
     def clean_local_repo(self, exposure_ids: set[int]) -> None:
         """Remove local repo content that is only needed for a single visit.
