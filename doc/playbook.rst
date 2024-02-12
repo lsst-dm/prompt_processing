@@ -8,6 +8,7 @@ Table of Contents
 =================
 
 * `Containers`_
+* `Release Management`_
 * `Buckets`_
 * `Central Repo`_
 * `Development Service`_
@@ -55,20 +56,31 @@ To build the service container:
 
    The ``PYTHONUNBUFFERED`` environment variable defined in the Dockerfiles for the containers ensures that container logs are emitted in real-time.
 
-To build a release:
+Stable Base Containers
+----------------------
+
+In general, the ``latest`` base container is built from a weekly or other stable Science Pipelines release.
+However, it may happen that the ``latest`` base is used for development while production runs should use an older build.
+If this comes up, edit ``.github/workflows/build-service.yml`` and append the desired base build to the ``BASE_TAG_LIST`` variable.
+Any subsequent builds of the service container will build against both bases.
+
+This is the only situation in which a change to ``BASE_TAG_LIST`` should be committed to ``main``.
+
+Release Management
+==================
 
 Releases are largely automated through GitHub Actions (see the `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`  workflow file for details). When a semantic version tag is pushed to GitHub, Prompt Processing Docker images are published on GitHub and Docker Hub with that version.
 
-Regular releases happen from the ``main`` branch after changes have been merged.  From the ``main`` branch you can release a new major version (``X.0.0``), a new minor version of the current major version (``X.Y.0``), or a new patch of the current major-minor version (``X.Y.Z``).  Release tags are semantic version identifiers following the `pep 440 <https://peps.python.org/pep-0440/>` specification.
+Regular releases happen from the ``main`` branch after changes have been merged.  From the ``main`` branch you can release a new major version (``X.0.0``), a new minor version of the current major version (``X.Y.0``), or a new patch of the current major-minor version (``X.Y.Z``).  Release tags are semantic version identifiers following the `pep 440 <https://peps.python.org/pep-0440/>` specification.  Please note that the tag does not include a ``v`` at the beginning.
 
 1. Create a Release
 
-On GitHub.com, navigate to the main page of the repository.  To the right of the list of files, click **Releases**.  At the top of the page, click **Draft a new release**.  Type a tag using semantic versioning described in the previous section.  The Target should be the main branch.  
+On GitHub.com, navigate to the main page of the repository.  To the right of the list of files, click **Releases**.  At the top of the page, click **Draft a new release**.  Type a tag using semantic versioning described in the previous section.  The Target should be the main branch.
 
 Select **Generate Release Notes**.  This will generate a list of commit summaries and of submitters.   Add text as follows.
-* Add the specific motivation for the release(for example, including a specific feature, preparing for a specific observing run))
+* Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run))
 * Science Pipelines version and rubin-env version
-* Changes to the APDB and Alerts schemas, to be replaced by version numbers once we have them.
+* Any changes to the APDB and Alerts schemas
 
 Select **Publish Release**.
 
@@ -83,15 +95,6 @@ At the HEAD of the ``main`` branch, create and push a tag with the semantic vers
    git tag -s X.Y.Z -m "X.Y.Z"
    git push --tags
 
-Stable Base Containers
-----------------------
-
-In general, the ``latest`` base container is built from a weekly or other stable Science Pipelines release.
-However, it may happen that the ``latest`` base is used for development while production runs should use an older build.
-If this comes up, edit ``.github/workflows/build-service.yml`` and append the desired base build to the ``BASE_TAG_LIST`` variable.
-Any subsequent builds of the service container will build against both bases.
-
-This is the only situation in which a change to ``BASE_TAG_LIST`` should be committed to ``main``.
 
 Buckets
 =======
