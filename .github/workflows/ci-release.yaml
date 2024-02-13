@@ -1,0 +1,62 @@
+name: Release CI
+
+"on":
+  push:
+    branches-ignore:
+      # These should always correspond to pull requests, so ignore them for
+      # the push trigger and let them be triggered by the pull_request
+      # trigger, avoiding running the workflow twice.  This is a minor
+      # optimization so there's no need to ensure this is comprehensive.
+      - "dependabot/**"
+      - "renovate/**"
+      - "tickets/**"
+      - "u/**"
+    tags:
+      - "*"
+  pull_request: {}
+
+env:
+  # Base tag to run tests against.
+  BASE_TAG: "latest"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    if: >
+      startsWith(github.ref, 'refs/tags/')
+      || startsWith(github.head_ref, 'tickets/')
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Fix permissions
+        run: chmod -R a+rwX $GITHUB_WORKSPACE
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run tests
+        run: |
+          docker run \
+              -v $GITHUB_WORKSPACE:/home/lsst/prompt_processing \
+              ghcr.io/${{ github.repository_owner }}/prompt-base:$BASE_TAG \
+              bash -c '
+                  cd /home/lsst/prompt_processing
+                  source /opt/lsst/software/stack/loadLSST.bash
+                  setup -r .
+                  # Fix permissions; arg must be absolute path.
+                  git config --global --add safe.directory /home/lsst/prompt_processing
+                  scons'
+
+      - uses: lsst-sqre/build-and-push-to-ghcr@v1
+        id: build
+        with:
+          image: ${{ github.repository }} # e.g. lsst-sqre/safirdemo
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: echo Pushed ghcr.io/${{ github.repository }}:${{ steps.build.outputs.tag }}

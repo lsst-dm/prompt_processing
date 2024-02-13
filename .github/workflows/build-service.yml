@@ -8,13 +8,13 @@ on:
       - '.github/workflows/build-service.yml'
       - 'pipelines/**'
       - 'python/activator/**'
-      - 'Dockerfile.activator'
+      - 'Dockerfile'
   pull_request:
     paths:
       - '.github/workflows/build-service.yml'
       - 'pipelines/**'
       - 'python/activator/**'
-      - 'Dockerfile.activator'
+      - 'Dockerfile'
   workflow_dispatch:
 
 permissions:
@@ -98,7 +98,7 @@ jobs:
           echo "Eups tag = $(< eups.tag)"
       - name: Build image
         run: |
-          docker build . -f Dockerfile.activator \
+          docker build . -f Dockerfile \
             --build-arg "BASE_TAG=$BASE_TAG" \
             --tag $IMAGE_NAME \
             --label "runnumber=${GITHUB_RUN_ID}" \
