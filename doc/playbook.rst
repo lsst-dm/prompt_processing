@@ -69,22 +69,33 @@ This is the only situation in which a change to ``BASE_TAG_LIST`` should be comm
 Release Management
 ==================
 
-Releases are largely automated through GitHub Actions (see the `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`  workflow file for details). When a semantic version tag is pushed to GitHub, Prompt Processing Docker images are published on GitHub and Docker Hub with that version.
+Releases are largely automated through GitHub Actions (see the `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_  workflow file for details).
+When a semantic version tag is pushed to GitHub, Prompt Processing Docker images are published on GitHub and Docker Hub with that version.
 
-Regular releases happen from the ``main`` branch after changes have been merged.  From the ``main`` branch you can release a new major version (``X.0.0``), a new minor version of the current major version (``X.Y.0``), or a new patch of the current major-minor version (``X.Y.Z``).  Release tags are semantic version identifiers following the `pep 440 <https://peps.python.org/pep-0440/>` specification.  Please note that the tag does not include a ``v`` at the beginning.
+Regular releases happen from the ``main`` branch after changes have been merged.
+From the ``main`` branch you can release a new major version (``X.0.0``), a new minor version of the current major version (``X.Y.0``), or a new patch of the current major-minor version (``X.Y.Z``).
+Release tags are semantic version identifiers following the `pep 440 <https://peps.python.org/pep-0440/>`_ specification.
+Please note that the tag does not include a ``v`` at the beginning.
 
 1. Create a Release
 
-On GitHub.com, navigate to the main page of the repository.  To the right of the list of files, click **Releases**.  At the top of the page, click **Draft a new release**.  Type a tag using semantic versioning described in the previous section.  The Target should be the main branch.
+On GitHub.com, navigate to the main page of the repository.
+To the right of the list of files, click **Releases**.
+At the top of the page, click **Draft a new release**.
+Type a tag using semantic versioning described in the previous section.
+The Target should be the main branch.
 
-Select **Generate Release Notes**.  This will generate a list of commit summaries and of submitters.   Add text as follows.
-* Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run))
+Select **Generate Release Notes**.
+This will generate a list of commit summaries and of submitters.
+Add text as follows.
+
+* Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
 * Science Pipelines version and rubin-env version
 * Any changes to the APDB and Alerts schemas
 
 Select **Publish Release**.
 
-The `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>` GitHub Actions workflow uploads the new release to GitHub packages.
+The `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
 
 2. Tag the release
 
@@ -353,12 +364,6 @@ The server is visible from ``rubin-devl``, and can be accessed through, e.g.,
 .. code-block:: sh
 
    psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin
-
-.. TODO: remove this block after DM-36604.
-.. note::
-
-   If you are using an environment older than 5.0, you will have to install psql yourself.
-   This can be done on ``rubin-devl`` with ``conda create -n psql postgresql``; thereafter type ``conda activate psql`` to enable it.
 
 For passwordless login, create a ``~/.pgpass`` file with contents:
 
