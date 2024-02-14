@@ -89,7 +89,7 @@ Select **Generate Release Notes**.
 This will generate a list of commit summaries and of submitters.
 Add text as follows.
 
-* Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run))
+* Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
 * Science Pipelines version and rubin-env version
 * Any changes to the APDB and Alerts schemas
 
