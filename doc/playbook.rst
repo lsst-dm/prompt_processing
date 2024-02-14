@@ -365,12 +365,6 @@ The server is visible from ``rubin-devl``, and can be accessed through, e.g.,
 
    psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin
 
-.. TODO: remove this block after DM-36604.
-.. note::
-
-   If you are using an environment older than 5.0, you will have to install psql yourself.
-   This can be done on ``rubin-devl`` with ``conda create -n psql postgresql``; thereafter type ``conda activate psql`` to enable it.
-
 For passwordless login, create a ``~/.pgpass`` file with contents:
 
 .. code-block::
