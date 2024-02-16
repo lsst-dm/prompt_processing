@@ -312,8 +312,6 @@ Install the Prompt Processing code, and set it up before use:
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin:rubin-pp`` S3 bucket, simulating incoming raw images.
 
-Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
-
 ``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC or LATISS) and the number of groups of images to send.
 
 Sample command line:
@@ -343,6 +341,7 @@ Sample command line:
 This scripts draws images from the curated ``HSC/RC2/defaults`` collection at USDF's ``/repo/main`` butler repository.
 The source collection includes 432 visits, each with 103 detector images.
 The visits are randomly selected and uploaded as one new group for each visit.
+Images can be uploaded in parallel processes.
 
 
 .. note::
