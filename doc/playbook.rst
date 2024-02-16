@@ -129,17 +129,17 @@ One way to set up this profile is with the AWS CLI:
 
 .. code-block:: sh
 
-   singularity exec /sdf/sw/s3/aws-cli_latest.sif aws configure --profile rubin-prompt-processing
+   singularity exec /sdf/sw/s3/aws-cli_latest.sif aws configure --profile prompt-processing-dev
 
 and follow the prompts.
-To use the new credentials with the Butler, set the environment variable ``AWS_PROFILE=rubin-prompt-processing``.
+To use the new credentials with the Butler, set the environment variable ``AWS_PROFILE=prompt-processing-dev``.
 
 The AWS CLI can be used to inspect non-tenenat buckets:
 
 .. code-block:: sh
 
    alias s3="singularity exec /sdf/sw/s3/aws-cli_latest.sif aws --endpoint-url https://s3dfrgw.slac.stanford.edu s3"
-   s3 --profile rubin-prompt-processing [ls|cp|rm] s3://rubin-summit/<path>
+   s3 --profile prompt-processing-dev [ls|cp|rm] s3://rubin-summit/<path>
 
 .. note::
 
@@ -148,12 +148,12 @@ The AWS CLI can be used to inspect non-tenenat buckets:
 Some of the prompt processing buckets are Ceph tenant buckets and require a tenant prefix, which violates the bucket name standard and is not supported by AWS CLI.
 The MinIO Client ``mc`` tool may be used.
 One version can be accessed at ``/sdf/group/rubin/sw/bin/mc`` at USDF.
-To inspect buckets with the MinIO Client ``mc`` tool, first set up an alias (e.g. ``usdf-pp``) and then can use commands:
+To inspect buckets with the MinIO Client ``mc`` tool, first set up an alias (e.g. ``prompt-processing-dev``) and then can use commands:
 
 .. code-block:: sh
 
-    mc alias set usdf-pp https://s3dfrgw.slac.stanford.edu ACCESS_KEY SECRET_KEY
-    mc ls usdf-pp/rubin:rubin-pp
+    mc alias set prompt-processing-dev https://s3dfrgw.slac.stanford.edu ACCESS_KEY SECRET_KEY
+    mc ls prompt-processing-dev/rubin:rubin-pp
 
 
 For Butler not to complain about the bucket names, set the environment variable ``LSST_DISABLE_BUCKET_VALIDATION=1``.
