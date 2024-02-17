@@ -190,6 +190,16 @@ In our case, we want to migrate to the versions that ``/repo/embargo`` is using,
    However, when using ``butler migrate`` to update ``dimensions-config``, you should delete all existing pods to ensure that their replacements have the correct version.
    This can be done using ``kubectl delete pod`` or from Argo CD (see `Development Service`_).
 
+Adding New Dataset Types
+------------------------
+
+When pipelines change, sometimes it is necessary to register the new dataset types in the central repo so to avoid ``MissingDatasetTypeError`` at prompt service export time.
+One raw was ingested, visit-defined, and kept in the development central repo, so a ``pipetask`` like the following can be run:
+
+.. code-block:: sh
+
+   make_apdb.py -c db_url="sqlite:///apdb.db"
+   pipetask run -b s3://rubin-pp-dev-users/central_repo -i LATISS/raw/all,LATISS/defaults,LATISS/templates -o u/username/collection  -d "detector=0 and instrument='LATISS' and exposure=2023082900500 and visit_system=0" -p $PROMPT_PROCESSING_DIR/pipelines/LATISS/ApPipe.yaml -c diaPipe:apdb.db_url=sqlite:///apdb.db --register-dataset-types
 
 Development Service
 ===================
