@@ -14,9 +14,6 @@ description: End to end Alert Production pipeline specialized for HiTS-2015
 
 imports:
   - location: $AP_PIPE_DIR/pipelines/DECam/ApPipe.yaml
-    exclude:
-      # TODO: support R/B analysis on DM-42220
-      - rbClassify
 parameters:
   # Use dataset's specific templates
   coaddName: goodSeeing
@@ -32,11 +29,6 @@ tasks:
     config:
       # Use dataset's reference catalogs
       file: $PROMPT_PROCESSING_DIR/tests/data/calibrate.py
-  transformDiaSrcCat:
-    class: lsst.ap.association.TransformDiaSourceCatalogTask
-    config:
-      # TODO: support R/B analysis on DM-42220
-      doIncludeReliability: False
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:
