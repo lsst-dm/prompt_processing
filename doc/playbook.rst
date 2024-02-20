@@ -12,7 +12,7 @@ Table of Contents
 * `Buckets`_
 * `Central Repo`_
 * `Development Service`_
-* `tester`_
+* `Testers`_
 * `Databases`_
 
 
@@ -304,8 +304,8 @@ There should be only one local repo per ``MiddlewareInterface`` object, and at t
 If in doubt, check the logs first.
 
 
-tester
-======
+Testers
+=======
 
 ``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` are scripts that simulate the CCS image writer.
 It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
