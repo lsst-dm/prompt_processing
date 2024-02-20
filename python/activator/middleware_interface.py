@@ -415,19 +415,19 @@ class MiddlewareInterface:
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)",
                                                     level=logging.DEBUG):
-                        refcat_datasets = list(self._export_refcats(center, radius))
+                        refcat_datasets = set(self._export_refcats(center, radius))
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)",
                                                     level=logging.DEBUG):
-                        template_datasets = list(self._export_skymap_and_templates(
+                        template_datasets = set(self._export_skymap_and_templates(
                             center, detector, wcs, self.visit.filters))
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)",
                                                     level=logging.DEBUG):
-                        calib_datasets = list(self._export_calibs(self.visit.detector, self.visit.filters))
+                        calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)",
                                                     level=logging.DEBUG):
-                        all_datasets = refcat_datasets + template_datasets + calib_datasets
+                        all_datasets = refcat_datasets | template_datasets | calib_datasets
                         transferred = self.butler.transfer_from(self.central_butler,
                                                                 all_datasets,
                                                                 transfer="copy",
@@ -438,7 +438,7 @@ class MiddlewareInterface:
                         if len(transferred) != len(all_datasets):
                             _log.warning("Downloaded only %d datasets out of %d; missing %s.",
                                          len(transferred), len(all_datasets),
-                                         set(all_datasets) - set(transferred))
+                                         all_datasets - set(transferred))
 
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)",
                                                     level=logging.DEBUG):
