@@ -207,6 +207,9 @@ class MiddlewareInterface:
     _collection_skymap = "skymaps"
     """The collection used for skymaps.
     """
+    _collection_ml_model = "pretrained_models"
+    """The collection used for machine learning models.
+    """
 
     @property
     def _collection_template(self):
@@ -433,11 +436,14 @@ class MiddlewareInterface:
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)",
                                                     level=logging.DEBUG):
                         calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
+                    with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)",
+                                                    level=logging.DEBUG):
+                        model_datasets = set(self._export_ml_models())
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)",
                                                     level=logging.DEBUG):
-                        all_datasets = refcat_datasets | template_datasets | calib_datasets
+                        all_datasets = refcat_datasets | template_datasets | calib_datasets | model_datasets
                         transferred = self.butler.transfer_from(self.central_butler,
                                                                 all_datasets,
                                                                 transfer="copy",
@@ -621,6 +627,31 @@ class MiddlewareInterface:
         else:
             _log.debug("Found 0 new calib datasets.")
         return calibs
+
+    def _export_ml_models(self):
+        """Identify the pretrained machine learning models to export from the
+        central butler.
+
+        Returns
+        -------
+        models : iterable [`DatasetRef`]
+            The datasets to be exported, after any filtering.
+        """
+        # TODO: the dataset type name is subject to change (especially if more
+        # kinds of models are added in the future). Hardcoded names should
+        # become unnecessary with DM-40245.
+        try:
+            models = set(_filter_datasets(
+                self.central_butler, self.butler,
+                "pretrainedModelPackage",
+                collections=self._collection_ml_model,
+                findFirst=True))
+        except _MissingDatasetError as err:
+            _log.error(err)
+            models = set()
+        else:
+            _log.debug("Found %d new ML model datasets.", len(models))
+        return models
 
     def _export_collections(self, collection):
         """Export the collection and all its children.
