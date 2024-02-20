@@ -483,7 +483,7 @@ class MiddlewareInterface:
             _log.debug(f"Uploaded preload metrics to {dispatcher.url}.")
 
     def _get_template_collection(self):
-        """Get the collection name for templates
+        """Get the collection name for templates.
         """
         return self.instrument.makeCollectionName("templates")
 
@@ -538,7 +538,7 @@ class MiddlewareInterface:
 
         Returns
         -------
-        skymapTemplates : iterable [`DatasetRef`]
+        skymap_templates : iterable [`DatasetRef`]
             The datasets to be exported, after any filtering.
         """
         # TODO: This exports the whole skymap, but we want to only export the
