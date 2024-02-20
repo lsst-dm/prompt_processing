@@ -112,19 +112,42 @@ Buckets
 
 `This document <https://confluence.lsstcorp.org/display/LSSTOps/USDF+S3+Bucket+Organization>`_ describes the overall organization of S3 buckets and access at USDF.
 
+For development purposes, Prompt Processing has its own buckets, including ``rubin-pp-dev``, ``rubin-pp-dev-users``, ``rubin:rubin-pp``, and ``rubin:rubin-pp-users``.
+
+Current Buckets
+---------------
+
+Currently the buckets ``rubin-pp-dev`` and ``rubin-pp-dev-users`` are used with the testers (see `Testers`_).
+They are owned by the Ceph user ``prompt-processing-dev``.
+
 The bucket ``rubin-pp-dev`` holds incoming raw images.
 
 The bucket ``rubin-pp-dev-users`` holds:
 
 * ``rubin-pp-dev-users/central_repo/`` contains the central repository described in `DMTN-219`_.
-  This repository currently contains a copy of HSC RC2 data, uploaded with ``make_hsc_rc2_export.py`` and ``make_template_export``.
+  This repository currently contains HSC and LATISS data, uploaded with ``make_hsc_rc2_export.py``, ``make_latiss_export.py``, and ``make_template_export.py``.
 
-* ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload script(s) can draw from to create incoming raws.
+* ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload scripts can draw from to create incoming raws.
 
-``rubin-pp-dev`` has had notifications configured for it; these publish to a Kafka topic.
+``rubin-pp-dev`` has notifications configured for new file arrival; these publish to the Kafka topic ``prompt-processing-dev``.
+The notifications can be viewed at `Kafdrop <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev/kafdrop>`_.
+
+Legacy Buckets
+--------------
+
+The buckets ``rubin:rubin-pp`` and ``rubin:rubin-pp-users`` are also for Prompt Processing development and previously used by the testers.
+``rubin:rubin-pp-users`` contains an older version of the development central repository.
+``rubin:rubin-pp`` has notifications configured to publish to the Kafka topic ``rubin-prompt-processing``.
+
+These buckets are owned by the Ceph user ``rubin-prompt-processing``.
+We are in the process of deprecating the ``rubin-prompt-processing`` user as it has more restrictive permissions than ``prompt-processing-dev``.
+
+Bucket Access and Credentials
+-----------------------------
 
 The default Rubin users' setup on ``rubin-devl`` includes an AWS credential file at the environment variable ``AWS_SHARED_CREDENTIALS_FILE`` and a default profile without read permission to the prompt processing buckets.
-A separate credential for prompt processing developers is at  `vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-prompt-processing-dev/s3-buckets>`_ and can be set up as another credential profile for Butler or command line tools such as AWS Command Line Interface and MinIO Client.
+A separate credential for prompt processing developers as the Ceph user ``prompt-processing-dev`` (version 6 or newer) or ``rubin-prompt-processing`` (version 5 or older) is at  `Vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-prompt-processing-dev/s3-buckets>`_.
+The credential can be set up as another credential profile for Butler or command line tools such as AWS Command Line Interface and MinIO Client.
 One way to set up this profile is with the AWS CLI:
 
 .. code-block:: sh
@@ -145,7 +168,8 @@ The AWS CLI can be used to inspect non-tenenat buckets:
 
    You must pass the ``--endpoint-url`` argument even if you have ``S3_ENDPOINT_URL`` defined.
 
-Some of the prompt processing buckets are Ceph tenant buckets and require a tenant prefix, which violates the bucket name standard and is not supported by AWS CLI.
+Those buckets starting with ``rubin:`` are Ceph tenant buckets with the tenant prefix.
+The bucket name with the tenant prefix violates the standard and is not supported by AWS CLI.
 The MinIO Client ``mc`` tool may be used.
 One version can be accessed at ``/sdf/group/rubin/sw/bin/mc`` at USDF.
 To inspect buckets with the MinIO Client ``mc`` tool, first set up an alias (e.g. ``prompt-processing-dev``) and then can use commands:
