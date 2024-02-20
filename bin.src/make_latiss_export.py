@@ -97,9 +97,10 @@ def _export_for_copy(butler, target_butler):
         )
         contents.saveDatasets(records)
 
-        logging.debug("Selecting refcats datasets")
+        refcats = {"atlas_refcat2_20220201", "gaia_dr3_20230707"}
+        logging.debug(f"Selecting refcats datasets {refcats}")
         records = _filter_datasets(
-            butler, target_butler, datasetType=..., collections="refcats*"
+            butler, target_butler, datasetType=refcats, collections="refcats*"
         )
         contents.saveDatasets(records)
 
@@ -126,13 +127,12 @@ def _export_for_copy(butler, target_butler):
         for collection in butler.registry.queryCollections(
             expression="LATISS/calib",
             flattenChains=True,
+            includeChains=True,
         ) + [
-            "LATISS/calib",
-            "LATISS/calib/DM-36719",
-            "LATISS/calib/DM-38946",
-            "LATISS/calib/DM-39505",
             "LATISS/templates",
+            "LATISS/calib/unbounded",
         ]:
+            logging.debug(f"Selecting collection {collection}")
             try:
                 target_butler.registry.queryCollections(collection)
             except daf_butler.registry.MissingCollectionError:

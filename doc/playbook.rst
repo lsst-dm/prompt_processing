@@ -12,7 +12,7 @@ Table of Contents
 * `Buckets`_
 * `Central Repo`_
 * `Development Service`_
-* `tester`_
+* `Testers`_
 * `Databases`_
 
 
@@ -112,48 +112,72 @@ Buckets
 
 `This document <https://confluence.lsstcorp.org/display/LSSTOps/USDF+S3+Bucket+Organization>`_ describes the overall organization of S3 buckets and access at USDF.
 
-The bucket ``rubin:rubin-pp`` holds incoming raw images.
+For development purposes, Prompt Processing has its own buckets, including ``rubin-pp-dev``, ``rubin-pp-dev-users``, ``rubin:rubin-pp``, and ``rubin:rubin-pp-users``.
 
-The bucket ``rubin:rubin-pp-users`` holds:
+Current Buckets
+---------------
 
-* ``rubin:rubin-pp-users/central_repo/`` contains the central repository described in `DMTN-219`_.
-  This repository currently contains a copy of HSC RC2 data, uploaded with ``make_hsc_rc2_export.py`` and ``make_template_export``.
+Currently the buckets ``rubin-pp-dev`` and ``rubin-pp-dev-users`` are used with the testers (see `Testers`_).
+They are owned by the Ceph user ``prompt-processing-dev``.
 
-* ``rubin:rubin-pp-users/unobserved/`` contains raw files that the upload script(s) can draw from to create incoming raws.
+The bucket ``rubin-pp-dev`` holds incoming raw images.
 
-``rubin:rubin-pp`` has had notifications configured for it; these publish to a Kafka topic.
+The bucket ``rubin-pp-dev-users`` holds:
+
+* ``rubin-pp-dev-users/central_repo/`` contains the central repository described in `DMTN-219`_.
+  This repository currently contains HSC and LATISS data, uploaded with ``make_hsc_rc2_export.py``, ``make_latiss_export.py``, and ``make_template_export.py``.
+
+* ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload scripts can draw from to create incoming raws.
+
+``rubin-pp-dev`` has notifications configured for new file arrival; these publish to the Kafka topic ``prompt-processing-dev``.
+The notifications can be viewed at `Kafdrop <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev/kafdrop>`_.
+
+Legacy Buckets
+--------------
+
+The buckets ``rubin:rubin-pp`` and ``rubin:rubin-pp-users`` are also for Prompt Processing development and previously used by the testers.
+``rubin:rubin-pp-users`` contains an older version of the development central repository.
+``rubin:rubin-pp`` has notifications configured to publish to the Kafka topic ``rubin-prompt-processing``.
+
+These buckets are owned by the Ceph user ``rubin-prompt-processing``.
+We are in the process of deprecating the ``rubin-prompt-processing`` user as it has more restrictive permissions than ``prompt-processing-dev``.
+
+Bucket Access and Credentials
+-----------------------------
 
 The default Rubin users' setup on ``rubin-devl`` includes an AWS credential file at the environment variable ``AWS_SHARED_CREDENTIALS_FILE`` and a default profile without read permission to the prompt processing buckets.
-A separate credential for prompt processing developers is at  `vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-prompt-processing-dev/s3-buckets>`_ and can be set up as another credential profile for Butler or command line tools such as AWS Command Line Interface and MinIO Client.
+A separate credential for prompt processing developers as the Ceph user ``prompt-processing-dev`` (version 6 or newer) or ``rubin-prompt-processing`` (version 5 or older) is at  `Vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-prompt-processing-dev/s3-buckets>`_.
+The credential can be set up as another credential profile for Butler or command line tools such as AWS Command Line Interface and MinIO Client.
 One way to set up this profile is with the AWS CLI:
 
 .. code-block:: sh
 
-   singularity exec /sdf/sw/s3/aws-cli_latest.sif aws configure --profile rubin-prompt-processing
+   singularity exec /sdf/sw/s3/aws-cli_latest.sif aws configure --profile prompt-processing-dev
 
 and follow the prompts.
-To use the new credentials with the Butler, set the environment variable ``AWS_PROFILE=rubin-prompt-processing``.
+To use the new credentials with the Butler, set the environment variable ``AWS_PROFILE=prompt-processing-dev``.
 
 The AWS CLI can be used to inspect non-tenenat buckets:
 
 .. code-block:: sh
 
    alias s3="singularity exec /sdf/sw/s3/aws-cli_latest.sif aws --endpoint-url https://s3dfrgw.slac.stanford.edu s3"
-   s3 --profile rubin-prompt-processing [ls|cp|rm] s3://rubin-summit/<path>
+   s3 --profile prompt-processing-dev [ls|cp|rm] s3://rubin-summit/<path>
 
 .. note::
 
    You must pass the ``--endpoint-url`` argument even if you have ``S3_ENDPOINT_URL`` defined.
 
-Some of the prompt processing buckets are Ceph tenant buckets and require a tenant prefix, which violates the bucket name standard and is not supported by AWS CLI.
+Those buckets starting with ``rubin:`` are Ceph tenant buckets with the tenant prefix.
+The bucket name with the tenant prefix violates the standard and is not supported by AWS CLI.
 The MinIO Client ``mc`` tool may be used.
 One version can be accessed at ``/sdf/group/rubin/sw/bin/mc`` at USDF.
-To inspect buckets with the MinIO Client ``mc`` tool, first set up an alias (e.g. ``usdf-pp``) and then can use commands:
+To inspect buckets with the MinIO Client ``mc`` tool, first set up an alias (e.g. ``prompt-processing-dev``) and then can use commands:
 
 .. code-block:: sh
 
-    mc alias set usdf-pp https://s3dfrgw.slac.stanford.edu ACCESS_KEY SECRET_KEY
-    mc ls usdf-pp/rubin:rubin-pp
+    mc alias set prompt-processing-dev https://s3dfrgw.slac.stanford.edu ACCESS_KEY SECRET_KEY
+    mc ls prompt-processing-dev/rubin:rubin-pp
 
 
 For Butler not to complain about the bucket names, set the environment variable ``LSST_DISABLE_BUCKET_VALIDATION=1``.
@@ -161,7 +185,7 @@ For Butler not to complain about the bucket names, set the environment variable 
 Central Repo
 ============
 
-The central repo for development use is located at ``s3://rubin:rubin-pp-users/central_repo/``.
+The central repo for development use is located at ``s3://rubin-pp-dev-users/central_repo/``.
 You need developer credentials to access it, as described under `Buckets`_.
 
 Migrating the Repo
@@ -190,6 +214,16 @@ In our case, we want to migrate to the versions that ``/repo/embargo`` is using,
    However, when using ``butler migrate`` to update ``dimensions-config``, you should delete all existing pods to ensure that their replacements have the correct version.
    This can be done using ``kubectl delete pod`` or from Argo CD (see `Development Service`_).
 
+Adding New Dataset Types
+------------------------
+
+When pipelines change, sometimes it is necessary to register the new dataset types in the central repo so to avoid ``MissingDatasetTypeError`` at prompt service export time.
+One raw was ingested, visit-defined, and kept in the development central repo, so a ``pipetask`` like the following can be run:
+
+.. code-block:: sh
+
+   make_apdb.py -c db_url="sqlite:///apdb.db"
+   pipetask run -b s3://rubin-pp-dev-users/central_repo -i LATISS/raw/all,LATISS/defaults,LATISS/templates -o u/username/collection  -d "detector=0 and instrument='LATISS' and exposure=2023082900500 and visit_system=0" -p $PROMPT_PROCESSING_DIR/pipelines/LATISS/ApPipe.yaml -c diaPipe:apdb.db_url=sqlite:///apdb.db --register-dataset-types
 
 Development Service
 ===================
@@ -294,13 +328,13 @@ There should be only one local repo per ``MiddlewareInterface`` object, and at t
 If in doubt, check the logs first.
 
 
-tester
-======
+Testers
+=======
 
 ``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` are scripts that simulate the CCS image writer.
 It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
 
-You must have a profile set up for the ``rubin:rubin-pp`` bucket (see `Buckets`_, above).
+You must have a profile set up for the ``rubin-pp-dev`` bucket (see `Buckets`_, above).
 
 Install the Prompt Processing code, and set it up before use:
 
@@ -310,9 +344,7 @@ Install the Prompt Processing code, and set it up before use:
     setup -r prompt_processing
 
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
-They then upload a batch of files representing the snaps of the visit to the ``rubin:rubin-pp`` S3 bucket, simulating incoming raw images.
-
-Eventually a set of parallel processes running on multiple nodes will be needed to upload the images sufficiently rapidly.
+They then upload a batch of files representing the snaps of the visit to the ``rubin-pp-dev`` S3 bucket, simulating incoming raw images.
 
 ``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC or LATISS) and the number of groups of images to send.
 
@@ -323,7 +355,7 @@ Sample command line:
    python upload.py HSC 3
    python upload.py LATISS 3
 
-This script draws images stored in the ``rubin:rubin-pp-users`` bucket.
+This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 
 * For HSC, 4 groups, in total 10 raw files, are curated.
   They are the COSMOS data as curated in `ap_verify_ci_cosmos_pdr2 <Rhttps://github.com/lsst/ap_verify_ci_cosmos_pdr2>`_.
@@ -343,6 +375,7 @@ Sample command line:
 This scripts draws images from the curated ``HSC/RC2/defaults`` collection at USDF's ``/repo/main`` butler repository.
 The source collection includes 432 visits, each with 103 detector images.
 The visits are randomly selected and uploaded as one new group for each visit.
+Images can be uploaded in parallel processes.
 
 
 .. note::
