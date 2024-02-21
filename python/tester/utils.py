@@ -44,6 +44,9 @@ from activator.raw import _LSST_CAMERA_LIST
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)
 
+# The schema ID of the ``next_visit`` message in the Sasquatch REST Proxy.
+SCHEMA_ID = 99
+
 max_exposure = {
     "HSC": 21474800,
 }
@@ -220,7 +223,7 @@ def send_next_visit(url, group, visit_infos):
                    f"filters: {info.filters} ra: {info.position[0]} dec: {info.position[1]} "
                    f"instrument: {info.instrument} survey: {info.survey}")
         records_level = dict(value=asdict(info))
-        value_schema_level = dict(value_schema_id=99, records=[records_level])
+        value_schema_level = dict(value_schema_id=SCHEMA_ID, records=[records_level])
 
         r = requests.post(url, data=json.dumps(value_schema_level), headers=header)
         _log.debug(r.content)
