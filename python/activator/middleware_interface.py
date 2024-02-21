@@ -200,12 +200,22 @@ class MiddlewareInterface:
         Raised if ``visit`` does not have equatorial coordinates and sky
         rotation angles.
     """
-    _COLLECTION_SKYMAP = "skymaps"
-    """The collection used for skymaps.
-    """
     DATASET_IDENTIFIER = "Live"
     """The dataset ID used for Sasquatch uploads.
     """
+
+    _collection_skymap = "skymaps"
+    """The collection used for skymaps.
+    """
+
+    @property
+    def _collection_template(self):
+        """The collection used for templates.
+
+        This collection depends on initialization parameters, and must
+        not be called from this object's constructor.
+        """
+        return self.instrument.makeCollectionName("templates")
 
     # Class invariants:
     # self.image_host is a valid URI with non-empty path and no query or fragment.
@@ -260,7 +270,7 @@ class MiddlewareInterface:
         )
         self.skymap_name = skymap
         self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
-                                              collections=self._COLLECTION_SKYMAP)
+                                              collections=self._collection_skymap)
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
@@ -442,7 +452,7 @@ class MiddlewareInterface:
 
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)",
                                                     level=logging.DEBUG):
-                        self._export_collections(self._get_template_collection())
+                        self._export_collections(self._collection_template)
                         self._export_collections(self.instrument.makeUmbrellaCollectionName())
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)",
                                                     level=logging.DEBUG):
@@ -454,7 +464,7 @@ class MiddlewareInterface:
             # without worrying about DRP use cases.
             _prepend_collection(self.butler,
                                 self.instrument.makeUmbrellaCollectionName(),
-                                [self._get_template_collection(),
+                                [self._collection_template,
                                  self.instrument.makeDefaultRawIngestRunName(),
                                  ])
 
@@ -481,11 +491,6 @@ class MiddlewareInterface:
                              },
             )
             _log.debug(f"Uploaded preload metrics to {dispatcher.url}.")
-
-    def _get_template_collection(self):
-        """Get the collection name for templates.
-        """
-        return self.instrument.makeCollectionName("templates")
 
     def _export_refcats(self, center, radius):
         """Identify the refcats to export from the central butler.
@@ -547,7 +552,7 @@ class MiddlewareInterface:
             self.central_butler, self.butler,
             "skyMap",
             skymap=self.skymap_name,
-            collections=self._COLLECTION_SKYMAP,
+            collections=self._collection_skymap,
             findFirst=True))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
         # Getting only one tract should be safe: we're getting the
@@ -568,7 +573,7 @@ class MiddlewareInterface:
             templates = set(_filter_datasets(
                 self.central_butler, self.butler,
                 "*Coadd",
-                collections=self._get_template_collection(),
+                collections=self._collection_template,
                 instrument=self.instrument.getName(),
                 skymap=self.skymap_name,
                 where=template_where,
