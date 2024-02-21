@@ -200,12 +200,25 @@ class MiddlewareInterface:
         Raised if ``visit`` does not have equatorial coordinates and sky
         rotation angles.
     """
-    _COLLECTION_SKYMAP = "skymaps"
-    """The collection used for skymaps.
-    """
     DATASET_IDENTIFIER = "Live"
     """The dataset ID used for Sasquatch uploads.
     """
+
+    _collection_skymap = "skymaps"
+    """The collection used for skymaps.
+    """
+    _collection_ml_model = "pretrained_models"
+    """The collection used for machine learning models.
+    """
+
+    @property
+    def _collection_template(self):
+        """The collection used for templates.
+
+        This collection depends on initialization parameters, and must
+        not be called from this object's constructor.
+        """
+        return self.instrument.makeCollectionName("templates")
 
     # Class invariants:
     # self.image_host is a valid URI with non-empty path and no query or fragment.
@@ -260,7 +273,7 @@ class MiddlewareInterface:
         )
         self.skymap_name = skymap
         self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
-                                              collections=self._COLLECTION_SKYMAP)
+                                              collections=self._collection_skymap)
 
         # How much to pad the refcat region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
@@ -415,19 +428,22 @@ class MiddlewareInterface:
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)",
                                                     level=logging.DEBUG):
-                        refcat_datasets = list(self._export_refcats(center, radius))
+                        refcat_datasets = set(self._export_refcats(center, radius))
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)",
                                                     level=logging.DEBUG):
-                        template_datasets = list(self._export_skymap_and_templates(
+                        template_datasets = set(self._export_skymap_and_templates(
                             center, detector, wcs, self.visit.filters))
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)",
                                                     level=logging.DEBUG):
-                        calib_datasets = list(self._export_calibs(self.visit.detector, self.visit.filters))
+                        calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
+                    with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)",
+                                                    level=logging.DEBUG):
+                        model_datasets = set(self._export_ml_models())
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)",
                                                     level=logging.DEBUG):
-                        all_datasets = refcat_datasets + template_datasets + calib_datasets
+                        all_datasets = refcat_datasets | template_datasets | calib_datasets | model_datasets
                         transferred = self.butler.transfer_from(self.central_butler,
                                                                 all_datasets,
                                                                 transfer="copy",
@@ -438,11 +454,11 @@ class MiddlewareInterface:
                         if len(transferred) != len(all_datasets):
                             _log.warning("Downloaded only %d datasets out of %d; missing %s.",
                                          len(transferred), len(all_datasets),
-                                         set(all_datasets) - set(transferred))
+                                         all_datasets - set(transferred))
 
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)",
                                                     level=logging.DEBUG):
-                        self._export_collections(self._get_template_collection())
+                        self._export_collections(self._collection_template)
                         self._export_collections(self.instrument.makeUmbrellaCollectionName())
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)",
                                                     level=logging.DEBUG):
@@ -454,7 +470,7 @@ class MiddlewareInterface:
             # without worrying about DRP use cases.
             _prepend_collection(self.butler,
                                 self.instrument.makeUmbrellaCollectionName(),
-                                [self._get_template_collection(),
+                                [self._collection_template,
                                  self.instrument.makeDefaultRawIngestRunName(),
                                  ])
 
@@ -481,11 +497,6 @@ class MiddlewareInterface:
                              },
             )
             _log.debug(f"Uploaded preload metrics to {dispatcher.url}.")
-
-    def _get_template_collection(self):
-        """Get the collection name for templates
-        """
-        return self.instrument.makeCollectionName("templates")
 
     def _export_refcats(self, center, radius):
         """Identify the refcats to export from the central butler.
@@ -538,7 +549,7 @@ class MiddlewareInterface:
 
         Returns
         -------
-        skymapTemplates : iterable [`DatasetRef`]
+        skymap_templates : iterable [`DatasetRef`]
             The datasets to be exported, after any filtering.
         """
         # TODO: This exports the whole skymap, but we want to only export the
@@ -547,7 +558,7 @@ class MiddlewareInterface:
             self.central_butler, self.butler,
             "skyMap",
             skymap=self.skymap_name,
-            collections=self._COLLECTION_SKYMAP,
+            collections=self._collection_skymap,
             findFirst=True))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
         # Getting only one tract should be safe: we're getting the
@@ -568,7 +579,7 @@ class MiddlewareInterface:
             templates = set(_filter_datasets(
                 self.central_butler, self.butler,
                 "*Coadd",
-                collections=self._get_template_collection(),
+                collections=self._collection_template,
                 instrument=self.instrument.getName(),
                 skymap=self.skymap_name,
                 where=template_where,
@@ -616,6 +627,31 @@ class MiddlewareInterface:
         else:
             _log.debug("Found 0 new calib datasets.")
         return calibs
+
+    def _export_ml_models(self):
+        """Identify the pretrained machine learning models to export from the
+        central butler.
+
+        Returns
+        -------
+        models : iterable [`DatasetRef`]
+            The datasets to be exported, after any filtering.
+        """
+        # TODO: the dataset type name is subject to change (especially if more
+        # kinds of models are added in the future). Hardcoded names should
+        # become unnecessary with DM-40245.
+        try:
+            models = set(_filter_datasets(
+                self.central_butler, self.butler,
+                "pretrainedModelPackage",
+                collections=self._collection_ml_model,
+                findFirst=True))
+        except _MissingDatasetError as err:
+            _log.error(err)
+            models = set()
+        else:
+            _log.debug("Found %d new ML model datasets.", len(models))
+        return models
 
     def _export_collections(self, collection):
         """Export the collection and all its children.

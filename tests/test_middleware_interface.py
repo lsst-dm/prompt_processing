@@ -246,6 +246,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           # collections=self.umbrella)
                           collections=f"DECam/calib/{expected_date}")
         )
+        # Check that we got a model (only one in the test data)
+        self.assertTrue(
+            butler.exists('pretrainedModelPackage',
+                          full_check=True,
+                          collections=self.umbrella)
+        )
 
         # Check that the right templates are in the chained output collection.
         # Need to refresh the butler to get all the dimensions/collections.

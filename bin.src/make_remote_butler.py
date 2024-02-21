@@ -93,7 +93,7 @@ def _add_chains(butler, instrument_name):
     butler.registry.registerCollection(calib_collection, type=CollectionType.CHAINED)
     butler.registry.setCollectionChain(
         defaults,
-        [calib_collection, "templates", "skymaps", "refcats"]
+        [calib_collection, "templates", "skymaps", "refcats", "pretrained_models"]
     )
 
 

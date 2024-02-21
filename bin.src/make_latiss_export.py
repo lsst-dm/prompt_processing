@@ -123,6 +123,12 @@ def _export_for_copy(butler, target_butler):
         )
         contents.saveDatasets(records)
 
+        logging.debug("Selecting pretrained ML model dataset")
+        records = _filter_datasets(
+            butler, target_butler, datasetType="pretrainedModelPackage", collections="pretrained_models"
+        )
+        contents.saveDatasets(records)
+
         # Save selected collections and chains
         for collection in butler.registry.queryCollections(
             expression="LATISS/calib",
@@ -131,6 +137,7 @@ def _export_for_copy(butler, target_butler):
         ) + [
             "LATISS/templates",
             "LATISS/calib/unbounded",
+            "pretrained_models",
         ]:
             logging.debug(f"Selecting collection {collection}")
             try:
