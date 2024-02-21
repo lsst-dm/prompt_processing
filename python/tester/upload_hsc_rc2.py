@@ -173,6 +173,7 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
         dataId={"exposure": visit_id, "instrument": "HSC"},
     )
 
+    duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
     # all items in refs share the same visit info and one event is to be sent
     for data_id in refs.dataIds.limit(1).expanded():
         visit = SummitVisit(
@@ -189,9 +190,9 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
             salIndex=999,
             scriptSalIndex=999,
             dome=SummitVisit.Dome.OPEN,
-            duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
+            duration=duration,
             totalCheckpoints=1,
-            private_sndStamp=data_id.records["exposure"].timespan.begin.unix_tai,
+            private_sndStamp=data_id.records["exposure"].timespan.begin.unix_tai-2*duration,
         )
         send_next_visit(kafka_url, group_id, {visit})
 

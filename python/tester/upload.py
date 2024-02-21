@@ -191,6 +191,7 @@ def get_samples_non_lsst(bucket, instrument):
 
     # The pre-made raw files are stored with the "unobserved" prefix
     blobs = bucket.objects.filter(Prefix=f"unobserved/{instrument}/")
+    duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
     result = {}
     for blob in blobs:
         # Assume that the unobserved bucket uses the same filename scheme as
@@ -216,9 +217,9 @@ def get_samples_non_lsst(bucket, instrument):
             salIndex=exp_id,
             scriptSalIndex=42,
             dome=FannedOutVisit.Dome.OPEN,
-            duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
+            duration=duration,
             totalCheckpoints=1,
-            private_sndStamp=hsc_metadata[exp_id]["time"],
+            private_sndStamp=hsc_metadata[exp_id]["time"]-2*duration,
         )
         _log.debug(f"File {blob.key} parsed as snap {snap_num} of visit {visit}.")
         if group in result:
@@ -258,6 +259,7 @@ def get_samples_lsst(bucket, instrument):
     """
     # The pre-made raw files are stored with the "unobserved" prefix
     blobs = bucket.objects.filter(Prefix=f"unobserved/{instrument}/")
+    duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
     result = {}
     for blob in blobs:
         # Assume that the unobserved bucket uses the same filename scheme as
@@ -290,9 +292,10 @@ def get_samples_lsst(bucket, instrument):
             salIndex=2,  # 2 is LATISS
             scriptSalIndex=2,
             dome=FannedOutVisit.Dome.OPEN,
-            duration=float(EXPOSURE_INTERVAL+SLEW_INTERVAL),
+            duration=duration,
             totalCheckpoints=1,
-            private_sndStamp=astropy.time.Time(md["DATE-BEG"], format="isot", scale="tai").unix_tai,
+            private_sndStamp=astropy.time.Time(md["DATE-BEG"], format="isot", scale="tai"
+                                               ).unix_tai-2*duration,
         )
         _log.debug(f"File {blob.key} parsed as visit {visit} and registered as group {md['GROUPID']}.")
         result[md["GROUPID"]] = {0: {visit: blob}}
