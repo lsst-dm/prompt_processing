@@ -63,6 +63,7 @@ class BareVisit:
     coordinateSystem: CoordSys  # coordinate system of position
     # (ra, dec) or (az, alt) in degrees. Use compare=False to exclude from hash.
     position: list[float] = field(compare=False)
+    startTime: float            # expected start time in TAI
     rotationSystem: RotSys      # coordinate system of cameraAngle
     cameraAngle: float          # in degrees
     # physical filter(s) name as used in Middleware. It is a combination of filter and

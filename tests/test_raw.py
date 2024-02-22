@@ -61,6 +61,7 @@ class RawBase:
             filters=self.filter,
             coordinateSystem=FannedOutVisit.CoordSys.ICRS,
             position=[self.ra, self.dec],
+            startTime=1_674_516_900.0,
             rotationSystem=FannedOutVisit.RotSys.SKY,
             cameraAngle=self.rot,
             survey=self.survey,
