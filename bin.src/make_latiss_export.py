@@ -21,9 +21,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-"""Selectively export the contents of the LATISS dataset.
+"""Selectively export some contents from a butler repo.
 
-This script selects some LATISS data in a source butler repo, and makes an export
+This script selects some data in a source butler repo, and makes an export
 file for importing to the test central prompt processing repository.
 """
 
@@ -32,6 +32,7 @@ import argparse
 import logging
 import sys
 import tempfile
+import yaml
 
 import lsst.daf.butler as daf_butler
 from lsst.utils.timer import time_this
@@ -54,6 +55,13 @@ def _make_parser():
              "exported from the source repo. If no target repo is given, all "
              "selected datasets in the source repo will be exported.",
     )
+    parser.add_argument(
+        "--select",
+        required=True,
+        help="URI to a YAML file containing expressions to identify the "
+             "datasets and collections to be exported. An example is at "
+             "etc/export_latiss.yaml."
+    )
     return parser
 
 
@@ -62,6 +70,8 @@ def main():
 
     args = _make_parser().parse_args()
     src_butler = daf_butler.Butler(args.src_repo)
+    with open(args.select, "r") as file:
+        wants = yaml.safe_load(file)
 
     with tempfile.TemporaryDirectory() as temp_repo:
         if args.target_repo:
@@ -72,10 +82,10 @@ def main():
             target_butler = daf_butler.Butler(config)
 
         with time_this(msg="Datasets and collections exported", level=logging.INFO):
-            _export_for_copy(src_butler, target_butler)
+            _export_for_copy(src_butler, target_butler, wants)
 
 
-def _export_for_copy(butler, target_butler):
+def _export_for_copy(butler, target_butler, wants):
     """Export selected data to make copies in another butler repo.
 
     Parameters
@@ -86,65 +96,43 @@ def _export_for_copy(butler, target_butler):
         The target Butler to which datasets are exported. It is checked
         to avoid exporting existing datasets. No checks are done to
         verify if datasets are really identical.
+    wants : `dict`
+        A dictionary to identify selections with optional keys:
+
+        ``"datasets"``, optional
+            A list of dataset selection expressions (`list` of `dict`).
+            The list is iterated over to find matching datasets in the butler,
+            with the matching criteria provided via the selection expressions.
+            Each selection expression has the keyworded argument dictionary to
+            be passed to butler to query datasets; it has the same meanings
+            as the parameters of `lsst.daf.butler.Registry.queryDatasets`.
+        ``"collections"``, optional
+            A list of collection selection expressions (`list` of `dict`).
+            The list is iterated over to find matching collections in the butler,
+            with the matching criteria provided via the selection expressions.
+            Each selection expression has the keyworded argument dictionary to
+            be passed to butler to query collectionss; it has the same meanings
+            as the parameters of `lsst.daf.butler.Registry.queryCollections`.
     """
     with butler.export(format="yaml") as contents:
-        logging.debug("Selecting goodSeeingCoadd datasets")
-        records = _filter_datasets(
-            butler,
-            target_butler,
-            datasetType="goodSeeingCoadd",
-            collections="LATISS/templates",
-        )
-        contents.saveDatasets(records)
-
-        refcats = {"atlas_refcat2_20220201", "gaia_dr3_20230707"}
-        logging.debug(f"Selecting refcats datasets {refcats}")
-        records = _filter_datasets(
-            butler, target_butler, datasetType=refcats, collections="refcats*"
-        )
-        contents.saveDatasets(records)
-
-        logging.debug("Selecting skymaps dataset")
-        records = _filter_datasets(
-            butler, target_butler, datasetType="skyMap", collections="skymaps"
-        )
-        contents.saveDatasets(records)
-
-        logging.debug("Selecting datasets in LATISS/calib")
-        records = _filter_datasets(
-            butler,
-            target_butler,
-            datasetType=...,
-            # Workaround: use a matching expression rather than a specific
-            # string "LATISS/calib" for the collection argument, so to avoid
-            # MissingCollectionError when the collection does not exist in
-            # the target repo.
-            collections="*LATISS/calib",
-        )
-        contents.saveDatasets(records)
-
-        logging.debug("Selecting pretrained ML model dataset")
-        records = _filter_datasets(
-            butler, target_butler, datasetType="pretrainedModelPackage", collections="pretrained_models"
-        )
-        contents.saveDatasets(records)
+        if "datasets" in wants:
+            for selection in wants["datasets"]:
+                logging.debug(f"Selecting datasets: {selection}")
+                if "datasetType" not in selection:
+                    selection["datasetType"] = ...
+                records = _filter_datasets(butler, target_butler, **selection)
+                contents.saveDatasets(records)
 
         # Save selected collections and chains
-        for collection in butler.registry.queryCollections(
-            expression="LATISS/calib",
-            flattenChains=True,
-            includeChains=True,
-        ) + [
-            "LATISS/templates",
-            "LATISS/calib/unbounded",
-            "pretrained_models",
-        ]:
-            logging.debug(f"Selecting collection {collection}")
-            try:
-                target_butler.registry.queryCollections(collection)
-            except daf_butler.registry.MissingCollectionError:
-                # MissingCollectionError is raised if the collection does not exist in target_butler.
-                contents.saveCollection(collection)
+        if "collections" in wants:
+            for selection in wants["collections"]:
+                for collection in butler.registry.queryCollections(**selection):
+                    logging.debug(f"Selecting collection {collection}")
+                    try:
+                        target_butler.registry.queryCollections(collection)
+                    except daf_butler.registry.MissingCollectionError:
+                        # MissingCollectionError is raised if the collection does not exist in target_butler.
+                        contents.saveCollection(collection)
 
 
 if __name__ == "__main__":
