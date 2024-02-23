@@ -151,7 +151,7 @@ The bucket ``rubin-pp-dev`` holds incoming raw images.
 The bucket ``rubin-pp-dev-users`` holds:
 
 * ``rubin-pp-dev-users/central_repo/`` contains the central repository described in `DMTN-219`_.
-  This repository currently contains HSC and LATISS data, uploaded with ``make_hsc_rc2_export.py``, ``make_latiss_export.py``, and ``make_template_export.py``.
+  This repository currently contains HSC and LATISS data, uploaded with ``make_export.py``.
 
 * ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload scripts can draw from to create incoming raws.
 
