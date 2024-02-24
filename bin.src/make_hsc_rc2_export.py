@@ -92,14 +92,16 @@ def _export_for_copy(butler):
         )
         contents.saveDatasets(records)
 
-        # Save calibration collection
+        # Save selected collections and chains
         for collection in butler.registry.queryCollections(
-            expression="HSC/calib*",
-            collectionTypes=daf_butler.CollectionType.CALIBRATION,
-        ):
+            expression="HSC/calib",
+            flattenChains=True,
+            includeChains=True,
+        ) + [
+            "HSC/templates",
+            "HSC/calib/unbounded",
+        ]:
             contents.saveCollection(collection)
-        # Do not export chains, as they will need to be reworked to satisfy
-        # prompt processing's assumptions.
 
 
 if __name__ == "__main__":

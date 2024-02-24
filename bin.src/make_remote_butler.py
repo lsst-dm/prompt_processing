@@ -55,7 +55,6 @@ def _make_parser():
                         help="The export file containing the repository contents. Defaults to ./export.yaml.")
     parser.add_argument("--instrument",
                         help="The short name of the instrument (HSC, LATISS, etc).")
-    parser.add_argument("--hsc-rc2", action="store_true", help="Extra fix up for HSC-RC2 dataset.")
     return parser
 
 
@@ -97,46 +96,6 @@ def _add_chains(butler, instrument_name):
     )
 
 
-def _hsc_rc2(butler):
-    """fix up some specifics of the HSC-RC2 dataset export
-
-    Parameters
-    ----------
-    butler: `lsst.daf.butler.Butler`
-        The source Butler from which datasets are exported
-    """
-    # Chain calibration collections
-    instrument = Instrument.fromName("HSC", butler.registry)
-    butler.registry.setCollectionChain(
-        instrument.makeCalibrationCollectionName(),
-        [
-            "HSC/calib/DM-32378",
-            "HSC/calib/gen2/20180117",
-            "HSC/calib/DM-28636",
-        ],
-    )
-
-    butler.registry.registerCollection(
-        instrument.makeUnboundedCalibrationRunName(),
-        type=CollectionType.CHAINED
-    )
-    butler.registry.setCollectionChain(
-        instrument.makeUnboundedCalibrationRunName(),
-        [
-            "HSC/calib/gen2/20180117/unbounded",
-            "HSC/calib/DM-28636/unbounded",
-        ],
-    )
-    # Chain rerun collections to templates
-    # The export script should have guaranteed that there are only coadds in these collections.
-    current = butler.registry.getCollectionChain("templates")
-    addition = butler.registry.queryCollections("HSC/runs/*",
-                                                collectionTypes=CollectionType.RUN)
-    butler.registry.setCollectionChain("templates",
-                                       list(addition) + list(current),
-                                       flatten=False)
-
-
 def main():
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
@@ -150,8 +109,6 @@ def main():
     with time_this(msg="Import", level=logging.INFO):
         butler.import_(directory=args.src_repo, filename=args.export_file, transfer="auto")
     _add_chains(butler, args.instrument)
-    if args.hsc_rc2:
-        _hsc_rc2(butler)
 
 
 if __name__ == "__main__":
