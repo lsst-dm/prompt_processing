@@ -2,8 +2,8 @@ description: End to end Alert Production pipeline specialized for HiTS-2015
 #
 # This file was copied from ap_verify_ci_hits2015/pipelines/ApPipe.yaml
 # with two modifications: (1) doSolarSystemAssociation is disabled, and
-# (2) the calibrate.py file from this package is used. The calibrate.py
-# file was copied from ap_verify_ci_hits2015 too.
+# (2) the calibrateImage.py file from this package is used. The
+# calibrateImage.py file was copied from ap_verify_ci_hits2015 too.
 #
 # NOTES
 # Remember to run make_apdb.py and use the same configs for diaPipe
@@ -24,11 +24,11 @@ tasks:
       # This dataset contains CP calibs, not regular ones
       connections.bias: cpBias
       connections.flat: cpFlat
-  calibrate:
-    class: lsst.pipe.tasks.calibrate.CalibrateTask
+  calibrateImage:
+    class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
     config:
       # Use dataset's reference catalogs
-      file: $PROMPT_PROCESSING_DIR/tests/data/calibrate.py
+      file: $PROMPT_PROCESSING_DIR/tests/data/calibrateImage.py
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:
