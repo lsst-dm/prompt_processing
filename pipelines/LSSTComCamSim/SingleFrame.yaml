@@ -1,0 +1,6 @@
+description: Single-frame pipeline specialized for LSSTComCamSim
+
+imports:
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
+    include:
+      - processCcd
