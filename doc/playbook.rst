@@ -78,7 +78,26 @@ From the ``main`` branch you can release a new major version (``X.0.0``), a new 
 Release tags are semantic version identifiers following the `pep 440 <https://peps.python.org/pep-0440/>`_ specification.
 Please note that the tag does not include a ``v`` at the beginning.
 
-1. Create a Release
+1. Choose Version Number
+
+On GitHub.com, navigate to the main page of the repository.
+To the right of the list of files, click the latest release.
+At the top of the page, click **## commits to main since this release**.
+This is the list of changes that will be included in the next release.
+
+For the ``prompt_processing`` service, a new major version is triggered by any of the following:
+
+* Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
+* Incompatibility with an old APDB schema or ``dax_apdb`` version (see `DMTN-269`_ for the distinction)
+* Breaking changes in the Alerts schema
+* Incompatibility with an old `Butler dimensions-config`_ version
+
+For the `next_visit_fan_out`_ service, a new major version is triggered by any of the following:
+
+* Incompatibility with old Summit ``nextVisit`` messages
+* Breaking changes in the fanned-out ``nextVisit`` messages (almost any change to ``NextVisitModel`` qualifies)
+
+2. Create a Release
 
 On GitHub.com, navigate to the main page of the repository.
 To the right of the list of files, click **Releases**.
@@ -92,13 +111,19 @@ Add text as follows.
 
 * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
 * Science Pipelines version and rubin-env version
-* Any changes to the APDB and Alerts schemas
+* Supported APDB schema and ``ApdbSql``/``ApdbCassandra`` versions (see `DMTN-269`_ for rationale)
+* Any changes to the Alerts schema
+* Supported `Butler dimensions-config`_ versions
+
+.. _DMTN-269: https://dmtn-269.lsst.io/
+
+.. _Butler dimensions-config: https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/dimensions.html#dimension-universe-change-history
 
 Select **Publish Release**.
 
 The `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
 
-2. Tag the release
+3. Tag the release
 
 At the HEAD of the ``main`` branch, create and push a tag with the semantic version:
 
@@ -398,11 +423,13 @@ To implement schema changes in the development environment:
 * Update relevant unit tests.
 * Register the new schema to the Sasquatch's schema registry for the ``test.next-visit`` topic.
   The `Sasquatch documentation <https://sasquatch.lsst.io/user-guide/avro.html>`_ describes the schema evolution.
-  The script ``test-msg-dev.sh`` in the `next_visit_fan_out <https://github.com/lsst-dm/next_visit_fan_out>`_ repo can be run on ``rubin-devl`` to send a test event with the new schema; the `Sasquatch REST Proxy <https://sasquatch.lsst.io/user-guide/restproxy.html>`_ will register the new schema and the new schema id will be sent back as ``value_schema_id`` in the HTTP response.
+  The script ``test-msg-dev.sh`` in the `next_visit_fan_out`_ repo can be run on ``rubin-devl`` to send a test event with the new schema; the `Sasquatch REST Proxy <https://sasquatch.lsst.io/user-guide/restproxy.html>`_ will register the new schema and the new schema id will be sent back as ``value_schema_id`` in the HTTP response.
   Use the new schema id in the ``send_next_visit`` utility function used in the testers.
   The test events can be viewed on `Kafdrop <https://usdf-rsp-dev.slac.stanford.edu/kafdrop/topic/test.next-visit>`_.
-* Update the schema used in the `next_visit_fan_out <https://github.com/lsst-dm/next_visit_fan_out>`_ service.
+* Update the schema used in the `next_visit_fan_out`_ service.
 * Re-deploy and test services.
+
+.. _next_visit_fan_out: https://github.com/lsst-dm/next_visit_fan_out
 
 Databases
 =========
