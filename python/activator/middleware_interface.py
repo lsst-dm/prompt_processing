@@ -458,6 +458,12 @@ class MiddlewareInterface:
 
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)",
                                                     level=logging.DEBUG):
+                        # VALIDITY-HACK: ensure local <instrument>/calibs is a
+                        # chain even if central collection isn't.
+                        self.butler.registry.registerCollection(
+                            self.instrument.makeCalibrationCollectionName(),
+                            CollectionType.CHAINED,
+                        )
                         self._export_collections(self._collection_template)
                         self._export_collections(self.instrument.makeUmbrellaCollectionName())
                     with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)",
@@ -472,6 +478,10 @@ class MiddlewareInterface:
                                 self.instrument.makeUmbrellaCollectionName(),
                                 [self._collection_template,
                                  self.instrument.makeDefaultRawIngestRunName(),
+                                 # VALIDITY-HACK: account for case where source
+                                 # collection was CALIBRATION or omitted from
+                                 # umbrella.
+                                 self.instrument.makeCalibrationCollectionName(),
                                  ])
 
         # IMPORTANT: do not remove or rename entries in this list. New entries can be added as needed.
@@ -670,14 +680,25 @@ class MiddlewareInterface:
 
         # Store collection chains after all children guaranteed to exist
         chains = {}
+        removed = set()
         for child in src.queryCollections(collection, flattenChains=True, includeChains=True):
+            # VALIDITY-HACK: do not transfer calibration collections; we'll make our own
+            if src.getCollectionType(child) == CollectionType.CALIBRATION:
+                removed.add(child)
+                continue
             if src.getCollectionType(child) == CollectionType.CHAINED:
                 chains[child] = src.getCollectionChain(child)
             dest.registerCollection(child,
                                     src.getCollectionType(child),
                                     src.getCollectionDocumentation(child))
         for chain, children in chains.items():
-            dest.setCollectionChain(chain, children)
+            # VALIDITY-HACK: fix up chains after removing calibration
+            # collections and including local-only collections.
+            present = list(dest.getCollectionChain(chain)) + list(children)
+            for missing in removed:
+                while missing in present:
+                    present.remove(missing)
+            dest.setCollectionChain(chain, present)
 
     def _export_calib_associations(self, calib_collection, datasets):
         """Export the associations between a set of datasets and a
@@ -705,12 +726,22 @@ class MiddlewareInterface:
                     flattenChains=True
                 )
             )
+
+        # VALIDITY-HACK: (re)define a calibration collection containing the
+        # latest calibs as of today. Already-cached calibs are still available
+        # from previous collections.
+        if datasets:
+            calib_daily = f"{calib_collection}/{self._day_obs}"
+            new = self.butler.registry.registerCollection(calib_daily, CollectionType.CALIBRATION)
+            if new:
+                _prepend_collection(self.butler, calib_collection, [calib_daily])
+
         for dataset in datasets:
             association = associations[dataset]
             # certify is designed to work on groups of datasets; in practice,
             # the total number of calibs (~1 of each type) is small enough that
             # grouping by timespan isn't worth it.
-            self.butler.registry.certify(association.collection, [dataset], association.timespan)
+            self.butler.registry.certify(calib_daily, [dataset], association.timespan)
 
     @staticmethod
     def _count_by_type(refs):
