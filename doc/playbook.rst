@@ -398,11 +398,13 @@ To implement schema changes in the development environment:
 * Update relevant unit tests.
 * Register the new schema to the Sasquatch's schema registry for the ``test.next-visit`` topic.
   The `Sasquatch documentation <https://sasquatch.lsst.io/user-guide/avro.html>`_ describes the schema evolution.
-  The script ``test-msg-dev.sh`` in the `next_visit_fan_out <https://github.com/lsst-dm/next_visit_fan_out>`_ repo can be run on ``rubin-devl`` to send a test event with the new schema; the `Sasquatch REST Proxy <https://sasquatch.lsst.io/user-guide/restproxy.html>`_ will register the new schema and the new schema id will be sent back as ``value_schema_id`` in the HTTP response.
+  The script ``test-msg-dev.sh`` in the `next_visit_fan_out`_ repo can be run on ``rubin-devl`` to send a test event with the new schema; the `Sasquatch REST Proxy <https://sasquatch.lsst.io/user-guide/restproxy.html>`_ will register the new schema and the new schema id will be sent back as ``value_schema_id`` in the HTTP response.
   Use the new schema id in the ``send_next_visit`` utility function used in the testers.
   The test events can be viewed on `Kafdrop <https://usdf-rsp-dev.slac.stanford.edu/kafdrop/topic/test.next-visit>`_.
-* Update the schema used in the `next_visit_fan_out <https://github.com/lsst-dm/next_visit_fan_out>`_ service.
+* Update the schema used in the `next_visit_fan_out`_ service.
 * Re-deploy and test services.
+
+.. _next_visit_fan_out: https://github.com/lsst-dm/next_visit_fan_out
 
 Databases
 =========
