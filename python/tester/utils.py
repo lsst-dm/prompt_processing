@@ -39,7 +39,7 @@ from astropy.io import fits
 
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 
-from activator.raw import _LSST_CAMERA_LIST
+from activator.raw import _LSST_CAMERA_LIST, _CAMERA_ABBREV
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)
@@ -132,7 +132,8 @@ def make_exposure_id(instrument, group_id, snap):
         case "HSC":
             return make_hsc_id(group_id, snap)
         case "LATISS":
-            return make_latiss_id(group_id, snap)
+            abbrev = _CAMERA_ABBREV[instrument]
+            return make_lsst_id(group_id, snap, abbrev)
         case _:
             raise NotImplementedError(f"Exposure ID generation not supported for {instrument}.")
 
@@ -175,8 +176,8 @@ def make_hsc_id(group_id, snap):
     return exposure_id, {"EXP-ID": f"HSCE{exposure_id:08d}"}
 
 
-def make_latiss_id(group_id, snap):
-    """Generate an exposure ID that the Butler can parse as a valid LATISS ID.
+def make_lsst_id(group_id, snap, abbrev):
+    """Generate an exposure ID that the Butler can parse as a valid LSST ID.
 
     Parameters
     ----------
@@ -184,22 +185,28 @@ def make_latiss_id(group_id, snap):
         The mocked group ID.
     snap : `int`
         A snap ID.
+    abbrev : `str`
+        The abbreviation of the LSST camera.
 
     Returns
     -------
     exposure_number :
         An exposure ID in the format expected by Gen 3 Middleware.
     headers : `dict`
-        The key-value pairs are in the form to appear in LATISS headers.
+        The key-value pairs are in the form to appear in LSST headers.
     """
     day_obs, seq_num = decode_group(group_id)
     exposure_num = LsstBaseTranslator.compute_exposure_id(day_obs, seq_num)
-    obs_id = f"AT_O_{day_obs}_{seq_num:06d}"
+    # Just use the default ``O`` which may be different from the original
+    # controller in the header.
+    controller = "O"
+    obs_id = f"{abbrev}_{controller}_{day_obs}_{seq_num:06d}"
     return exposure_num, {
         "DAYOBS": day_obs,
         "SEQNUM": seq_num,
         "OBSID": obs_id,
         "GROUPID": group_id,
+        "CONTRLLR": controller,
     }
 
 
