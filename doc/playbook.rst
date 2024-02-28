@@ -117,7 +117,7 @@ Add text as follows.
 
 .. _DMTN-269: https://dmtn-269.lsst.io/
 
-.. _Butler dimensions-config: https://github.com/lsst/daf_butler/blob/main/python/lsst/daf/butler/configs/dimensions.yaml
+.. _Butler dimensions-config: https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/dimensions.html#dimension-universe-change-history
 
 Select **Publish Release**.
 
