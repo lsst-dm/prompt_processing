@@ -78,7 +78,26 @@ From the ``main`` branch you can release a new major version (``X.0.0``), a new 
 Release tags are semantic version identifiers following the `pep 440 <https://peps.python.org/pep-0440/>`_ specification.
 Please note that the tag does not include a ``v`` at the beginning.
 
-1. Create a Release
+1. Choose Version Number
+
+On GitHub.com, navigate to the main page of the repository.
+To the right of the list of files, click the latest release.
+At the top of the page, click **## commits to main since this release**.
+This is the list of changes that will be included in the next release.
+
+For the ``prompt_processing`` service, a new major version is triggered by any of the following:
+
+* Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
+* Incompatibility with an old APDB schema or ``dax_apdb`` version (see `DMTN-269`_ for the distinction)
+* Breaking changes in the Alerts schema
+* Incompatibility with an old `Butler dimensions-config`_ version
+
+For the `next_visit_fan_out`_ service, a new major version is triggered by any of the following:
+
+* Incompatibility with old Summit ``nextVisit`` messages
+* Breaking changes in the fanned-out ``nextVisit`` messages (almost any change to ``NextVisitModel`` qualifies)
+
+2. Create a Release
 
 On GitHub.com, navigate to the main page of the repository.
 To the right of the list of files, click **Releases**.
@@ -92,13 +111,19 @@ Add text as follows.
 
 * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
 * Science Pipelines version and rubin-env version
-* Any changes to the APDB and Alerts schemas
+* Supported APDB schema and ``ApdbSql``/``ApdbCassandra`` versions (see `DMTN-269`_ for rationale)
+* Any changes to the Alerts schema
+* Supported `Butler dimensions-config`_ versions
+
+.. _DMTN-269: https://dmtn-269.lsst.io/
+
+.. _Butler dimensions-config: https://github.com/lsst/daf_butler/blob/main/python/lsst/daf/butler/configs/dimensions.yaml
 
 Select **Publish Release**.
 
 The `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
 
-2. Tag the release
+3. Tag the release
 
 At the HEAD of the ``main`` branch, create and push a tag with the semantic version:
 
