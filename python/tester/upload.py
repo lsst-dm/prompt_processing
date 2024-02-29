@@ -305,7 +305,8 @@ def get_samples_lsst(bucket, instrument):
             detector=_DETECTOR_FROM_RS[instrument][m["raft_sensor"]],
             groupId=md["GROUPID"],
             nimages=INSTRUMENTS[instrument].n_snaps,
-            filters=md["FILTBAND"],
+            # ComCam currently sets the FILTBAND header to null.
+            filters=md["FILTBAND"] or md["FILTER"],
             coordinateSystem=FannedOutVisit.CoordSys.ICRS,
             position=[md["RA"], md["DEC"]],
             startTime=astropy.time.Time(md["DATE-BEG"], format="isot", scale="tai").unix_tai,
