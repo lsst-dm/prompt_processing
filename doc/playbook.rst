@@ -404,13 +404,6 @@ The visits are randomly selected and uploaded as one new group for each visit.
 Images can be uploaded in parallel processes.
 
 
-.. note::
-
-   Both of the tester scripts use data from a limited pool of raws every time it is run, while the APDB assumes that every visit has unique timestamps.
-   This causes collisions in the APDB that crash the pipeline.
-   To prevent this, follow the reset instructions under `Databases`_ before calling ``upload.py`` or ``upload_hsc_rc2.py`` again.
-
-
 next_visit Events
 =================
 
