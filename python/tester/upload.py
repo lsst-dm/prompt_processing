@@ -319,7 +319,7 @@ def get_samples_lsst(bucket, instrument):
                                                ).unix_tai-2*duration,
         )
         _log.debug(f"File {blob.key} parsed as visit {visit} and registered as group {md['GROUPID']}.")
-        result[md["GROUPID"]] = {0: {visit: blob}}
+        _add_to_raw_pool(result, 0, visit, blob)
 
     return result
 
