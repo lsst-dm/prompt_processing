@@ -56,12 +56,14 @@ from tester.utils import (
 class Instrument:
     n_snaps: int
     n_detectors: int
+    sal_index: int = 0
 
 
 INSTRUMENTS = {
-    "LSSTCam": Instrument(2, 189 + 8 + 8),
-    "LSSTComCam": Instrument(2, 9),
-    "LATISS": Instrument(1, 1),
+    "LSSTCam": Instrument(2, 189 + 8 + 8, 1),
+    "LSSTComCam": Instrument(2, 9, 1),
+    "LSSTComCamSim": Instrument(1, 9, 3),
+    "LATISS": Instrument(1, 1, 2),
     "DECam": Instrument(1, 62),
     "HSC": Instrument(1, 112),
 }
@@ -310,7 +312,7 @@ def get_samples_lsst(bucket, instrument):
             rotationSystem=FannedOutVisit.RotSys.SKY,
             cameraAngle=md["ROTPA"],
             survey="SURVEY",
-            salIndex=2,  # 2 is LATISS
+            salIndex=INSTRUMENTS[instrument].sal_index,
             scriptSalIndex=2,
             dome=FannedOutVisit.Dome.OPEN,
             duration=duration,
