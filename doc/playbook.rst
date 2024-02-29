@@ -454,11 +454,13 @@ For passwordless login, create a ``~/.pgpass`` file with contents:
 
 and execute ``chmod 0600 ~/.pgpass``.
 
-From ``rubin-devl``, a new APDB schema can be created in the usual way:
+From ``rubin-devl``, new APDB schemas can be created in the usual way:
 
 .. code-block:: sh
 
-   make_apdb.py -c namespace="pp_apdb" \
+   make_apdb.py -c namespace="pp_apdb_latiss" \
+       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+   make_apdb.py -c namespace="pp_apdb_hsc" \
        -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
 
 Resetting the APDB
@@ -468,6 +470,12 @@ To restore the APDB to a clean state, run the following:
 
 .. code-block:: sh
 
-   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb" cascade;'
-   make_apdb.py -c namespace="pp_apdb" \
+   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_latiss" cascade;'
+   make_apdb.py -c namespace="pp_apdb_latiss" \
+       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+
+.. code-block:: sh
+
+   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_hsc" cascade;'
+   make_apdb.py -c namespace="pp_apdb_hsc" \
        -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
