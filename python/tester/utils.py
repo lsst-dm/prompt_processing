@@ -128,14 +128,13 @@ def make_exposure_id(instrument, group_id, snap):
         The header key-value pairs to accompany with the exposure ID in the
         format for ``instrument``'s header.
     """
-    match instrument:
-        case "HSC":
-            return make_hsc_id(group_id, snap)
-        case "LATISS":
-            abbrev = _CAMERA_ABBREV[instrument]
-            return make_lsst_id(group_id, snap, abbrev)
-        case _:
-            raise NotImplementedError(f"Exposure ID generation not supported for {instrument}.")
+    if instrument in _LSST_CAMERA_LIST:
+        abbrev = _CAMERA_ABBREV[instrument]
+        return make_lsst_id(group_id, snap, abbrev)
+    elif instrument == "HSC":
+        return make_hsc_id(group_id, snap)
+    else:
+        raise NotImplementedError(f"Exposure ID generation not supported for {instrument}.")
 
 
 def make_hsc_id(group_id, snap):
