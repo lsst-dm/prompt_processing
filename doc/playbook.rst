@@ -404,13 +404,6 @@ The visits are randomly selected and uploaded as one new group for each visit.
 Images can be uploaded in parallel processes.
 
 
-.. note::
-
-   Both of the tester scripts use data from a limited pool of raws every time it is run, while the APDB assumes that every visit has unique timestamps.
-   This causes collisions in the APDB that crash the pipeline.
-   To prevent this, follow the reset instructions under `Databases`_ before calling ``upload.py`` or ``upload_hsc_rc2.py`` again.
-
-
 next_visit Events
 =================
 
@@ -454,11 +447,13 @@ For passwordless login, create a ``~/.pgpass`` file with contents:
 
 and execute ``chmod 0600 ~/.pgpass``.
 
-From ``rubin-devl``, a new APDB schema can be created in the usual way:
+From ``rubin-devl``, new APDB schemas can be created in the usual way:
 
 .. code-block:: sh
 
-   make_apdb.py -c namespace="pp_apdb" \
+   make_apdb.py -c namespace="pp_apdb_latiss" \
+       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+   make_apdb.py -c namespace="pp_apdb_hsc" \
        -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
 
 Resetting the APDB
@@ -468,6 +463,12 @@ To restore the APDB to a clean state, run the following:
 
 .. code-block:: sh
 
-   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb" cascade;'
-   make_apdb.py -c namespace="pp_apdb" \
+   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_latiss" cascade;'
+   make_apdb.py -c namespace="pp_apdb_latiss" \
+       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+
+.. code-block:: sh
+
+   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_hsc" cascade;'
+   make_apdb.py -c namespace="pp_apdb_hsc" \
        -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
