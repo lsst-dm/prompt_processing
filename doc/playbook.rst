@@ -151,7 +151,7 @@ The bucket ``rubin-pp-dev`` holds incoming raw images.
 The bucket ``rubin-pp-dev-users`` holds:
 
 * ``rubin-pp-dev-users/central_repo/`` contains the central repository described in `DMTN-219`_.
-  This repository currently contains HSC and LATISS data, uploaded with ``make_export.py``.
+  This repository currently contains HSC, LATISS, and LSSTComCamSim data, uploaded with ``make_export.py``.
 
 * ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload scripts can draw from to create incoming raws.
 
@@ -372,7 +372,7 @@ Install the Prompt Processing code, and set it up before use:
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin-pp-dev`` S3 bucket, simulating incoming raw images.
 
-``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC or LATISS) and the number of groups of images to send.
+``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, and LSSTComCamSim) and the number of groups of images to send.
 
 Sample command line:
 
@@ -380,6 +380,7 @@ Sample command line:
 
    python upload.py HSC 3
    python upload.py LATISS 3
+   python upload.py LSSTComCamSim 1
 
 This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 
@@ -389,6 +390,7 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
   One of the files, the unobserved group `2023-10-11T01:45:47.810`, has modified RA at a location with no templates.
   Astrometry is also expected to fail in WCS fitting.
   This visit can test pipeline fallback features.
+* For LSSTComCamSim, 2 groups, in total 18 raw fits files and their corresponding json metadata files, are curated.
 
 ``python/tester/upload_hsc_rc2.py``: Command line argument is the number of groups of images to send.
 
@@ -444,6 +446,7 @@ For passwordless login, create a ``~/.pgpass`` file with contents:
    usdf-prompt-processing-dev.slac.stanford.edu:5432:lsst-devl:rubin:PASSWORD
    usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:latiss_prompt:PASSWORD
    usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:hsc_prompt:PASSWORD
+   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:lsstcomcamsim_prompt:PASSWORD
 
 and execute ``chmod 0600 ~/.pgpass``.
 
@@ -454,6 +457,8 @@ From ``rubin-devl``, new APDB schemas can be created in the usual way:
    make_apdb.py -c namespace="pp_apdb_latiss" \
        -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
    make_apdb.py -c namespace="pp_apdb_hsc" \
+       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+   make_apdb.py -c namespace="pp_apdb_lsstcomcamsim" \
        -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
 
 Resetting the APDB
@@ -471,4 +476,10 @@ To restore the APDB to a clean state, run the following:
 
    psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_hsc" cascade;'
    make_apdb.py -c namespace="pp_apdb_hsc" \
+       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+
+.. code-block:: sh
+
+   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_lsstcomcamsim" cascade;'
+   make_apdb.py -c namespace="pp_apdb_lsstcomcamsim" \
        -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
