@@ -13,7 +13,14 @@ name: Release CI
       - "u/**"
     tags:
       - "*"
-  pull_request: {}
+  pull_request:
+    # Matches build-service.yml
+    paths:
+      - '.github/workflows/ci-release.yaml'
+      - 'pipelines/**'
+      - 'python/activator/**'
+      - 'tests/**'
+      - 'Dockerfile'
 
 env:
   # Base tag to run tests against.
