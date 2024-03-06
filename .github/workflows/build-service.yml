@@ -8,12 +8,14 @@ on:
       - '.github/workflows/build-service.yml'
       - 'pipelines/**'
       - 'python/activator/**'
+      - 'tests/**'
       - 'Dockerfile'
   pull_request:
     paths:
       - '.github/workflows/build-service.yml'
       - 'pipelines/**'
       - 'python/activator/**'
+      - 'tests/**'
       - 'Dockerfile'
   workflow_dispatch:
 
