@@ -855,7 +855,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                 export.saveDatasets(data_butler.registry.queryDatasets(..., collections=...))
                 for collection in data_butler.registry.queryCollections():
                     export.saveCollection(collection)
-            central_butler = Butler(Butler.makeRepo(self.central_repo.name), writeable=True)
+            dimension_config = data_butler.dimensions.dimensionConfig
+            central_butler = Butler(Butler.makeRepo(self.central_repo.name, dimensionConfig=dimension_config),
+                                    writeable=True,
+                                    )
             central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
 
     def setUp(self):
