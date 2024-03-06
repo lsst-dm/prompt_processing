@@ -13,7 +13,14 @@ name: Release CI
       - "u/**"
     tags:
       - "*"
-  pull_request: {}
+  pull_request:
+    # Matches build-service.yml
+    paths:
+      - '.github/workflows/ci-release.yaml'
+      - 'pipelines/**'
+      - 'python/activator/**'
+      - 'tests/**'
+      - 'Dockerfile'
 
 env:
   # Base tag to run tests against.
@@ -28,13 +35,13 @@ jobs:
       || startsWith(github.head_ref, 'tickets/')
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Fix permissions
         run: chmod -R a+rwX $GITHUB_WORKSPACE
 
       - name: Login to GitHub Container Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
