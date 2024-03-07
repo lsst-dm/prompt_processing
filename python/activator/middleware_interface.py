@@ -57,6 +57,8 @@ _log.setLevel(logging.DEBUG)
 # See https://developer.lsst.io/stack/logging.html#logger-trace-verbosity
 _log_trace = logging.getLogger("TRACE1.lsst." + __name__)
 _log_trace.setLevel(logging.CRITICAL)  # Turn off by default.
+_log_trace3 = logging.getLogger("TRACE3.lsst." + __name__)
+_log_trace3.setLevel(logging.CRITICAL)  # Turn off by default.
 
 
 def get_central_butler(central_repo: str, instrument_class: str):
@@ -1236,6 +1238,7 @@ def _filter_datasets(src_repo: Butler,
         with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
                                         level=logging.DEBUG):
             known_datasets = set(dest_repo.registry.queryDatasets(*args, **kwargs))
+            _log_trace.debug("Known datasets: %s", known_datasets)
     except lsst.daf.butler.registry.DataIdValueError as e:
         _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
         # If dimensions are invalid, then *any* such datasets are missing.
@@ -1248,6 +1251,8 @@ def _filter_datasets(src_repo: Butler,
     with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (source datasets)",
                                     level=logging.DEBUG):
         src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs).expanded())
+        # In many contexts, src_datasets is too large to print.
+        _log_trace3.debug("Source datasets: %s", src_datasets)
     if calib_date:
         src_datasets = _filter_calibs_by_date(
             src_repo,
@@ -1255,6 +1260,7 @@ def _filter_datasets(src_repo: Butler,
             src_datasets,
             calib_date,
         )
+        _log_trace.debug("Sources filtered to %s: %s", calib_date.iso, src_datasets)
     if not src_datasets:
         raise _MissingDatasetError(
             "Source repo query with args '{}' found no matches.".format(formatted_args))
