@@ -153,6 +153,38 @@ def main():
         _log.error(f"No raw files found for {instrument}, aborting.")
 
 
+def _add_to_raw_pool(raw_pool, snap_num, visit, blob):
+    """Add a detector-snap to the raw pool for uploading.
+
+    Parameters
+    ----------
+    raw_pool : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
+        Available raws as a mapping from group IDs to a mapping of snap ID.
+        The value of the innermost mapping is the observation metadata for
+        each detector, and a Blob representing the image taken in that
+        detector-snap.
+    visit : `activator.visit.FannedOutVisit`
+        The visit-detector combination to be added with this raw.
+    snap_num : `int`
+        The snap number for this raw.
+    blob : `s3.ObjectSummary`
+        The raw image for this detector-snap.
+    """
+    group = visit.groupId
+    if group in raw_pool:
+        snap_dict = raw_pool[group]
+        if snap_num in snap_dict:
+            _log.debug(f"New detector {visit.detector} added to snap {snap_num} of group {group}.")
+            detector_dict = snap_dict[snap_num]
+            detector_dict[visit] = blob
+        else:
+            _log.debug(f"New snap {snap_num} added to group {group}.")
+            snap_dict[snap_num] = {visit: blob}
+    else:
+        _log.debug(f"New group {group} registered.")
+        raw_pool[group] = {snap_num: {visit: blob}}
+
+
 def get_samples_non_lsst(bucket, instrument):
     """Return any predefined raw exposures for a non-LSST instrument.
 
@@ -222,18 +254,7 @@ def get_samples_non_lsst(bucket, instrument):
             private_sndStamp=hsc_metadata[exp_id]["time"]-2*duration,
         )
         _log.debug(f"File {blob.key} parsed as snap {snap_num} of visit {visit}.")
-        if group in result:
-            snap_dict = result[group]
-            if snap_num in snap_dict:
-                _log.debug(f"New detector {visit.detector} added to snap {snap_num} of group {group}.")
-                detector_dict = snap_dict[snap_num]
-                detector_dict[visit] = blob
-            else:
-                _log.debug(f"New snap {snap_num} added to group {group}.")
-                snap_dict[snap_num] = {visit: blob}
-        else:
-            _log.debug(f"New group {group} registered.")
-            result[group] = {snap_num: {visit: blob}}
+        _add_to_raw_pool(result, snap_num, visit, blob)
 
     return result
 
