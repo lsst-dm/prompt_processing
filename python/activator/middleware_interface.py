@@ -60,6 +60,10 @@ _log_trace.setLevel(logging.CRITICAL)  # Turn off by default.
 _log_trace3 = logging.getLogger("TRACE3.lsst." + __name__)
 _log_trace3.setLevel(logging.CRITICAL)  # Turn off by default.
 
+# VALIDITY-HACK: local-only calib collections break if calibs are not requested
+# in chronological order. Turn off for large development runs.
+cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
+
 
 def get_central_butler(central_repo: str, instrument_class: str):
     """Provide a Butler that can access the given repository and read and write
@@ -1203,6 +1207,21 @@ class MiddlewareInterface:
                 for chain in self.butler.registry.getCollectionParentChains(output_run):
                     _remove_from_chain(self.butler, chain, [output_run])
                 self.butler.removeRuns([output_run], unstore=True)
+            # VALIDITY-HACK: remove cached calibs to avoid future conflicts
+            if not cache_calibs:
+                calib_chain = self.instrument.makeCalibrationCollectionName()
+                calib_taggeds = self.butler.registry.queryCollections(
+                    calib_chain,
+                    flattenChains=True,
+                    collectionTypes={CollectionType.CALIBRATION, CollectionType.TAGGED})
+                calib_runs = self.butler.registry.queryCollections(
+                    calib_chain,
+                    flattenChains=True,
+                    collectionTypes=CollectionType.RUN)
+                self.butler.registry.setCollectionChain(calib_chain, [])
+                for member in calib_taggeds:
+                    self.butler.registry.removeCollection(member)
+                self.butler.removeRuns(calib_runs, unstore=True)
 
 
 class _MissingDatasetError(RuntimeError):
