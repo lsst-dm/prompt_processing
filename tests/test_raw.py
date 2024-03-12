@@ -23,6 +23,7 @@ import json
 import os
 import re
 import unittest
+import warnings
 
 from lsst.resources import ResourcePath
 
@@ -107,8 +108,10 @@ class LsstBase(RawBase):
                             self.snap, self.exposure, self.filter)
         fits_path = ResourcePath(f"s3://{self.bucket}").join(path)
         json_path = fits_path.updatedExtension("json")
-        with json_path.open("w") as f:
-            json.dump(dict(GROUPID=self.group, CURINDEX=self.snap + 1), f)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "S3 does not support flushing objects", UserWarning)
+            with json_path.open("w") as f:
+                json.dump(dict(GROUPID=self.group, CURINDEX=self.snap + 1), f)
         assert is_path_consistent(path, self.visit)
         assert get_group_id_from_oid(path) == self.group
 
