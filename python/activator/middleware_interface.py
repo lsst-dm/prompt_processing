@@ -57,6 +57,12 @@ _log.setLevel(logging.DEBUG)
 # See https://developer.lsst.io/stack/logging.html#logger-trace-verbosity
 _log_trace = logging.getLogger("TRACE1.lsst." + __name__)
 _log_trace.setLevel(logging.CRITICAL)  # Turn off by default.
+_log_trace3 = logging.getLogger("TRACE3.lsst." + __name__)
+_log_trace3.setLevel(logging.CRITICAL)  # Turn off by default.
+
+# VALIDITY-HACK: local-only calib collections break if calibs are not requested
+# in chronological order. Turn off for large development runs.
+cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
 
 
 def get_central_butler(central_repo: str, instrument_class: str):
@@ -700,6 +706,25 @@ class MiddlewareInterface:
                     present.remove(missing)
             dest.setCollectionChain(chain, present)
 
+    # VALIDITY-HACK: used only for local "latest calibs" collection
+    def _get_local_calib_collection(self, parent):
+        """Generate a name for a local-only calib collection to store mock
+        associations.
+
+        Parameters
+        ----------
+        parent : `str`
+            The chain that serves as the calib interface for the rest of
+            this class.
+
+        Returns
+        -------
+        calib_collection : `str`
+            The calibration collection name to use. This method does *not*
+            create the collection itself.
+        """
+        return f"{parent}/{self._day_obs}"
+
     def _export_calib_associations(self, calib_collection, datasets):
         """Export the associations between a set of datasets and a
         calibration collection.
@@ -719,15 +744,15 @@ class MiddlewareInterface:
         # latest calibs as of today. Already-cached calibs are still available
         # from previous collections.
         if datasets:
-            calib_daily = f"{calib_collection}/{self._day_obs}"
-            new = self.butler.registry.registerCollection(calib_daily, CollectionType.CALIBRATION)
+            calib_latest = self._get_local_calib_collection(calib_collection)
+            new = self.butler.registry.registerCollection(calib_latest, CollectionType.CALIBRATION)
             if new:
-                _prepend_collection(self.butler, calib_collection, [calib_daily])
+                _prepend_collection(self.butler, calib_collection, [calib_latest])
 
             # VALIDITY-HACK: real associations are expensive to query. Just apply
             # arbitrary ones and assume that the first collection in the chain is
             # always the best.
-            self.butler.registry.certify(calib_daily, datasets, Timespan(None, None))
+            self.butler.registry.certify(calib_latest, datasets, Timespan(None, None))
 
     @staticmethod
     def _count_by_type(refs):
@@ -1182,6 +1207,21 @@ class MiddlewareInterface:
                 for chain in self.butler.registry.getCollectionParentChains(output_run):
                     _remove_from_chain(self.butler, chain, [output_run])
                 self.butler.removeRuns([output_run], unstore=True)
+            # VALIDITY-HACK: remove cached calibs to avoid future conflicts
+            if not cache_calibs:
+                calib_chain = self.instrument.makeCalibrationCollectionName()
+                calib_taggeds = self.butler.registry.queryCollections(
+                    calib_chain,
+                    flattenChains=True,
+                    collectionTypes={CollectionType.CALIBRATION, CollectionType.TAGGED})
+                calib_runs = self.butler.registry.queryCollections(
+                    calib_chain,
+                    flattenChains=True,
+                    collectionTypes=CollectionType.RUN)
+                self.butler.registry.setCollectionChain(calib_chain, [])
+                for member in calib_taggeds:
+                    self.butler.registry.removeCollection(member)
+                self.butler.removeRuns(calib_runs, unstore=True)
 
 
 class _MissingDatasetError(RuntimeError):
@@ -1236,6 +1276,7 @@ def _filter_datasets(src_repo: Butler,
         with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
                                         level=logging.DEBUG):
             known_datasets = set(dest_repo.registry.queryDatasets(*args, **kwargs))
+            _log_trace.debug("Known datasets: %s", known_datasets)
     except lsst.daf.butler.registry.DataIdValueError as e:
         _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
         # If dimensions are invalid, then *any* such datasets are missing.
@@ -1248,6 +1289,8 @@ def _filter_datasets(src_repo: Butler,
     with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (source datasets)",
                                     level=logging.DEBUG):
         src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs).expanded())
+        # In many contexts, src_datasets is too large to print.
+        _log_trace3.debug("Source datasets: %s", src_datasets)
     if calib_date:
         src_datasets = _filter_calibs_by_date(
             src_repo,
@@ -1255,6 +1298,7 @@ def _filter_datasets(src_repo: Butler,
             src_datasets,
             calib_date,
         )
+        _log_trace.debug("Sources filtered to %s: %s", calib_date.iso, src_datasets)
     if not src_datasets:
         raise _MissingDatasetError(
             "Source repo query with args '{}' found no matches.".format(formatted_args))
