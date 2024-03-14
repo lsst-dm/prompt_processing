@@ -933,6 +933,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                     pipelines, skymap_name, second_local_repo.name,
                                                     prefix="file://")
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                           "/ApPipe/prompt-proto-service-042"
 
@@ -998,6 +999,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         central_butler = Butler(self.central_repo.name, writeable=False)
         self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_chain), 2)
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.processed_data_id),
             1)

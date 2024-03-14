@@ -1103,6 +1103,8 @@ class MiddlewareInterface:
             if exports:
                 populated_runs = {ref.run for ref in exports}
                 _log.info(f"Pipeline products saved to collections {populated_runs}.")
+                output_chain = self._get_output_chain(self._day_obs)
+                self._chain_exports(output_chain, populated_runs)
             else:
                 _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
 
@@ -1197,6 +1199,24 @@ class MiddlewareInterface:
                            set(datasets) - set(transferred))
 
         return transferred
+
+    def _chain_exports(self, output_chain: str, output_runs: collections.abc.Iterable[str]) -> None:
+        """Associate exported datasets with a chained collection in the
+        central Butler.
+
+        Parameters
+        ----------
+        output_chain : `str`
+            The chained collection with which to associate the outputs. Need not exist.
+        output_runs : iterable [`str`]
+            The run collection(s) containing the outputs. Assumed to exist.
+        """
+        with lsst.utils.timer.time_this(_log, msg="export_outputs (chain runs)", level=logging.DEBUG):
+            self.central_butler.registry.refresh()
+            self.central_butler.registry.registerCollection(output_chain, CollectionType.CHAINED)
+
+            with self.central_butler.transaction():
+                _prepend_collection(self.central_butler, output_chain, output_runs)
 
     def clean_local_repo(self, exposure_ids: set[int]) -> None:
         """Remove local repo content that is only needed for a single visit.
