@@ -499,7 +499,7 @@ class MiddlewareInterface:
         if dispatcher:
             dispatcher.dispatch(
                 bundle,
-                run=self._get_output_run("Preload", self._day_obs),
+                run=self._get_preload_run(self._day_obs),
                 datasetType="promptPreload_metrics",  # In case we have real Butler datasets in the future
                 identifierFields={"instrument": self.instrument.getName(),
                                   "skymap": self.skymap_name,
@@ -794,6 +794,23 @@ class MiddlewareInterface:
         """
         # Order optimized for S3 bucket -- filter out as many files as soon as possible.
         return self.instrument.makeCollectionName("prompt", f"output-{date}")
+
+    def _get_preload_run(self,
+                         date: str) -> str:
+        """Generate a deterministic preload collection name that avoids
+        configuration conflicts.
+
+        Parameters
+        ----------
+        date : `str`
+            Date of the processing run (not observation!).
+
+        Returns
+        -------
+        run : `str`
+            The run in which to place preload/pre-execution products.
+        """
+        return self._get_output_run("Preload", date)
 
     def _get_init_output_run(self,
                              pipeline_file: str,
