@@ -607,6 +607,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_get_output_run(self):
         filename = "ApPipe.yaml"
         date = "2023-01-22"
+        out_chain = self.interface._get_output_chain(date)
+        self.assertEqual(out_chain, f"{instname}/prompt/output-2023-01-22")
         out_run = self.interface._get_output_run(filename, date)
         self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
         init_run = self.interface._get_init_output_run(filename, date)

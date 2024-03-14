@@ -777,6 +777,24 @@ class MiddlewareInterface:
         for k, g in itertools.groupby(ordered, key=get_key):
             yield k, len(list(g))
 
+    def _get_output_chain(self,
+                          date: str) -> str:
+        """Generate a deterministic output chain name that avoids
+        configuration conflicts.
+
+        Parameters
+        ----------
+        date : `str`
+            Date of the processing run (not observation!).
+
+        Returns
+        -------
+        chain : `str`
+            The chain in which to place all output collections.
+        """
+        # Order optimized for S3 bucket -- filter out as many files as soon as possible.
+        return self.instrument.makeCollectionName("prompt", f"output-{date}")
+
     def _get_init_output_run(self,
                              pipeline_file: str,
                              date: str) -> str:
@@ -819,8 +837,7 @@ class MiddlewareInterface:
         """
         pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
         # Order optimized for S3 bucket -- filter out as many files as soon as possible.
-        return self.instrument.makeCollectionName(
-            "prompt", f"output-{date}", pipeline_name, self._deployment)
+        return "/".join([self._get_output_chain(date), pipeline_name, self._deployment])
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
