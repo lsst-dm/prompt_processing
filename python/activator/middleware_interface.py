@@ -538,7 +538,7 @@ class MiddlewareInterface:
         # collection, so we have to specify a list here. Replace this
         # with another solution ASAP.
         possible_refcats = ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110",
-                            "atlas_refcat2_20220201", "gaia_dr3_20230707"]
+                            "atlas_refcat2_20220201", "gaia_dr3_20230707", "uw_stars_20240228"]
         _log.debug("Searching for refcats in %s...", shard_ids)
         refcats = set(_filter_datasets(
                       self.central_butler, self.butler,

@@ -1,0 +1,3 @@
+datasets:
+- collections: u/hchiang2/w_2023_01/DM-37751/templates
+  datasetType: goodSeeingCoadd

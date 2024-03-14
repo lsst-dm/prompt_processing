@@ -40,7 +40,7 @@ import os
 import re
 import time
 
-from lsst.obs.lsst import LsstCam, LsstComCam
+from lsst.obs.lsst import LsstCam, LsstComCam, LsstComCamSim
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 from lsst.resources import ResourcePath
 
@@ -65,7 +65,7 @@ OTHER_REGEXP = re.compile(
 ################################
 
 # The list of camera names that might be used for LSST
-_LSST_CAMERA_LIST = ("LATISS", "ComCam", "LSSTComCam", "LSSTCam", "TS8", "LSST-TS8")
+_LSST_CAMERA_LIST = ("LATISS", "ComCam", "LSSTComCam", "LSSTComCamSim", "LSSTCam", "TS8", "LSST-TS8")
 
 # Translate from Camera path prefixes to official names.
 _TRANSLATE_INSTRUMENT = {
@@ -77,6 +77,7 @@ _TRANSLATE_INSTRUMENT = {
 _CAMERA_ABBREV = {
     "LATISS": "AT",
     "LSSTComCam": "CC",
+    "LSSTComCamSim": "CC",
     "LSSTCam": "MC",
     "LSST-TS8": "TS",
 }
@@ -90,10 +91,12 @@ _CAMERA_ABBREV = {
 
 _LSSTCAM = LsstCam.getCamera().getNameMap()
 _LSSTCOMCAM = LsstComCam.getCamera().getNameMap()
+_LSSTCOMCAMSIM = LsstComCamSim.getCamera().getNameMap()
 
 _DETECTOR_FROM_RS = {
     "LATISS": {"R00_S00": 0},
     "LSSTComCam": {name: value.getId() for name, value in _LSSTCOMCAM.items()},
+    "LSSTComCamSim": {name: value.getId() for name, value in _LSSTCOMCAMSIM.items()},
     "LSST-TS8": {f"R22_S{x}{y}": x * 3 + y for x in range(3) for y in range(3)},
     "LSSTCam": {name: value.getId() for name, value in _LSSTCAM.items()},
 }
