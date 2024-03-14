@@ -1092,7 +1092,11 @@ class MiddlewareInterface:
         """
         with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
             # Rather than determining which pipeline was run, just try to export all of them.
-            output_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pipeline_files()]
+            output_runs = []
+            for f in self._get_pipeline_files():
+                output_runs.extend([self._get_init_output_run(f, self._day_obs),
+                                    self._get_output_run(f, self._day_obs),
+                                    ])
             exports = self._export_subset(exposure_ids,
                                           # TODO: find a way to merge datasets like *_config
                                           # or *_schema that are duplicated across multiple
