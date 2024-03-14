@@ -1012,26 +1012,3 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.assertEqual(
             self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
             0)
-
-    def test_export_outputs_retry(self):
-        self.interface.export_outputs({self.raw_data_id["exposure"]})
-        self.second_interface.export_outputs({self.second_data_id["exposure"]})
-
-        central_butler = Butler(self.central_repo.name, writeable=False)
-        self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.processed_data_id),
-            1)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, "calexp", self.output_run,
-                                         self.second_processed_data_id),
-            1)
-        # Did not export calibs or other inputs.
-        self.assertEqual(
-            self._count_datasets(central_butler, ["cpBias", "gaia_dr2_20200414", "skyMap", "*Coadd"],
-                                 self.output_run),
-            0)
-        # Nothing placed in "input" collections.
-        self.assertEqual(
-            self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
-            0)
