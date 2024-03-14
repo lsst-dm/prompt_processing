@@ -213,6 +213,7 @@ Central Repo
 
 The central repo for development use is located at ``s3://rubin-pp-dev-users/central_repo/``.
 You need developer credentials to access it, as described under `Buckets`_.
+To run ``butler`` commands, which access the registry, you also need to set ``PGUSER=pp``.
 
 Migrating the Repo
 ------------------
