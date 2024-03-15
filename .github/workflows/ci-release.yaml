@@ -14,12 +14,9 @@ name: Release CI
     tags:
       - "*"
   pull_request:
-    # Matches build-service.yml
+    # Test changes to build process; code changes are handled by build-service.yml
     paths:
       - '.github/workflows/ci-release.yaml'
-      - 'pipelines/**'
-      - 'python/activator/**'
-      - 'tests/**'
       - 'Dockerfile'
 
 env:
