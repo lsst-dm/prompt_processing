@@ -151,7 +151,8 @@ def _get_sasquatch_dispatcher():
     if not url:
         return None
     token = os.environ.get("SASQUATCH_TOKEN", "")
-    return SasquatchDispatcher(url=url, token=token, namespace="lsst.prompt")
+    namespace = os.environ.get("DAF_BUTLER_SASQUATCH_NAMESPACE", "lsst.prompt")
+    return SasquatchDispatcher(url=url, token=token, namespace=namespace)
 
 
 # Offset used to define exposures' day_obs value.
