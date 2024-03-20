@@ -499,7 +499,7 @@ class MiddlewareInterface:
         if dispatcher:
             dispatcher.dispatch(
                 bundle,
-                run=self._get_output_run("Preload", self._day_obs),
+                run=self._get_preload_run(self._day_obs),
                 datasetType="promptPreload_metrics",  # In case we have real Butler datasets in the future
                 identifierFields={"instrument": self.instrument.getName(),
                                   "skymap": self.skymap_name,
@@ -777,6 +777,41 @@ class MiddlewareInterface:
         for k, g in itertools.groupby(ordered, key=get_key):
             yield k, len(list(g))
 
+    def _get_output_chain(self,
+                          date: str) -> str:
+        """Generate a deterministic output chain name that avoids
+        configuration conflicts.
+
+        Parameters
+        ----------
+        date : `str`
+            Date of the processing run (not observation!).
+
+        Returns
+        -------
+        chain : `str`
+            The chain in which to place all output collections.
+        """
+        # Order optimized for S3 bucket -- filter out as many files as soon as possible.
+        return self.instrument.makeCollectionName("prompt", f"output-{date}")
+
+    def _get_preload_run(self,
+                         date: str) -> str:
+        """Generate a deterministic preload collection name that avoids
+        configuration conflicts.
+
+        Parameters
+        ----------
+        date : `str`
+            Date of the processing run (not observation!).
+
+        Returns
+        -------
+        run : `str`
+            The run in which to place preload/pre-execution products.
+        """
+        return self._get_output_run("Preload", date)
+
     def _get_init_output_run(self,
                              pipeline_file: str,
                              date: str) -> str:
@@ -819,8 +854,7 @@ class MiddlewareInterface:
         """
         pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
         # Order optimized for S3 bucket -- filter out as many files as soon as possible.
-        return self.instrument.makeCollectionName(
-            "prompt", f"output-{date}", pipeline_name, self._deployment)
+        return "/".join([self._get_output_chain(date), pipeline_name, self._deployment])
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
@@ -1075,7 +1109,11 @@ class MiddlewareInterface:
         """
         with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
             # Rather than determining which pipeline was run, just try to export all of them.
-            output_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pipeline_files()]
+            output_runs = []
+            for f in self._get_pipeline_files():
+                output_runs.extend([self._get_init_output_run(f, self._day_obs),
+                                    self._get_output_run(f, self._day_obs),
+                                    ])
             exports = self._export_subset(exposure_ids,
                                           # TODO: find a way to merge datasets like *_config
                                           # or *_schema that are duplicated across multiple
@@ -1086,6 +1124,8 @@ class MiddlewareInterface:
             if exports:
                 populated_runs = {ref.run for ref in exports}
                 _log.info(f"Pipeline products saved to collections {populated_runs}.")
+                output_chain = self._get_output_chain(self._day_obs)
+                self._chain_exports(output_chain, populated_runs)
             else:
                 _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
 
@@ -1180,6 +1220,24 @@ class MiddlewareInterface:
                            set(datasets) - set(transferred))
 
         return transferred
+
+    def _chain_exports(self, output_chain: str, output_runs: collections.abc.Iterable[str]) -> None:
+        """Associate exported datasets with a chained collection in the
+        central Butler.
+
+        Parameters
+        ----------
+        output_chain : `str`
+            The chained collection with which to associate the outputs. Need not exist.
+        output_runs : iterable [`str`]
+            The run collection(s) containing the outputs. Assumed to exist.
+        """
+        with lsst.utils.timer.time_this(_log, msg="export_outputs (chain runs)", level=logging.DEBUG):
+            self.central_butler.registry.refresh()
+            self.central_butler.registry.registerCollection(output_chain, CollectionType.CHAINED)
+
+            with self.central_butler.transaction():
+                _prepend_collection(self.central_butler, output_chain, output_runs)
 
     def clean_local_repo(self, exposure_ids: set[int]) -> None:
         """Remove local repo content that is only needed for a single visit.
