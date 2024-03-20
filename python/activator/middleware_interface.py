@@ -1044,7 +1044,7 @@ class MiddlewareInterface:
                 task_factory=factory,
             )
             try:
-                with lsst.utils.timer.time_this(_log, msg="make_quantum_graph", level=logging.DEBUG):
+                with lsst.utils.timer.time_this(_log, msg="executor.make_quantum_graph", level=logging.DEBUG):
                     qgraph = executor.make_quantum_graph(pipeline, where=where)
             except MissingDatasetTypeError as e:
                 _log.error(f"Building quantum graph for {pipeline_file} failed ", exc_info=e)
@@ -1063,8 +1063,12 @@ class MiddlewareInterface:
             executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
             _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
             try:
-                executor.run_pipeline(qgraph, graph_executor=self._get_graph_executor(exec_butler, factory))
-                _log.info("Pipeline successfully run.")
+                with lsst.utils.timer.time_this(_log, msg="executor.run_pipeline", level=logging.DEBUG):
+                    executor.run_pipeline(
+                        qgraph,
+                        graph_executor=self._get_graph_executor(exec_butler, factory)
+                    )
+                    _log.info("Pipeline successfully run.")
             except Exception as e:
                 state_changed = True  # better safe than sorry
                 try:
