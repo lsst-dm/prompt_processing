@@ -1148,6 +1148,18 @@ class MiddlewareInterface:
             else:
                 _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
 
+        # TODO: can we use SasquatchDatastore to streamline this?
+        dispatcher = _get_sasquatch_dispatcher()
+        if dispatcher:
+            with lsst.utils.timer.time_this(_log, msg="upload metrics", level=logging.DEBUG):
+                # Making bundles a collection makes debug log simpler, and it should be short.
+                bundles = list(self._query_datasets_by_storage_class(self.butler, exposure_ids, output_runs,
+                                                                     "MetricMeasurementBundle"))
+                for bundle in bundles:
+                    _log_trace.debug("Uploading %s...", bundle)
+                    dispatcher.dispatchRef(self.butler.get(bundle), bundle)
+            _log.debug("Uploaded %d pipeline metrics to %s.", len(bundles), dispatcher.url)
+
     @staticmethod
     def _get_safe_dataset_types(butler):
         """Return the set of dataset types that can be safely merged from a worker.
@@ -1261,6 +1273,46 @@ class MiddlewareInterface:
 
             with self.central_butler.transaction():
                 _prepend_collection(self.central_butler, output_chain, output_runs)
+
+    def _query_datasets_by_storage_class(self, butler, exposure_ids, collections, storage_class):
+        """Identify all datasets with a particular storage class, regardless of
+        dataset type.
+
+        Parameters
+        ----------
+        butler : `lsst.daf.butler.Butler`
+            The Butler in which to query for datasets.
+        exposure_ids : `set` [`int`]
+            Exposure IDs for which to return datasets.
+        collections : iterable [`str`]
+            The collections in which to query for datasets.
+        storage_class : `str`
+            The name of the storage class by which to query.
+
+        Yields
+        ------
+        dataset : `lsst.daf.butler.DatasetRef`
+            A dataset in ``collections`` of type ``storage_class``. Guaranteed
+            to include values for implied dimensions, but need not include
+            dimension records. The order in which datasets are returned
+            is undefined.
+        """
+        matching_types = {dtype for dtype in butler.registry.queryDatasetTypes(...)
+                          if dtype.storageClass_name == storage_class}
+        _log.debug("Found dataset types matching %s: %s", storage_class, {t.name for t in matching_types})
+        yield from butler.registry.queryDatasets(
+            matching_types,
+            collections=collections,
+            findFirst=True,
+            # collections may include other runs, so need to filter.
+            # Since AP processing is strictly visit-detector, these three
+            # dimensions should suffice.
+            # DO NOT assume that visit == exposure!
+            where="exposure in (exposure_ids)",
+            bind={"exposure_ids": exposure_ids},
+            instrument=self.instrument.getName(),
+            detector=self.visit.detector,
+        )
 
     def clean_local_repo(self, exposure_ids: set[int]) -> None:
         """Remove local repo content that is only needed for a single visit.
