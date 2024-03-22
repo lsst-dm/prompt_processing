@@ -1126,39 +1126,41 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
         """
-        with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
-            # Rather than determining which pipeline was run, just try to export all of them.
-            output_runs = []
-            for f in self._get_pipeline_files():
-                output_runs.extend([self._get_init_output_run(f, self._day_obs),
-                                    self._get_output_run(f, self._day_obs),
-                                    ])
-            exports = self._export_subset(exposure_ids,
-                                          # TODO: find a way to merge datasets like *_config
-                                          # or *_schema that are duplicated across multiple
-                                          # workers.
-                                          self._get_safe_dataset_types(self.butler),
-                                          in_collections=output_runs,
-                                          )
-            if exports:
-                populated_runs = {ref.run for ref in exports}
-                _log.info(f"Pipeline products saved to collections {populated_runs}.")
-                output_chain = self._get_output_chain(self._day_obs)
-                self._chain_exports(output_chain, populated_runs)
-            else:
-                _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
+        # Rather than determining which pipeline was run, just try to export all of them.
+        output_runs = []
+        for f in self._get_pipeline_files():
+            output_runs.extend([self._get_init_output_run(f, self._day_obs),
+                                self._get_output_run(f, self._day_obs),
+                                ])
+        try:
+            with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
+                exports = self._export_subset(exposure_ids,
+                                              # TODO: find a way to merge datasets like *_config
+                                              # or *_schema that are duplicated across multiple
+                                              # workers.
+                                              self._get_safe_dataset_types(self.butler),
+                                              in_collections=output_runs,
+                                              )
+                if exports:
+                    populated_runs = {ref.run for ref in exports}
+                    _log.info(f"Pipeline products saved to collections {populated_runs}.")
+                    output_chain = self._get_output_chain(self._day_obs)
+                    self._chain_exports(output_chain, populated_runs)
+                else:
+                    _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
 
-        # TODO: can we use SasquatchDatastore to streamline this?
-        dispatcher = _get_sasquatch_dispatcher()
-        if dispatcher:
-            with lsst.utils.timer.time_this(_log, msg="upload metrics", level=logging.DEBUG):
-                # Making bundles a collection makes debug log simpler, and it should be short.
-                bundles = list(self._query_datasets_by_storage_class(self.butler, exposure_ids, output_runs,
-                                                                     "MetricMeasurementBundle"))
-                for bundle in bundles:
-                    _log_trace.debug("Uploading %s...", bundle)
-                    dispatcher.dispatchRef(self.butler.get(bundle), bundle)
-            _log.debug("Uploaded %d pipeline metrics to %s.", len(bundles), dispatcher.url)
+        finally:
+            # TODO: can we use SasquatchDatastore to streamline this?
+            dispatcher = _get_sasquatch_dispatcher()
+            if dispatcher:
+                with lsst.utils.timer.time_this(_log, msg="upload metrics", level=logging.DEBUG):
+                    # Making bundles a collection makes debug log simpler, and it should be short.
+                    bundles = list(self._query_datasets_by_storage_class(
+                        self.butler, exposure_ids, output_runs, "MetricMeasurementBundle"))
+                    for bundle in bundles:
+                        _log_trace.debug("Uploading %s...", bundle)
+                        dispatcher.dispatchRef(self.butler.get(bundle), bundle)
+                _log.debug("Uploaded %d pipeline metrics to %s.", len(bundles), dispatcher.url)
 
     @staticmethod
     def _get_safe_dataset_types(butler):
