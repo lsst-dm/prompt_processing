@@ -1201,21 +1201,24 @@ class MiddlewareInterface:
             # Transferring governor dimensions in parallel can cause deadlocks in
             # central registry. We need to transfer our exposure/visit dimensions,
             # so handle those manually.
-            for dimension in ["exposure",
+            for dimension in ["group",
+                              "exposure",
                               "visit",
+                              # TODO: visit_* are not needed from version 4; remove when we require v6
                               "visit_definition",
                               "visit_detector_region",
                               "visit_system",
                               "visit_system_membership",
                               ]:
-                for record in self.butler.registry.queryDimensionRecords(
-                    dimension,
-                    where="exposure in (exposure_ids)",
-                    bind={"exposure_ids": exposure_ids},
-                    instrument=self.instrument.getName(),
-                    detector=self.visit.detector,
-                ):
-                    self.central_butler.registry.syncDimensionData(dimension, record, update=False)
+                if dimension in self.butler.registry.dimensions:
+                    for record in self.butler.registry.queryDimensionRecords(
+                        dimension,
+                        where="exposure in (exposure_ids)",
+                        bind={"exposure_ids": exposure_ids},
+                        instrument=self.instrument.getName(),
+                        detector=self.visit.detector,
+                    ):
+                        self.central_butler.registry.syncDimensionData(dimension, record, update=False)
             transferred = self.central_butler.transfer_from(self.butler, datasets,
                                                             transfer="copy", transfer_dimensions=False)
             if len(transferred) != len(datasets):
