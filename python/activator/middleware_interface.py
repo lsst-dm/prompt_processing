@@ -1202,6 +1202,7 @@ class MiddlewareInterface:
             # central registry. We need to transfer our exposure/visit dimensions,
             # so handle those manually.
             for dimension in ["group",
+                              "day_obs",
                               "exposure",
                               "visit",
                               # TODO: visit_* are not needed from version 4; remove when we require v6
