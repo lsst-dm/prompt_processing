@@ -1201,7 +1201,8 @@ class MiddlewareInterface:
             # Transferring governor dimensions in parallel can cause deadlocks in
             # central registry. We need to transfer our exposure/visit dimensions,
             # so handle those manually.
-            for dimension in ["exposure",
+            for dimension in ["group",
+                              "exposure",
                               "visit",
                               # TODO: visit_* are not needed from version 4; remove when we require v6
                               "visit_definition",
