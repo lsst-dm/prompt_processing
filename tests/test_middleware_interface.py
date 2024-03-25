@@ -370,7 +370,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                             self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
-            self.interface.ingest_image(filename)
+            exp_id = self.interface.ingest_image(filename)
+            self.assertEqual(exp_id, int(self.next_visit.groupId))
 
             datasets = list(self.interface.butler.registry.queryDatasets('raw',
                                                                          collections=[f'{instname}/raw/all']))
