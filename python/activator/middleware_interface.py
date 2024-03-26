@@ -270,13 +270,21 @@ class MiddlewareInterface:
         self._init_ingester()
         self._init_visit_definer()
 
-        # HACK: explicit collection gets around the fact that we don't have any
-        # timestamp/exposure information in a form we can pass to the Butler.
-        # This code will break once cameras start being versioned.
-        self.camera = self.central_butler.get(
-            "camera", instrument=self.instrument.getName(),
-            collections=self.instrument.makeUnboundedCalibrationRunName()
-        )
+        # TODO: can replace this with find_dataset on DM-42825
+        try:
+            self.camera = self.central_butler.get(
+                "camera",
+                instrument=self.instrument.getName(),
+                collections=self.instrument.makeCalibrationCollectionName(),
+            )
+        except lsst.daf.butler.DatasetNotFoundError:
+            # Repos that don't allow retrieval of camera from <instrument>/calibs
+            # have <instrument>/calibs/unbounded.
+            self.camera = self.central_butler.get(
+                "camera",
+                instrument=self.instrument.getName(),
+                collections=self.instrument.makeUnboundedCalibrationRunName(),
+            )
         self.skymap_name = skymap
         self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
                                               collections=self._collection_skymap)
