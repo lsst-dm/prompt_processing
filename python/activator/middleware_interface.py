@@ -953,6 +953,11 @@ class MiddlewareInterface:
         ----------
         oid : `str`
             Identifier for incoming image, relative to the image bucket.
+
+        Returns
+        -------
+        exposure_id : `int`
+            The exposure ID of the image that was just ingested.
         """
         # TODO: consider allowing pre-existing raws, as may happen when a
         # pipeline is rerun (see DM-34141).
@@ -967,6 +972,7 @@ class MiddlewareInterface:
         # how we plan to handle exceptions in this code.
         assert len(result) == 1, "Should have ingested exactly one image."
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
+        return result[0].dataId["exposure"]
 
     def _get_graph_executor(self, butler, factory):
         """Create a QuantumGraphExecutor suitable for Prompt Processing.

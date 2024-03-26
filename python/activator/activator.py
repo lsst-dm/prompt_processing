@@ -43,7 +43,6 @@ from .middleware_interface import get_central_butler, make_local_repo, Middlewar
 from .raw import (
     get_prefix_from_snap,
     is_path_consistent,
-    get_exp_id_from_oid,
     get_group_id_from_oid,
 )
 from .visit import FannedOutVisit
@@ -307,9 +306,8 @@ def next_visit_handler() -> Tuple[str, int]:
                     expected_visit.detector,
                 )
                 if oid:
-                    exp_id = get_exp_id_from_oid(oid)
-                    _log.debug("Found exposure %r already present", exp_id)
-                    mwi.ingest_image(oid)
+                    _log.debug("Found object %s already present", oid)
+                    exp_id = mwi.ingest_image(oid)
                     expid_set.add(exp_id)
 
             _log.debug("Waiting for snaps...")
@@ -336,9 +334,8 @@ def next_visit_handler() -> Tuple[str, int]:
                                 _log.debug("Received %r", oid)
                                 group_id = get_group_id_from_oid(oid)
                                 if group_id == expected_visit.groupId:
-                                    exp_id = get_exp_id_from_oid(oid)
                                     # Ingest the snap
-                                    mwi.ingest_image(oid)
+                                    exp_id = mwi.ingest_image(oid)
                                     expid_set.add(exp_id)
                         except ValueError:
                             _log.error(f"Failed to match object id '{oid}'")
