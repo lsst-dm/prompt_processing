@@ -1228,6 +1228,8 @@ class MiddlewareInterface:
             self.central_butler.registry.refresh()
 
         with lsst.utils.timer.time_this(_log, msg="export_outputs (transfer)", level=logging.DEBUG):
+            # Transfer dimensions created by ingest in case it was never done in
+            # central repo (which is normal for dev).
             # Transferring governor dimensions in parallel can cause deadlocks in
             # central registry. We need to transfer our exposure/visit dimensions,
             # so handle those manually.
@@ -1242,14 +1244,15 @@ class MiddlewareInterface:
                               "visit_system_membership",
                               ]:
                 if dimension in self.butler.registry.dimensions:
-                    for record in self.butler.registry.queryDimensionRecords(
+                    records = self.butler.registry.queryDimensionRecords(
                         dimension,
                         where="exposure in (exposure_ids)",
                         bind={"exposure_ids": exposure_ids},
                         instrument=self.instrument.getName(),
                         detector=self.visit.detector,
-                    ):
-                        self.central_butler.registry.syncDimensionData(dimension, record, update=False)
+                    )
+                    # If records don't match, this is not an error, and central takes precedence.
+                    self.central_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
             transferred = self.central_butler.transfer_from(self.butler, datasets,
                                                             transfer="copy", transfer_dimensions=False)
             if len(transferred) != len(datasets):
