@@ -31,6 +31,7 @@ import tempfile
 import typing
 
 import astropy
+import sqlalchemy
 
 import lsst.utils.timer
 from lsst.resources import ResourcePath
@@ -1273,8 +1274,16 @@ class MiddlewareInterface:
             self.central_butler.registry.refresh()
             self.central_butler.registry.registerCollection(output_chain, CollectionType.CHAINED)
 
-            with self.central_butler.transaction():
-                _prepend_collection(self.central_butler, output_chain, output_runs)
+            try:
+                with self.central_butler.transaction():
+                    _prepend_collection(self.central_butler, output_chain, output_runs)
+            except sqlalchemy.exc.IntegrityError as e:
+                # HACK: I don't know of a better way to distinguish exceptions
+                # blended by SQLAlchemy. To be removed on DM-43316.
+                if 'duplicate key value violates unique constraint "collection_chain_pkey"' in str(e):
+                    _log.error("Failed to update output chain concurrently; continuing export without retry.")
+                else:
+                    raise
 
     def _query_datasets_by_storage_class(self, butler, exposure_ids, collections, storage_class):
         """Identify all datasets with a particular storage class, regardless of
