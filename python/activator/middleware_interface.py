@@ -151,7 +151,8 @@ def _get_sasquatch_dispatcher():
     if not url:
         return None
     token = os.environ.get("SASQUATCH_TOKEN", "")
-    return SasquatchDispatcher(url=url, token=token, namespace="lsst.prompt")
+    namespace = os.environ.get("DAF_BUTLER_SASQUATCH_NAMESPACE", "lsst.prompt")
+    return SasquatchDispatcher(url=url, token=token, namespace=namespace)
 
 
 # Offset used to define exposures' day_obs value.
@@ -1125,27 +1126,41 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
         """
-        with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
-            # Rather than determining which pipeline was run, just try to export all of them.
-            output_runs = []
-            for f in self._get_pipeline_files():
-                output_runs.extend([self._get_init_output_run(f, self._day_obs),
-                                    self._get_output_run(f, self._day_obs),
-                                    ])
-            exports = self._export_subset(exposure_ids,
-                                          # TODO: find a way to merge datasets like *_config
-                                          # or *_schema that are duplicated across multiple
-                                          # workers.
-                                          self._get_safe_dataset_types(self.butler),
-                                          in_collections=output_runs,
-                                          )
-            if exports:
-                populated_runs = {ref.run for ref in exports}
-                _log.info(f"Pipeline products saved to collections {populated_runs}.")
-                output_chain = self._get_output_chain(self._day_obs)
-                self._chain_exports(output_chain, populated_runs)
-            else:
-                _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
+        # Rather than determining which pipeline was run, just try to export all of them.
+        output_runs = []
+        for f in self._get_pipeline_files():
+            output_runs.extend([self._get_init_output_run(f, self._day_obs),
+                                self._get_output_run(f, self._day_obs),
+                                ])
+        try:
+            with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
+                exports = self._export_subset(exposure_ids,
+                                              # TODO: find a way to merge datasets like *_config
+                                              # or *_schema that are duplicated across multiple
+                                              # workers.
+                                              self._get_safe_dataset_types(self.butler),
+                                              in_collections=output_runs,
+                                              )
+                if exports:
+                    populated_runs = {ref.run for ref in exports}
+                    _log.info(f"Pipeline products saved to collections {populated_runs}.")
+                    output_chain = self._get_output_chain(self._day_obs)
+                    self._chain_exports(output_chain, populated_runs)
+                else:
+                    _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
+
+        finally:
+            # TODO: can we use SasquatchDatastore to streamline this?
+            dispatcher = _get_sasquatch_dispatcher()
+            if dispatcher:
+                with lsst.utils.timer.time_this(_log, msg="upload metrics", level=logging.DEBUG):
+                    # Making bundles a collection makes debug log simpler, and it should be short.
+                    bundles = list(self._query_datasets_by_storage_class(
+                        self.butler, exposure_ids, output_runs, "MetricMeasurementBundle"))
+                    for bundle in bundles:
+                        _log_trace.debug("Uploading %s...", bundle)
+                        dispatcher.dispatchRef(self.butler.get(bundle), bundle)
+                _log.debug("Uploaded %d pipeline metrics to %s.", len(bundles), dispatcher.url)
 
     @staticmethod
     def _get_safe_dataset_types(butler):
@@ -1260,6 +1275,46 @@ class MiddlewareInterface:
 
             with self.central_butler.transaction():
                 _prepend_collection(self.central_butler, output_chain, output_runs)
+
+    def _query_datasets_by_storage_class(self, butler, exposure_ids, collections, storage_class):
+        """Identify all datasets with a particular storage class, regardless of
+        dataset type.
+
+        Parameters
+        ----------
+        butler : `lsst.daf.butler.Butler`
+            The Butler in which to query for datasets.
+        exposure_ids : `set` [`int`]
+            Exposure IDs for which to return datasets.
+        collections : iterable [`str`]
+            The collections in which to query for datasets.
+        storage_class : `str`
+            The name of the storage class by which to query.
+
+        Yields
+        ------
+        dataset : `lsst.daf.butler.DatasetRef`
+            A dataset in ``collections`` of type ``storage_class``. Guaranteed
+            to include values for implied dimensions, but need not include
+            dimension records. The order in which datasets are returned
+            is undefined.
+        """
+        matching_types = {dtype for dtype in butler.registry.queryDatasetTypes(...)
+                          if dtype.storageClass_name == storage_class}
+        _log.debug("Found dataset types matching %s: %s", storage_class, {t.name for t in matching_types})
+        yield from butler.registry.queryDatasets(
+            matching_types,
+            collections=collections,
+            findFirst=True,
+            # collections may include other runs, so need to filter.
+            # Since AP processing is strictly visit-detector, these three
+            # dimensions should suffice.
+            # DO NOT assume that visit == exposure!
+            where="exposure in (exposure_ids)",
+            bind={"exposure_ids": exposure_ids},
+            instrument=self.instrument.getName(),
+            detector=self.visit.detector,
+        )
 
     def clean_local_repo(self, exposure_ids: set[int]) -> None:
         """Remove local repo content that is only needed for a single visit.
