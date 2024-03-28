@@ -1374,7 +1374,7 @@ class MiddlewareInterface:
 
             # TODO: workaround for DM-40193
             if not cache_anything:
-                self.butler.pruneDatasets(self.butler.queryDatasets(...),
+                self.butler.pruneDatasets(self.butler.registry.queryDatasets(...),
                                           dissociate=True, unstore=True, purge=True)
 
 
