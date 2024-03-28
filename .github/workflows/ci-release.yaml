@@ -22,7 +22,7 @@ name: Release CI
 env:
   IMAGE_NAME: lsst-dm/prompt-service
   # Base tag to run tests against.
-  BASE_TAG: "latest"
+  BASE_TAG: "d_latest"
 
 jobs:
   build:
