@@ -83,7 +83,10 @@ Please note that the tag does not include a ``v`` at the beginning.
 On GitHub.com, navigate to the main page of the repository.
 To the right of the list of files, click the latest release.
 At the top of the page, click **## commits to main since this release**.
-This is the list of changes that will be included in the next release.
+This is the list of internal changes that will be included in the next release.
+
+If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
+In practice, almost any Science Pipelines update is at least a minor version, because new features are added constantly.
 
 For the ``prompt_processing`` service, a new major version is triggered by any of the following:
 
