@@ -88,7 +88,7 @@ This is the list of changes that will be included in the next release.
 For the ``prompt_processing`` service, a new major version is triggered by any of the following:
 
 * Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
-* Incompatibility with an old APDB schema or ``dax_apdb`` version (see `DMTN-269`_ for the distinction)
+* Incompatibility with an old `APDB schema`_, `ApdbSql`_, or `ApdbCassandra`_ version (see `DMTN-269`_ for the distinction)
 * Breaking changes in the Alerts schema
 * Incompatibility with an old `Butler dimensions-config`_ version
 
@@ -111,13 +111,19 @@ Add text as follows.
 
 * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
 * Science Pipelines version and rubin-env version
-* Supported APDB schema and ``ApdbSql``/``ApdbCassandra`` versions (see `DMTN-269`_ for rationale)
+* Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_ versions (see `DMTN-269`_ for rationale)
 * Any changes to the Alerts schema
 * Supported `Butler dimensions-config`_ versions
 
 .. _DMTN-269: https://dmtn-269.lsst.io/
 
 .. _Butler dimensions-config: https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/dimensions.html#dimension-universe-change-history
+
+.. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/yml/apdb.yaml#L4
+
+.. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/apdbSql.py#L60-L63
+
+.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/apdbCassandra.py#L80-L83
 
 Select **Publish Release**.
 
