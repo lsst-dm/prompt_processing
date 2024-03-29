@@ -64,6 +64,8 @@ _log_trace3.setLevel(logging.CRITICAL)  # Turn off by default.
 # VALIDITY-HACK: local-only calib collections break if calibs are not requested
 # in chronological order. Turn off for large development runs.
 cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
+# TODO: workaround for DM-40193
+cache_anything = bool(int(os.environ.get("DEBUG_CACHE_INPUTS", '1')))
 
 
 def get_central_butler(central_repo: str, instrument_class: str):
@@ -1369,6 +1371,11 @@ class MiddlewareInterface:
                 for member in calib_taggeds:
                     self.butler.registry.removeCollection(member)
                 self.butler.removeRuns(calib_runs, unstore=True)
+
+            # TODO: workaround for DM-40193
+            if not cache_anything:
+                self.butler.pruneDatasets(self.butler.registry.queryDatasets(...),
+                                          disassociate=True, unstore=True, purge=True)
 
 
 class _MissingDatasetError(RuntimeError):
