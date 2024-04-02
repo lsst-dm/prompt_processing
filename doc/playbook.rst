@@ -249,7 +249,7 @@ One raw was ingested, visit-defined, and kept in the development central repo, s
 
 .. code-block:: sh
 
-   make_apdb.py -c db_url="sqlite:///apdb.db"
+   apdb-cli create-sql "sqlite:///apdb.db" apdb_config.py
    pipetask run -b s3://rubin-pp-dev-users/central_repo -i LATISS/raw/all,LATISS/defaults,LATISS/templates -o u/username/collection  -d "detector=0 and instrument='LATISS' and exposure=2023082900500 and visit_system=0" -p $PROMPT_PROCESSING_DIR/pipelines/LATISS/ApPipe.yaml -c diaPipe:apdb.db_url=sqlite:///apdb.db --register-dataset-types
 
 Development Service
@@ -455,12 +455,12 @@ From ``rubin-devl``, new APDB schemas can be created in the usual way:
 
 .. code-block:: sh
 
-   make_apdb.py -c namespace="pp_apdb_latiss" \
-       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
-   make_apdb.py -c namespace="pp_apdb_hsc" \
-       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
-   make_apdb.py -c namespace="pp_apdb_lsstcomcamsim" \
-       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+   apdb-cli create-sql --namespace="pp_apdb_latiss" \
+       "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_latiss.py
+   apdb-cli create-sql --namespace="pp_apdb_hsc" \
+       "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_hsc.py
+   apdb-cli create-sql --namespace="pp_apdb_lsstcomcamsim" \
+       "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_lsstcomcamsim.py
 
 Resetting the APDB
 ------------------
@@ -470,17 +470,17 @@ To restore the APDB to a clean state, run the following:
 .. code-block:: sh
 
    psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_latiss" cascade;'
-   make_apdb.py -c namespace="pp_apdb_latiss" \
-       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+   apdb-cli create-sql --namespace="pp_apdb_latiss" \
+       "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_latiss.py
 
 .. code-block:: sh
 
    psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_hsc" cascade;'
-   make_apdb.py -c namespace="pp_apdb_hsc" \
-       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+   apdb-cli create-sql --namespace="pp_apdb_hsc" \
+       "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_hsc.py
 
 .. code-block:: sh
 
    psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_lsstcomcamsim" cascade;'
-   make_apdb.py -c namespace="pp_apdb_lsstcomcamsim" \
-       -c db_url="postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl"
+   apdb-cli create-sql --namespace="pp_apdb_lsstcomcamsim" \
+       "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_lsstcomcamsim.py
