@@ -467,22 +467,19 @@ From ``rubin-devl``, new APDB schemas can be created in the usual way:
 Resetting the APDB
 ------------------
 
-To restore the APDB to a clean state, run the following:
+To restore the APDB to a clean state, run ``apdb-cli create-sql`` with ``--drop`` option which recreates all tables:
 
 .. code-block:: sh
 
-   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_latiss" cascade;'
-   apdb-cli create-sql --namespace="pp_apdb_latiss" \
+   apdb-cli create-sql --drop --namespace="pp_apdb_latiss" \
        "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_latiss.py
 
 .. code-block:: sh
 
-   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_hsc" cascade;'
-   apdb-cli create-sql --namespace="pp_apdb_hsc" \
+   apdb-cli create-sql --drop --namespace="pp_apdb_hsc" \
        "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_hsc.py
 
 .. code-block:: sh
 
-   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin -c 'drop schema "pp_apdb_lsstcomcamsim" cascade;'
-   apdb-cli create-sql --namespace="pp_apdb_lsstcomcamsim" \
+   apdb-cli create-sql --drop --namespace="pp_apdb_lsstcomcamsim" \
        "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_lsstcomcamsim.py
