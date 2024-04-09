@@ -87,6 +87,7 @@ This is the list of internal changes that will be included in the next release.
 
 If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
 In practice, almost any Science Pipelines update is at least a minor version, because new features are added constantly.
+In the future, there may be "patched weekly" builds, which would justify a patch version of Prompt Processing.
 
 For the ``prompt_processing`` service, a new major version is triggered by any of the following:
 
