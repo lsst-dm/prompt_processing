@@ -83,14 +83,18 @@ Please note that the tag does not include a ``v`` at the beginning.
 On GitHub.com, navigate to the main page of the repository.
 To the right of the list of files, click the latest release.
 At the top of the page, click **## commits to main since this release**.
-This is the list of changes that will be included in the next release.
+This is the list of internal changes that will be included in the next release.
+
+If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
+In practice, almost any Science Pipelines update is at least a minor version, because new features are added constantly.
+In the future, there may be "patched weekly" builds, which would justify a patch version of Prompt Processing.
 
 For the ``prompt_processing`` service, a new major version is triggered by any of the following:
 
 * Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
-* Incompatibility with an old APDB schema or ``dax_apdb`` version (see `DMTN-269`_ for the distinction)
-* Breaking changes in the Alerts schema
+* Incompatibility with an old `APDB schema`_, `ApdbSql`_, or `ApdbCassandra`_ version (see `DMTN-269`_ for the distinction)
 * Incompatibility with an old `Butler dimensions-config`_ version
+* A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
 
 For the `next_visit_fan_out`_ service, a new major version is triggered by any of the following:
 
@@ -111,13 +115,23 @@ Add text as follows.
 
 * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
 * Science Pipelines version and rubin-env version
-* Supported APDB schema and ``ApdbSql``/``ApdbCassandra`` versions (see `DMTN-269`_ for rationale)
-* Any changes to the Alerts schema
+* Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_ versions (see `DMTN-269`_ for rationale)
 * Supported `Butler dimensions-config`_ versions
+* The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
+
+.. _DMTN-093: https://dmtn-093.lsst.io/#alertmanagement
 
 .. _DMTN-269: https://dmtn-269.lsst.io/
 
 .. _Butler dimensions-config: https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/dimensions.html#dimension-universe-change-history
+
+.. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/yml/apdb.yaml#L4
+
+.. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/apdbSql.py#L60-L63
+
+.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/apdbCassandra.py#L80-L83
+
+.. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
 
 Select **Publish Release**.
 
