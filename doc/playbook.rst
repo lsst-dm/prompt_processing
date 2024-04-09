@@ -89,8 +89,8 @@ For the ``prompt_processing`` service, a new major version is triggered by any o
 
 * Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
 * Incompatibility with an old `APDB schema`_, `ApdbSql`_, or `ApdbCassandra`_ version (see `DMTN-269`_ for the distinction)
-* Breaking changes in the Alerts schema
 * Incompatibility with an old `Butler dimensions-config`_ version
+* A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
 
 For the `next_visit_fan_out`_ service, a new major version is triggered by any of the following:
 
@@ -112,8 +112,10 @@ Add text as follows.
 * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
 * Science Pipelines version and rubin-env version
 * Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_ versions (see `DMTN-269`_ for rationale)
-* Any changes to the Alerts schema
 * Supported `Butler dimensions-config`_ versions
+* The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
+
+.. _DMTN-093: https://dmtn-093.lsst.io/#alertmanagement
 
 .. _DMTN-269: https://dmtn-269.lsst.io/
 
@@ -124,6 +126,8 @@ Add text as follows.
 .. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/apdbSql.py#L60-L63
 
 .. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/apdbCassandra.py#L80-L83
+
+.. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
 
 Select **Publish Release**.
 
