@@ -598,7 +598,7 @@ class MiddlewareInterface:
             points.append(wcs.pixelToSky(corner))
         patches = tract.findPatchList(points)
         patches_str = ','.join(str(p.sequential_index) for p in patches)
-        template_where = f"patch in ({patches_str}) and tract={tract.tract_id} and physical_filter='{filter}'"
+        template_where = f"patch in ({patches_str})"
         # TODO: do we need to have the coadd name used in the pipeline
         # specified as a class kwarg, so that we only load one here?
         # TODO: alternately, we need to extract it from the pipeline? (best?)
@@ -610,6 +610,8 @@ class MiddlewareInterface:
                 collections=self._collection_template,
                 instrument=self.instrument.getName(),
                 skymap=self.skymap_name,
+                tract=tract.tract_id,
+                physical_filter=filter,
                 where=template_where,
                 findFirst=True))
         except _MissingDatasetError as err:
@@ -636,7 +638,6 @@ class MiddlewareInterface:
         """
         # TODO: we can't filter by validity range because it's not
         # supported in queryDatasets yet.
-        calib_where = f"detector={detector_id} and physical_filter='{filter}'"
         # TAI observation start time should be used for calib validity range.
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
         # TODO: we can't use findFirst=True yet because findFirst query
@@ -646,7 +647,8 @@ class MiddlewareInterface:
             ...,
             collections=self.instrument.makeCalibrationCollectionName(),
             instrument=self.instrument.getName(),
-            where=calib_where,
+            detector=detector_id,
+            physical_filter=filter,
             calib_date=calib_date,
         ))
         if calibs:
