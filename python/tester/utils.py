@@ -58,7 +58,7 @@ INSTRUMENTS = {
     "LSSTComCamSim": Instrument(1, 9, 3),
     "LATISS": Instrument(1, 1, 2),
     "DECam": Instrument(1, 62),
-    "HSC": Instrument(1, 112),
+    "HSC": Instrument(1, 112, 999),
 }
 # The schema ID of the ``next_visit`` message in the Sasquatch REST Proxy.
 SCHEMA_ID = 99

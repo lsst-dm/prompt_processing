@@ -410,16 +410,16 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
   This visit can test pipeline fallback features.
 * For LSSTComCamSim, 2 groups, in total 18 raw fits files and their corresponding json metadata files, are curated.
 
-``python/tester/upload_from_repo.py``: Command line argument is the number of groups of images to send.
+``python/tester/upload_from_repo.py``: Command line arguments are a configuration file and the number of groups of images to send.
 
 Sample command line:
 
 .. code-block:: sh
 
-   python upload_from_repo.py 3
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/HSC.yaml 3
 
-This scripts draws images from the curated ``HSC/RC2/defaults`` collection at USDF's ``/repo/main`` butler repository.
-The source collection includes 432 visits, each with 103 detector images.
+This scripts draws images from a butler repository as defined in the input configuration file.
+A butler query constrains the data selection.
 The visits are randomly selected and uploaded as one new group for each visit.
 Images can be uploaded in parallel processes.
 

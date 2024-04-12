@@ -26,6 +26,7 @@ import multiprocessing
 import random
 import tempfile
 import time
+import yaml
 
 import boto3
 from botocore.handlers import validate_bucket_name
@@ -36,6 +37,7 @@ from lsst.daf.butler import Butler
 from activator.raw import get_raw_path
 from activator.visit import SummitVisit
 from tester.utils import (
+    INSTRUMENTS,
     get_last_group,
     increment_group,
     make_exposure_id,
@@ -77,6 +79,12 @@ def _set_s3_bucket():
 def _make_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "config",
+        help="URI to a YAML file contianing the configurations "
+             "of the upload test, including the instrument name "
+             "the data repo, and the dataset selection.",
+    )
+    parser.add_argument(
         "n_groups",
         type=int,
         help="The number of groups to upload.",
@@ -86,18 +94,26 @@ def _make_parser():
 
 def main():
     args = _make_parser().parse_args()
+    with open(args.config) as file:
+        configs = yaml.safe_load(file)
+    instrument = configs["instrument"]
 
     date = time.strftime("%Y%m%d")
 
     kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
     _set_s3_bucket()
 
-    last_group = get_last_group(dest_bucket, "HSC", date)
-    group = increment_group("HSC", last_group, random.randrange(10, 19))
+    last_group = get_last_group(dest_bucket, instrument, date)
+    group = increment_group(instrument, last_group, random.randrange(10, 19))
     _log.debug(f"Last group {last_group}; new group base {group}")
 
-    butler = Butler("/repo/main")
-    visit_list = get_visit_list(butler, args.n_groups)
+    butler = Butler(configs["repo"])
+    visit_list = get_visit_list(
+        butler,
+        args.n_groups,
+        instrument=instrument,
+        **configs["query"],
+    )
 
     # fork pools don't work well with connection pools, such as those used
     # for Butler registry or S3.
@@ -110,9 +126,9 @@ def main():
     with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool, \
             tempfile.TemporaryDirectory() as temp_dir:
         for visit in visit_list:
-            group = increment_group("HSC", group, 1)
-            refs = prepare_one_visit(kafka_url, group, butler, "HSC", visit)
-            _log.info(f"Slewing to group {group}, with HSC visit {visit}")
+            group = increment_group(instrument, group, 1)
+            refs = prepare_one_visit(kafka_url, group, butler, instrument, visit)
+            _log.info(f"Slewing to group {group}, with {instrument} visit {visit}")
             time.sleep(SLEW_INTERVAL)
             _log.info(f"Taking exposure for group {group}")
             time.sleep(EXPOSURE_INTERVAL)
@@ -123,8 +139,8 @@ def main():
         pool.join()
 
 
-def get_visit_list(butler, n_sample):
-    """Return a list of randomly selected raw visits from HSC-RC2 in the butler repo.
+def get_visit_list(butler, n_sample, **kwargs):
+    """Return a list of randomly selected raw visits in the butler repo.
 
     Parameters
     ----------
@@ -132,19 +148,17 @@ def get_visit_list(butler, n_sample):
         The Butler in which to search for records of raw data.
     n_sample: `int`
         The number of visits to select.
+    **kwargs
+        Additional parameters for the butler query. They have the same meanings
+        as the parameters of `lsst.daf.butler.Registry.queryDimensionRecords`.
+        The query must be valid for ``butler``.
 
     Returns
     -------
     visits : `list` [`int`]
-        A list of randomly selected non-narrow-band visit IDs from the HSC-RC2 dataset
+        A list of randomly selected visit IDs from the dataset.
     """
-    results = butler.registry.queryDimensionRecords(
-        "visit",
-        datasets="raw",
-        collections="HSC/RC2/defaults",
-        where="instrument='HSC' and exposure.observation_type='science' "
-              "and band in ('g', 'r', 'i', 'z', 'y')",
-    )
+    results = butler.registry.queryDimensionRecords("visit", datasets="raw", **kwargs)
     records = [record.id for record in set(results)]
     if n_sample > len(records):
         raise ValueError(f"Requested {n_sample} groups, but only {len(records)} are available.")
@@ -196,7 +210,7 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
             rotationSystem=SummitVisit.RotSys.SKY,
             cameraAngle=data_id.records["exposure"].sky_angle,
             survey="SURVEY",
-            salIndex=999,
+            salIndex=INSTRUMENTS[instrument].sal_index,
             scriptSalIndex=999,
             dome=SummitVisit.Dome.OPEN,
             duration=duration,
