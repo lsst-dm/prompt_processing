@@ -375,7 +375,7 @@ If in doubt, check the logs first.
 Testers
 =======
 
-``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` are scripts that simulate the CCS image writer.
+``python/tester/upload.py`` and ``python/tester/upload_from_repo.py`` are scripts that simulate the CCS image writer.
 It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
 
 You must have a profile set up for the ``rubin-pp-dev`` bucket (see `Buckets`_, above).
@@ -410,13 +410,13 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
   This visit can test pipeline fallback features.
 * For LSSTComCamSim, 2 groups, in total 18 raw fits files and their corresponding json metadata files, are curated.
 
-``python/tester/upload_hsc_rc2.py``: Command line argument is the number of groups of images to send.
+``python/tester/upload_from_repo.py``: Command line argument is the number of groups of images to send.
 
 Sample command line:
 
 .. code-block:: sh
 
-   python upload_hsc_rc2.py 3
+   python upload_from_repo.py 3
 
 This scripts draws images from the curated ``HSC/RC2/defaults`` collection at USDF's ``/repo/main`` butler repository.
 The source collection includes 432 visits, each with 103 detector images.
@@ -432,7 +432,7 @@ The schema of the ``next_visit`` events from the summit can be found at `ScriptQ
 To implement schema changes in the development environment:
 
 * Update the ``*Visit`` classes in ``python/activator/visit.py`` accordingly.
-* Update the upload tester scripts ``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` where simulated ``next_visit`` events originate.
+* Update the upload tester scripts ``python/tester/upload.py`` and ``python/tester/upload_from_repo.py`` where simulated ``next_visit`` events originate.
 * Update relevant unit tests.
 * Register the new schema to the Sasquatch's schema registry for the ``test.next-visit`` topic.
   The `Sasquatch documentation <https://sasquatch.lsst.io/user-guide/avro.html>`_ describes the schema evolution.

@@ -90,7 +90,7 @@ def main():
     _log.debug(f"Last group {last_group}; new group base {group}")
 
     butler = Butler("/repo/main")
-    visit_list = get_hsc_visit_list(butler, n_groups)
+    visit_list = get_visit_list(butler, n_groups)
 
     # fork pools don't work well with connection pools, such as those used
     # for Butler registry or S3.
@@ -110,13 +110,13 @@ def main():
             _log.info(f"Taking exposure for group {group}")
             time.sleep(EXPOSURE_INTERVAL)
             _log.info(f"Uploading detector images for group {group}")
-            upload_hsc_images(pool, temp_dir, group, butler, refs)
+            upload_images(pool, temp_dir, group, butler, refs)
         pool.close()
         _log.info("Waiting for uploads to finish...")
         pool.join()
 
 
-def get_hsc_visit_list(butler, n_sample):
+def get_visit_list(butler, n_sample):
     """Return a list of randomly selected raw visits from HSC-RC2 in the butler repo.
 
     Parameters
@@ -138,10 +138,10 @@ def get_hsc_visit_list(butler, n_sample):
         where="instrument='HSC' and exposure.observation_type='science' "
               "and band in ('g', 'r', 'i', 'z', 'y')",
     )
-    rc2 = [record.id for record in set(results)]
-    if n_sample > len(rc2):
-        raise ValueError(f"Requested {n_sample} groups, but only {len(rc2)} are available.")
-    visits = random.sample(rc2, k=n_sample)
+    records = [record.id for record in set(results)]
+    if n_sample > len(records):
+        raise ValueError(f"Requested {n_sample} groups, but only {len(records)} are available.")
+    visits = random.sample(records, k=n_sample)
     return visits
 
 
@@ -199,8 +199,8 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     return refs
 
 
-def upload_hsc_images(pool, temp_dir, group_id, butler, refs):
-    """Upload one group of raw HSC images to the central repo
+def upload_images(pool, temp_dir, group_id, butler, refs):
+    """Upload one group of raw images to the central repo
 
     Parameters
     ----------
@@ -242,7 +242,7 @@ def _get_max_processes():
 
 
 def _upload_one_image(temp_dir, group_id, butler, ref):
-    """Upload a raw HSC image to the central repo.
+    """Upload a raw image to the central repo.
 
     Parameters
     ----------
@@ -256,10 +256,11 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
     ref : `lsst.daf.butler.DatasetRef`
         The dataset to upload.
     """
+    instrument = ref.dataId["instrument"]
     with time_this(log=_log, msg="Single-image processing", prefix=None):
-        exposure_num, headers = make_exposure_id("HSC", group_id, 0)
+        exposure_num, headers = make_exposure_id(instrument, group_id, 0)
         dest_key = get_raw_path(
-            "HSC",
+            instrument,
             ref.dataId["detector"],
             group_id,
             0,
