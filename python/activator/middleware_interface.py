@@ -545,13 +545,9 @@ class MiddlewareInterface:
         shard_ids, _ = indexer.getShardIds(center, radius+self.padding)
         htm_where = f"htm7 in ({','.join(str(x) for x in shard_ids)})"
         # Get shards from all refcats that overlap this detector.
-        # TODO: `...` doesn't work for this queryDatasets call
-        # currently, and we can't queryDatasetTypes in just the refcats
-        # collection, so we have to specify a list here. Replace this
-        # with another solution ASAP.
-        possible_refcats = ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110",
-                            "atlas_refcat2_20220201", "gaia_dr3_20230707", "uw_stars_20240228"]
-        _log.debug("Searching for refcats in %s...", shard_ids)
+        possible_refcats = _get_refcat_types(self.central_butler)
+        _log.debug("Searching for refcats of types %s in %s...",
+                   {t.name for t in possible_refcats}, shard_ids)
         refcats = set(_filter_datasets(
                       self.central_butler, self.butler,
                       possible_refcats,
@@ -1551,3 +1547,23 @@ def _filter_calibs_by_date(butler: Butler,
             if found_ref:
                 filtered_calibs.append(found_ref)
         return filtered_calibs
+
+
+def _get_refcat_types(butler):
+    """Return the refcat dataset types known to a Butler.
+
+    Parameters
+    ---------
+    butler: `lsst.daf.butler.Butler`
+        The butler in which to search for refcat dataset types.
+
+    Returns
+    -------
+    refcat_types : iterable of `str` or `lsst.daf.butler.DatasetType`
+        The matching dataset type objects, or their names.
+    """
+    # TODO: we can't queryDatasetTypes in just the refcats
+    # collection, so we have to specify a list here. Replace this
+    # with another solution ASAP.
+    return ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110",
+            "atlas_refcat2_20220201", "gaia_dr3_20230707", "uw_stars_20240228"]
