@@ -545,13 +545,9 @@ class MiddlewareInterface:
         shard_ids, _ = indexer.getShardIds(center, radius+self.padding)
         htm_where = f"htm7 in ({','.join(str(x) for x in shard_ids)})"
         # Get shards from all refcats that overlap this detector.
-        # TODO: `...` doesn't work for this queryDatasets call
-        # currently, and we can't queryDatasetTypes in just the refcats
-        # collection, so we have to specify a list here. Replace this
-        # with another solution ASAP.
-        possible_refcats = ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110",
-                            "atlas_refcat2_20220201", "gaia_dr3_20230707", "uw_stars_20240228"]
-        _log.debug("Searching for refcats in %s...", shard_ids)
+        possible_refcats = _get_refcat_types(self.central_butler)
+        _log.debug("Searching for refcats of types %s in %s...",
+                   {t.name for t in possible_refcats}, shard_ids)
         refcats = set(_filter_datasets(
                       self.central_butler, self.butler,
                       possible_refcats,
@@ -598,7 +594,7 @@ class MiddlewareInterface:
             points.append(wcs.pixelToSky(corner))
         patches = tract.findPatchList(points)
         patches_str = ','.join(str(p.sequential_index) for p in patches)
-        template_where = f"patch in ({patches_str}) and tract={tract.tract_id} and physical_filter='{filter}'"
+        template_where = f"patch in ({patches_str})"
         # TODO: do we need to have the coadd name used in the pipeline
         # specified as a class kwarg, so that we only load one here?
         # TODO: alternately, we need to extract it from the pipeline? (best?)
@@ -610,6 +606,8 @@ class MiddlewareInterface:
                 collections=self._collection_template,
                 instrument=self.instrument.getName(),
                 skymap=self.skymap_name,
+                tract=tract.tract_id,
+                physical_filter=filter,
                 where=template_where,
                 findFirst=True))
         except _MissingDatasetError as err:
@@ -634,19 +632,21 @@ class MiddlewareInterface:
         calibs : iterable [`DatasetRef`]
             The calibs to be exported, after any filtering.
         """
-        # TODO: we can't filter by validity range because it's not
-        # supported in queryDatasets yet.
-        calib_where = f"detector={detector_id} and physical_filter='{filter}'"
         # TAI observation start time should be used for calib validity range.
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
+        # Querying by specific types is much faster than querying by ...
+        # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
+        types = {t for t in self.central_butler.registry.queryDatasetTypes()
+                 if t.isCalibration() and "exposure" not in t.dimensions}
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
         calibs = set(_filter_datasets(
             self.central_butler, self.butler,
-            ...,
+            types,
             collections=self.instrument.makeCalibrationCollectionName(),
             instrument=self.instrument.getName(),
-            where=calib_where,
+            detector=detector_id,
+            physical_filter=filter,
             calib_date=calib_date,
         ))
         if calibs:
@@ -1547,3 +1547,22 @@ def _filter_calibs_by_date(butler: Butler,
             if found_ref:
                 filtered_calibs.append(found_ref)
         return filtered_calibs
+
+
+def _get_refcat_types(butler):
+    """Return the refcat dataset types known to a Butler.
+
+    Parameters
+    ---------
+    butler: `lsst.daf.butler.Butler`
+        The butler in which to search for refcat dataset types.
+
+    Returns
+    -------
+    refcat_types : iterable of `str` or `lsst.daf.butler.DatasetType`
+        The matching dataset type objects, or their names.
+    """
+    # Assume that any type that has ONLY a single spatial dimension, and a
+    # SimpleCatalog storage class, is a refcat.
+    return {t for t in butler.registry.queryDatasetTypes(...)
+            if t.storageClass_name == "SimpleCatalog" and len(t.dimensions) == 1 and t.dimensions.skypix}
