@@ -1562,8 +1562,7 @@ def _get_refcat_types(butler):
     refcat_types : iterable of `str` or `lsst.daf.butler.DatasetType`
         The matching dataset type objects, or their names.
     """
-    # TODO: we can't queryDatasetTypes in just the refcats
-    # collection, so we have to specify a list here. Replace this
-    # with another solution ASAP.
-    return ["gaia", "panstarrs", "gaia_dr2_20200414", "ps1_pv3_3pi_20170110",
-            "atlas_refcat2_20220201", "gaia_dr3_20230707", "uw_stars_20240228"]
+    # Assume that any type that has ONLY a single spatial dimension, and a
+    # SimpleCatalog storage class, is a refcat.
+    return {t for t in butler.registry.queryDatasetTypes(...)
+            if t.storageClass_name == "SimpleCatalog" and len(t.dimensions) == 1 and t.dimensions.skypix}
