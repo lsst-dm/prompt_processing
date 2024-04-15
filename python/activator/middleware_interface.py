@@ -636,8 +636,6 @@ class MiddlewareInterface:
         calibs : iterable [`DatasetRef`]
             The calibs to be exported, after any filtering.
         """
-        # TODO: we can't filter by validity range because it's not
-        # supported in queryDatasets yet.
         # TAI observation start time should be used for calib validity range.
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
         # TODO: we can't use findFirst=True yet because findFirst query
