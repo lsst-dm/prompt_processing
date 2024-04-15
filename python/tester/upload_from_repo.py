@@ -104,7 +104,7 @@ def main():
             tempfile.TemporaryDirectory() as temp_dir:
         for visit in visit_list:
             group = increment_group("HSC", group, 1)
-            refs = prepare_one_visit(kafka_url, group, butler, visit)
+            refs = prepare_one_visit(kafka_url, group, butler, "HSC", visit)
             _log.info(f"Slewing to group {group}, with HSC visit {visit}")
             time.sleep(SLEW_INTERVAL)
             _log.info(f"Taking exposure for group {group}")
@@ -145,8 +145,8 @@ def get_visit_list(butler, n_sample):
     return visits
 
 
-def prepare_one_visit(kafka_url, group_id, butler, visit_id):
-    """Extract metadata and send next_visit events for one HSC-RC2 visit
+def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
+    """Extract metadata and send next_visit events for one visit
 
     One ``next_visit`` message is sent to the development fan-out service,
     which translates it into multiple messages.
@@ -159,8 +159,10 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
         The group ID for the message to send.
     butler : `lsst.daf.butler.Butler`
         The Butler with the raw data.
+    instrument : `str`
+        The short instrument name of this visit.
     visit_id : `int`
-        The ID of a visit in the HSC-RC2 dataset.
+        The ID of a visit in the dataset.
 
     Returns
     -------
@@ -169,15 +171,15 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     """
     refs = butler.registry.queryDatasets(
         datasetType="raw",
-        collections="HSC/RC2/defaults",
-        dataId={"exposure": visit_id, "instrument": "HSC"},
+        collections=f"{instrument}/raw/all",
+        dataId={"visit": visit_id, "instrument": instrument},
     )
 
     duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
     # all items in refs share the same visit info and one event is to be sent
     for data_id in refs.dataIds.limit(1).expanded():
         visit = SummitVisit(
-            instrument="HSC",
+            instrument=instrument,
             groupId=group_id,
             nimages=1,
             filters=data_id.records["physical_filter"].name,
