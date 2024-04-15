@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import argparse
+import json
 import logging
 import math
 import multiprocessing
@@ -34,7 +35,7 @@ from botocore.handlers import validate_bucket_name
 from lsst.utils.timer import time_this
 from lsst.daf.butler import Butler
 
-from activator.raw import get_raw_path
+from activator.raw import get_raw_path, _LSST_CAMERA_LIST
 from activator.visit import SummitVisit
 from tester.utils import (
     INSTRUMENTS,
@@ -290,6 +291,17 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
             exposure_num,
             ref.dataId["physical_filter"],
         )
+
+        if instrument in _LSST_CAMERA_LIST:
+            # Upload a corresponding sidecar json file
+            sidecar = butler.getURI(ref).updatedExtension("json")
+            with sidecar.open("r") as f:
+                md = json.load(f)
+                md.update(headers)
+                dest_bucket.put_object(
+                    Body=json.dumps(md), Key=dest_key.removesuffix("fits") + "json"
+                )
+
         # Each ref is done separately because butler.retrieveArtifacts does not preserve the order.
         transferred = butler.retrieveArtifacts(
             [ref],
