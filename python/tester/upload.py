@@ -44,6 +44,7 @@ from activator.raw import (
 )
 from activator.visit import FannedOutVisit, SummitVisit
 from tester.utils import (
+    INSTRUMENTS,
     get_last_group,
     increment_group,
     make_exposure_id,
@@ -52,21 +53,6 @@ from tester.utils import (
 )
 
 
-@dataclasses.dataclass
-class Instrument:
-    n_snaps: int
-    n_detectors: int
-    sal_index: int = 0
-
-
-INSTRUMENTS = {
-    "LSSTCam": Instrument(2, 189 + 8 + 8, 1),
-    "LSSTComCam": Instrument(2, 9, 1),
-    "LSSTComCamSim": Instrument(1, 9, 3),
-    "LATISS": Instrument(1, 1, 2),
-    "DECam": Instrument(1, 62),
-    "HSC": Instrument(1, 112),
-}
 EXPOSURE_INTERVAL = 18
 SLEW_INTERVAL = 2
 

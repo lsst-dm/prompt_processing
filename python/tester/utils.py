@@ -29,7 +29,7 @@ __all__ = [
     "increment_group",
 ]
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 import datetime
 import json
 import logging
@@ -44,6 +44,22 @@ from activator.raw import _LSST_CAMERA_LIST, _CAMERA_ABBREV
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)
 
+
+@dataclass
+class Instrument:
+    n_snaps: int
+    n_detectors: int
+    sal_index: int = 0
+
+
+INSTRUMENTS = {
+    "LSSTCam": Instrument(2, 189 + 8 + 8, 1),
+    "LSSTComCam": Instrument(2, 9, 1),
+    "LSSTComCamSim": Instrument(1, 9, 3),
+    "LATISS": Instrument(1, 1, 2),
+    "DECam": Instrument(1, 62),
+    "HSC": Instrument(1, 112),
+}
 # The schema ID of the ``next_visit`` message in the Sasquatch REST Proxy.
 SCHEMA_ID = 99
 
