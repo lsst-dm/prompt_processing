@@ -638,11 +638,15 @@ class MiddlewareInterface:
         """
         # TAI observation start time should be used for calib validity range.
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
+        # Querying by specific types is much faster than querying by ...
+        # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
+        types = {t for t in self.central_butler.registry.queryDatasetTypes()
+                 if t.isCalibration() and "exposure" not in t.dimensions}
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
         calibs = set(_filter_datasets(
             self.central_butler, self.butler,
-            ...,
+            types,
             collections=self.instrument.makeCalibrationCollectionName(),
             instrument=self.instrument.getName(),
             detector=detector_id,
