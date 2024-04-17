@@ -19,11 +19,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import argparse
 import logging
 import math
 import multiprocessing
 import random
-import sys
 import tempfile
 import time
 
@@ -74,11 +74,18 @@ def _set_s3_bucket():
         dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
 
+def _make_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "n_groups",
+        type=int,
+        help="The number of groups to upload.",
+    )
+    return parser
+
+
 def main():
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} N_GROUPS")
-        sys.exit(1)
-    n_groups = int(sys.argv[1])
+    args = _make_parser().parse_args()
 
     date = time.strftime("%Y%m%d")
 
@@ -90,7 +97,7 @@ def main():
     _log.debug(f"Last group {last_group}; new group base {group}")
 
     butler = Butler("/repo/main")
-    visit_list = get_visit_list(butler, n_groups)
+    visit_list = get_visit_list(butler, args.n_groups)
 
     # fork pools don't work well with connection pools, such as those used
     # for Butler registry or S3.
