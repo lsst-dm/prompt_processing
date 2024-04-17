@@ -417,10 +417,14 @@ Sample command line:
 .. code-block:: sh
 
    python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/HSC.yaml 3
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LATISS.yaml 4
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LSSTComCamSim.yaml 2 --ordered
 
 This scripts draws images from a butler repository as defined in the input configuration file.
 A butler query constrains the data selection.
-The visits are randomly selected and uploaded as one new group for each visit.
+By default, visits are randomly selected and uploaded as one new group for each visit.
+With the optional ``--ordered`` command line argument, images are uploaded following the order of the original exposure IDs.
+Currently the upload script does not follow the actual relative timing of the input exposures.
 Images can be uploaded in parallel processes.
 
 

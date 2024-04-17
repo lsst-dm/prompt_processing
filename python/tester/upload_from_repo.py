@@ -90,6 +90,12 @@ def _make_parser():
         type=int,
         help="The number of groups to upload.",
     )
+    parser.add_argument(
+        "--ordered",
+        action="store_true",
+        help="Upload the exposures following the order of the "
+             "original exposure IDs."
+    )
     return parser
 
 
@@ -112,6 +118,7 @@ def main():
     visit_list = get_visit_list(
         butler,
         args.n_groups,
+        ordered=args.ordered,
         instrument=instrument,
         **configs["query"],
     )
@@ -140,15 +147,18 @@ def main():
         pool.join()
 
 
-def get_visit_list(butler, n_sample, **kwargs):
-    """Return a list of randomly selected raw visits in the butler repo.
+def get_visit_list(butler, n_sample, ordered=False, **kwargs):
+    """Return a list of selected raw visits in the butler repo.
 
     Parameters
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler in which to search for records of raw data.
-    n_sample: `int`
+    n_sample : `int`
         The number of visits to select.
+    ordered : `bool`
+        If `True`, return the first ``n_sample`` visits in the order of the visit
+        IDs. Otherwise, return ``n_sample`` randomly selected visit IDs.
     **kwargs
         Additional parameters for the butler query. They have the same meanings
         as the parameters of `lsst.daf.butler.Registry.queryDimensionRecords`.
@@ -157,14 +167,17 @@ def get_visit_list(butler, n_sample, **kwargs):
     Returns
     -------
     visits : `list` [`int`]
-        A list of randomly selected visit IDs from the dataset.
+        A list of ``n_sample`` selected visit IDs from the dataset.
     """
     results = butler.registry.queryDimensionRecords("visit", datasets="raw", **kwargs)
     records = [record.id for record in set(results)]
     if n_sample > len(records):
         raise ValueError(f"Requested {n_sample} groups, but only {len(records)} are available.")
-    visits = random.sample(records, k=n_sample)
-    return visits
+    if ordered:
+        return sorted(records)[:n_sample]
+    else:
+        visits = random.sample(records, k=n_sample)
+        return visits
 
 
 def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
