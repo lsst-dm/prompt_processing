@@ -437,73 +437,16 @@ class MiddlewareInterface:
             with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
                 _log.info(f"Preparing Butler for visit {self.visit!r}")
 
-                detector = self.camera[self.visit.detector]
-                wcs = self._predict_wcs(detector)
-                center, radius = self._detector_bounding_circle(detector, wcs)
-
                 # repos may have been modified by other MWI instances.
                 # TODO: get a proper synchronization API for Butler
                 self.central_butler.registry.refresh()
                 self.butler.registry.refresh()
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
-                    with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)",
-                                                    level=logging.DEBUG):
-                        refcat_datasets = set(self._export_refcats(center, radius))
-                    with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)",
-                                                    level=logging.DEBUG):
-                        template_datasets = set(self._export_skymap_and_templates(
-                            center, detector, wcs, self.visit.filters))
-                    with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)",
-                                                    level=logging.DEBUG):
-                        calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
-                    with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)",
-                                                    level=logging.DEBUG):
-                        model_datasets = set(self._export_ml_models())
+                    all_datasets, calib_datasets = self._find_data_to_preload()
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
-                    with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)",
-                                                    level=logging.DEBUG):
-                        all_datasets = refcat_datasets | template_datasets | calib_datasets | model_datasets
-                        transferred = self.butler.transfer_from(self.central_butler,
-                                                                all_datasets,
-                                                                transfer="copy",
-                                                                skip_missing=True,
-                                                                register_dataset_types=True,
-                                                                transfer_dimensions=True,
-                                                                )
-                        if len(transferred) != len(all_datasets):
-                            _log.warning("Downloaded only %d datasets out of %d; missing %s.",
-                                         len(transferred), len(all_datasets),
-                                         all_datasets - set(transferred))
-
-                    with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)",
-                                                    level=logging.DEBUG):
-                        # VALIDITY-HACK: ensure local <instrument>/calibs is a
-                        # chain even if central collection isn't.
-                        self.butler.registry.registerCollection(
-                            self.instrument.makeCalibrationCollectionName(),
-                            CollectionType.CHAINED,
-                        )
-                        self._export_collections(self._collection_template)
-                        self._export_collections(self.instrument.makeUmbrellaCollectionName())
-                    with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)",
-                                                    level=logging.DEBUG):
-                        self._export_calib_associations(self.instrument.makeCalibrationCollectionName(),
-                                                        calib_datasets)
-
-            # Temporary workarounds until we have a prompt-processing default top-level collection
-            # in shared repos, and raw collection in dev repo, and then we can organize collections
-            # without worrying about DRP use cases.
-            self.butler.collection_chains.prepend_chain(
-                self.instrument.makeUmbrellaCollectionName(),
-                [self._collection_template,
-                 self.instrument.makeDefaultRawIngestRunName(),
-                 # VALIDITY-HACK: account for case where source
-                 # collection was CALIBRATION or omitted from
-                 # umbrella.
-                 self.instrument.makeCalibrationCollectionName(),
-                 ])
+                    self._transfer_data(all_datasets, calib_datasets)
 
         # IMPORTANT: do not remove or rename entries in this list. New entries can be added as needed.
         enforce_schema(bundle, {action_id: ["prep_butlerTotalTime",
@@ -522,6 +465,36 @@ class MiddlewareInterface:
                         instrument=self.instrument.getName(),
                         detector=self.visit.detector,
                         group=self.visit.groupId)
+
+    def _find_data_to_preload(self):
+        """Identify the datasets to export from the central repo.
+
+        The returned datasets are a superset of those needed by any pipeline,
+        but exclude any datasets that are already present in the local repo.
+
+        Returns
+        -------
+        datasets : set [`~lsst.daf.butler.DatasetRef`]
+            The datasets to be exported, after any filtering.
+        calibs : set [`~lsst.daf.butler.DatasetRef`]
+            The subset of ``datasets`` representing calibs.
+        """
+        detector = self.camera[self.visit.detector]
+        wcs = self._predict_wcs(detector)
+        center, radius = self._detector_bounding_circle(detector, wcs)
+
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)", level=logging.DEBUG):
+            refcat_datasets = set(self._export_refcats(center, radius))
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)", level=logging.DEBUG):
+            template_datasets = set(self._export_skymap_and_templates(
+                center, detector, wcs, self.visit.filters))
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)", level=logging.DEBUG):
+            calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)", level=logging.DEBUG):
+            model_datasets = set(self._export_ml_models())
+        return (refcat_datasets | template_datasets | calib_datasets | model_datasets,
+                calib_datasets,
+                )
 
     def _export_refcats(self, center, radius):
         """Identify the refcats to export from the central butler.
@@ -677,6 +650,56 @@ class MiddlewareInterface:
         else:
             _log.debug("Found %d new ML model datasets.", len(models))
         return models
+
+    def _transfer_data(self, datasets, calibs):
+        """Transfer datasets and all associated collections from the central
+        repo to the local repo.
+
+        Parameters
+        ----------
+        datasets : set [`~lsst.daf.butler.DatasetRef`]
+            The datasets to transfer into the local repo.
+        calibs : set [`~lsst.daf.butler.DatasetRef`]
+            The calibs to re-certify into the local repo.
+        """
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)", level=logging.DEBUG):
+            transferred = self.butler.transfer_from(self.central_butler,
+                                                    datasets,
+                                                    transfer="copy",
+                                                    skip_missing=True,
+                                                    register_dataset_types=True,
+                                                    transfer_dimensions=True,
+                                                    )
+            if len(transferred) != len(datasets):
+                _log.warning("Downloaded only %d datasets out of %d; missing %s.",
+                             len(transferred), len(datasets),
+                             datasets - set(transferred))
+
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)", level=logging.DEBUG):
+            # VALIDITY-HACK: ensure local <instrument>/calibs is a
+            # chain even if central collection isn't.
+            self.butler.registry.registerCollection(
+                self.instrument.makeCalibrationCollectionName(),
+                CollectionType.CHAINED,
+            )
+            self._export_collections(self._collection_template)
+            self._export_collections(self.instrument.makeUmbrellaCollectionName())
+
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)", level=logging.DEBUG):
+            self._export_calib_associations(self.instrument.makeCalibrationCollectionName(), calibs)
+
+        # Temporary workarounds until we have a prompt-processing default top-level collection
+        # in shared repos, and raw collection in dev repo, and then we can organize collections
+        # without worrying about DRP use cases.
+        self.butler.collection_chains.prepend_chain(
+            self.instrument.makeUmbrellaCollectionName(),
+            [self._collection_template,
+             self.instrument.makeDefaultRawIngestRunName(),
+             # VALIDITY-HACK: account for case where source
+             # collection was CALIBRATION or omitted from
+             # umbrella.
+             self.instrument.makeCalibrationCollectionName(),
+             ])
 
     def _export_collections(self, collection):
         """Export the collection and all its children.
