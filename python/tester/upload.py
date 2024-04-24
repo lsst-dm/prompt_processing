@@ -370,14 +370,6 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
                 make_exposure_id(visit.instrument, visit.groupId, snap_id)
             filename = get_raw_path(visit.instrument, visit.detector, visit.groupId, snap_id,
                                     exposure_num, visit.filters)
-            # r+b required by replace_header_key.
-            with tempfile.TemporaryFile(mode="r+b") as buffer:
-                src_bucket.download_fileobj(src_blob.key, buffer)
-                for header_key in headers:
-                    replace_header_key(buffer, header_key, headers[header_key])
-                buffer.seek(0)  # Assumed by upload_fileobj.
-                dest_bucket.upload_fileobj(buffer, filename)
-            _log.debug(f"{filename} is uploaded to {dest_bucket}")
 
             if instrument in _LSST_CAMERA_LIST:
                 # Upload a corresponding sidecar json file
@@ -390,6 +382,15 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
                     for header_key in headers:
                         md[header_key] = headers[header_key]
                     dest_bucket.put_object(Body=json.dumps(md), Key=filename_sidecar)
+
+            # r+b required by replace_header_key.
+            with tempfile.TemporaryFile(mode="r+b") as buffer:
+                src_bucket.download_fileobj(src_blob.key, buffer)
+                for header_key in headers:
+                    replace_header_key(buffer, header_key, headers[header_key])
+                buffer.seek(0)  # Assumed by upload_fileobj.
+                dest_bucket.upload_fileobj(buffer, filename)
+            _log.debug(f"{filename} is uploaded to {dest_bucket}")
 
         process_group(kafka_url, visit_infos, upload_from_pool)
 
