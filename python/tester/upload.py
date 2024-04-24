@@ -379,8 +379,7 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
                 filename_sidecar = filename.removesuffix("fits") + "json"
                 with sidecar.open("r") as f:
                     md = json.load(f)
-                    for header_key in headers:
-                        md[header_key] = headers[header_key]
+                    md.update(headers)
                     dest_bucket.put_object(Body=json.dumps(md), Key=filename_sidecar)
 
             # r+b required by replace_header_key.
