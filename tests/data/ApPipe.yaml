@@ -33,3 +33,4 @@ tasks:
     class: lsst.ap.association.DiaPipelineTask
     config:
       doSolarSystemAssociation: false
+      doConfigureApdb: true  # Temporary patch until DM-44096 adds external config support

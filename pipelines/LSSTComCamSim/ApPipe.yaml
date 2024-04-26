@@ -12,3 +12,4 @@ tasks:
     config:
       doPackageAlerts: True
       alertPackager.doProduceAlerts: True
+      doConfigureApdb: true  # Temporary patch until DM-44096 adds external config support

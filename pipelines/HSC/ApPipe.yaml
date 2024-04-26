@@ -10,3 +10,4 @@ tasks:
     class: lsst.ap.association.DiaPipelineTask
     config:
       doSolarSystemAssociation: false  # No "known objects" catalog for fake visits
+      doConfigureApdb: true  # Temporary patch until DM-44096 adds external config support
