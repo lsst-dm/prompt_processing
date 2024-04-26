@@ -256,6 +256,7 @@ class MiddlewareInterface:
         self._deployment = self._get_deployment()
         self._apdb_uri = self._make_apdb_uri()
         self._apdb_namespace = os.environ.get("NAMESPACE_APDB", None)
+        self._apdb_config = os.environ["CONFIG_APDB"]
         self.central_butler = central_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
@@ -909,20 +910,17 @@ class MiddlewareInterface:
         pipeline = lsst.pipe.base.Pipeline.fromFile(pipeline_file)
 
         try:
-            pipeline.addConfigOverride("diaPipe", "apdb.db_url", self._apdb_uri)
-            pipeline.addConfigOverride("diaPipe", "apdb.namespace", self._apdb_namespace)
+            pipeline.addConfigOverride("parameters", "apdb_config", self._apdb_config)
         except LookupError:
-            _log.debug("diaPipe is not in this pipeline.")
+            _log.warning(f"{pipeline_file} does not have an `apdb_config` parameter; "
+                         "assuming no APDB support is needed.")
         return pipeline
 
     # TODO: unify with _prep_pipeline after DM-41549
     def _make_apdb(self) -> lsst.dax.apdb.Apdb:
         """Create an Apdb object for accessing this service's APDB.
         """
-        config = lsst.dax.apdb.ApdbSql.ConfigClass()
-        config.db_url = self._apdb_uri
-        config.namespace = self._apdb_namespace
-        return lsst.dax.apdb.ApdbSql(config)
+        return lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
 
     def _download(self, remote):
         """Download an image located on a remote store.
