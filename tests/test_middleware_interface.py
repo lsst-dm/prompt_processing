@@ -137,8 +137,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         config.save(config_file.name)
 
         env_patcher = unittest.mock.patch.dict(os.environ,
-                                               {"URL_APDB": f"sqlite:///{self.local_repo.name}/apdb.db",
-                                                "CONFIG_APDB": config_file.name,
+                                               {"CONFIG_APDB": config_file.name,
                                                 "K_REVISION": "prompt-proto-service-042",
                                                 })
         env_patcher.start()
@@ -857,8 +856,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         config.save(config_file.name)
 
         env_patcher = unittest.mock.patch.dict(os.environ,
-                                               {"URL_APDB": f"sqlite:///{local_repo.name}/apdb.db",
-                                                "CONFIG_APDB": config_file.name,
+                                               {"CONFIG_APDB": config_file.name,
                                                 "K_REVISION": "prompt-proto-service-042",
                                                 })
         env_patcher.start()

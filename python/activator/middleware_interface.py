@@ -254,8 +254,6 @@ class MiddlewareInterface:
 
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
-        self._apdb_uri = self._make_apdb_uri()
-        self._apdb_namespace = os.environ.get("NAMESPACE_APDB", None)
         self._apdb_config = os.environ["CONFIG_APDB"]
         self.central_butler = central_butler
         self.image_host = prefix + image_bucket
@@ -317,11 +315,6 @@ class MiddlewareInterface:
             for package, version in packages.items():
                 h.update(bytes(package + version, encoding="utf-8"))
             return f"local-{h.hexdigest()}"
-
-    def _make_apdb_uri(self):
-        """Generate a URI for accessing the APDB.
-        """
-        return os.environ["URL_APDB"]
 
     def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
         """Prepare the local butler to ingest into and process from.
@@ -916,12 +909,6 @@ class MiddlewareInterface:
                          "assuming no APDB support is needed.")
         return pipeline
 
-    # TODO: unify with _prep_pipeline after DM-41549
-    def _make_apdb(self) -> lsst.dax.apdb.Apdb:
-        """Create an Apdb object for accessing this service's APDB.
-        """
-        return lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
-
     def _download(self, remote):
         """Download an image located on a remote store.
 
@@ -1094,7 +1081,7 @@ class MiddlewareInterface:
                         data_id = list(data_ids)[0]
                         packer = self.instrument.make_default_dimension_packer(data_id, is_exposure=False)
                         ccd_visit_id = packer.pack(data_id, returnMaxBits=False)
-                        apdb = self._make_apdb()
+                        apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
                         # HACK: this method only works for ApdbSql; not needed after DM-41671
                         if not apdb.containsCcdVisit(ccd_visit_id):
                             state_changed = False
