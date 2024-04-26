@@ -37,6 +37,7 @@ import astro_metadata_translator
 import lsst.pex.config
 import lsst.afw.image
 import lsst.afw.table
+from lsst.dax.apdb import ApdbSql
 from lsst.daf.butler import Butler, CollectionType, DataCoordinate
 import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
@@ -130,8 +131,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
         self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
 
+        config = ApdbSql.init_database(db_url=f"sqlite:///{self.local_repo.name}/apdb.db")
+        config_file = tempfile.NamedTemporaryFile(suffix=".py")
+        self.addCleanup(config_file.close)
+        config.save(config_file.name)
+
         env_patcher = unittest.mock.patch.dict(os.environ,
                                                {"URL_APDB": f"sqlite:///{self.local_repo.name}/apdb.db",
+                                                "CONFIG_APDB": config_file.name,
                                                 "K_REVISION": "prompt-proto-service-042",
                                                 })
         env_patcher.start()
@@ -844,8 +851,14 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, second_local_repo)
 
+        config = ApdbSql.init_database(db_url=f"sqlite:///{local_repo.name}/apdb.db")
+        config_file = tempfile.NamedTemporaryFile(suffix=".py")
+        self.addCleanup(config_file.close)
+        config.save(config_file.name)
+
         env_patcher = unittest.mock.patch.dict(os.environ,
                                                {"URL_APDB": f"sqlite:///{local_repo.name}/apdb.db",
+                                                "CONFIG_APDB": config_file.name,
                                                 "K_REVISION": "prompt-proto-service-042",
                                                 })
         env_patcher.start()
