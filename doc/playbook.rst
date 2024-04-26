@@ -497,3 +497,13 @@ To restore the APDB to a clean state, run ``apdb-cli create-sql`` with ``--drop`
 
    apdb-cli create-sql --drop --namespace="pp_apdb_lsstcomcamsim" \
        "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_lsstcomcamsim.py
+
+Checking the APDB Version
+-------------------------
+
+To identify which schema and ApdbSql version a PostgreSQL APDB is using, run, e.g.:
+
+.. code-block:: sh
+
+   psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin \
+       -c 'select * from pp_apdb_latiss.metadata;'
