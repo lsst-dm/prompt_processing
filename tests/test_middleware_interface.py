@@ -128,6 +128,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                      inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
+        self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
 
         env_patcher = unittest.mock.patch.dict(os.environ,
                                                {"URL_APDB": f"sqlite:///{self.local_repo.name}/apdb.db",
@@ -163,11 +164,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
                                              pipelines, skymap_name, self.local_repo.name,
                                              prefix="file://")
-
-    def tearDown(self):
-        super().tearDown()
-        # TemporaryDirectory warns on leaks
-        self.local_repo.cleanup()
 
     def test_get_butler(self):
         for butler in [get_central_butler(self.central_repo, "lsst.obs.decam.DarkEnergyCamera"),
