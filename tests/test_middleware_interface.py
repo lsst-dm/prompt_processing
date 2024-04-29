@@ -985,7 +985,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         """
         central_butler = Butler(self.central_repo.name, writeable=True)
         central_butler.registry.registerCollection("emptyrun", CollectionType.RUN)
-        _prepend_collection(central_butler, "refcats", ["emptyrun"])
+        central_butler.collection_chains.prepend_chain("refcats", ["emptyrun"])
 
         self.interface.prep_butler()
 

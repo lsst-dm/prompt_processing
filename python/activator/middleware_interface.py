@@ -492,15 +492,15 @@ class MiddlewareInterface:
             # Temporary workarounds until we have a prompt-processing default top-level collection
             # in shared repos, and raw collection in dev repo, and then we can organize collections
             # without worrying about DRP use cases.
-            _prepend_collection(self.butler,
-                                self.instrument.makeUmbrellaCollectionName(),
-                                [self._collection_template,
-                                 self.instrument.makeDefaultRawIngestRunName(),
-                                 # VALIDITY-HACK: account for case where source
-                                 # collection was CALIBRATION or omitted from
-                                 # umbrella.
-                                 self.instrument.makeCalibrationCollectionName(),
-                                 ])
+            self.butler.collection_chains.prepend_chain(
+                self.instrument.makeUmbrellaCollectionName(),
+                [self._collection_template,
+                 self.instrument.makeDefaultRawIngestRunName(),
+                 # VALIDITY-HACK: account for case where source
+                 # collection was CALIBRATION or omitted from
+                 # umbrella.
+                 self.instrument.makeCalibrationCollectionName(),
+                 ])
 
         # IMPORTANT: do not remove or rename entries in this list. New entries can be added as needed.
         enforce_schema(bundle, {action_id: ["prep_butlerTotalTime",
@@ -759,7 +759,7 @@ class MiddlewareInterface:
             calib_latest = self._get_local_calib_collection(calib_collection)
             new = self.butler.registry.registerCollection(calib_latest, CollectionType.CALIBRATION)
             if new:
-                _prepend_collection(self.butler, calib_collection, [calib_latest])
+                self.butler.collection_chains.prepend_chain(calib_collection, [calib_latest])
 
             # VALIDITY-HACK: real associations are expensive to query. Just apply
             # arbitrary ones and assume that the first collection in the chain is
@@ -1280,8 +1280,7 @@ class MiddlewareInterface:
             self.central_butler.registry.registerCollection(output_chain, CollectionType.CHAINED)
 
             try:
-                with self.central_butler.transaction():
-                    _prepend_collection(self.central_butler, output_chain, output_runs)
+                self.central_butler.collection_chains.prepend_chain(output_chain, output_runs)
             except sqlalchemy.exc.IntegrityError as e:
                 # HACK: I don't know of a better way to distinguish exceptions
                 # blended by SQLAlchemy. To be removed on DM-43316.
@@ -1354,7 +1353,7 @@ class MiddlewareInterface:
             for pipeline_file in self._get_pipeline_files():
                 output_run = self._get_output_run(pipeline_file, self._day_obs)
                 for chain in self.butler.registry.getCollectionParentChains(output_run):
-                    _remove_from_chain(self.butler, chain, [output_run])
+                    self.butler.collection_chains.remove_from_chain(chain, [output_run])
                 self.butler.removeRuns([output_run], unstore=True)
             # VALIDITY-HACK: remove cached calibs to avoid future conflicts
             if not cache_calibs:
@@ -1367,7 +1366,7 @@ class MiddlewareInterface:
                     calib_chain,
                     flattenChains=True,
                     collectionTypes=CollectionType.RUN)
-                self.butler.registry.setCollectionChain(calib_chain, [])
+                self.butler.collection_chains.redefine_chain(calib_chain, [])
                 for member in calib_taggeds:
                     self.butler.registry.removeCollection(member)
                 self.butler.removeRuns(calib_runs, unstore=True)
