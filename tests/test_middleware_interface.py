@@ -48,7 +48,7 @@ from activator.exception import NonRetriableError
 from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, make_local_repo, _get_sasquatch_dispatcher, \
     MiddlewareInterface, \
-    _filter_datasets, _prepend_collection, _remove_from_chain, _filter_calibs_by_date, _MissingDatasetError
+    _filter_datasets, _filter_calibs_by_date, _MissingDatasetError
 
 # The short name of the instrument used in the test repo.
 instname = "DECam"
@@ -745,41 +745,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
                     _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam")
-
-    def test_prepend_collection(self):
-        butler = self.interface.butler
-        butler.registry.registerCollection("_prepend1", CollectionType.TAGGED)
-        butler.registry.registerCollection("_prepend2", CollectionType.TAGGED)
-        butler.registry.registerCollection("_prepend3", CollectionType.TAGGED)
-        butler.registry.registerCollection("_prepend_base", CollectionType.CHAINED)
-
-        # Empty chain.
-        self.assertEqual(list(butler.registry.getCollectionChain("_prepend_base")), [])
-        _prepend_collection(butler, "_prepend_base", ["_prepend1"])
-        self.assertEqual(list(butler.registry.getCollectionChain("_prepend_base")), ["_prepend1"])
-
-        # Non-empty chain.
-        butler.registry.setCollectionChain("_prepend_base", ["_prepend1", "_prepend2"])
-        _prepend_collection(butler, "_prepend_base", ["_prepend3"])
-        self.assertEqual(list(butler.registry.getCollectionChain("_prepend_base")),
-                         ["_prepend3", "_prepend1", "_prepend2"])
-
-    def test_remove_from_chain(self):
-        butler = self.interface.butler
-        butler.registry.registerCollection("_remove1", CollectionType.TAGGED)
-        butler.registry.registerCollection("_remove2", CollectionType.TAGGED)
-        butler.registry.registerCollection("_remove33", CollectionType.TAGGED)
-        butler.registry.registerCollection("_remove_base", CollectionType.CHAINED)
-
-        # Empty chain.
-        self.assertEqual(list(butler.registry.getCollectionChain("_remove_base")), [])
-        _remove_from_chain(butler, "_remove_base", ["_remove1"])
-        self.assertEqual(list(butler.registry.getCollectionChain("_remove_base")), [])
-
-        # Non-empty chain.
-        butler.registry.setCollectionChain("_remove_base", ["_remove1", "_remove2"])
-        _remove_from_chain(butler, "_remove_base", ["_remove2", "_remove3"])
-        self.assertEqual(list(butler.registry.getCollectionChain("_remove_base")), ["_remove1"])
 
     def test_filter_calibs_by_date_early(self):
         # _filter_calibs_by_date requires a collection, not merely an iterable

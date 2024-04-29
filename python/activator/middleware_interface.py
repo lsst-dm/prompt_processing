@@ -1458,50 +1458,6 @@ def _filter_datasets(src_repo: Butler,
     return itertools.filterfalse(lambda ref: ref in known_datasets, src_datasets)
 
 
-def _prepend_collection(butler: Butler, chain: str, new_collections: collections.abc.Iterable[str]) -> None:
-    """Add a specific collection to the front of an existing chain.
-
-    Parameters
-    ----------
-    butler : `lsst.daf.butler.Butler`
-        The butler in which the collections exist.
-    chain : `str`
-        The chained collection to prepend to.
-    new_collections : sequence [`str`]
-        The collections to prepend to ``chain``, in order.
-
-    Notes
-    -----
-    This function is not safe against concurrent modifications to ``chain``.
-    """
-    old_chain = butler.registry.getCollectionChain(chain)  # May be empty
-    butler.registry.setCollectionChain(chain, list(new_collections) + list(old_chain), flatten=False)
-
-
-def _remove_from_chain(butler: Butler, chain: str, old_collections: collections.abc.Iterable[str]) -> None:
-    """Remove a specific collection from a chain.
-
-    This function has no effect if the collection is not in the chain.
-
-    Parameters
-    ----------
-    butler : `lsst.daf.butler.Butler`
-        The butler in which the collections exist.
-    chain : `str`
-        The chained collection to remove from.
-    old_collections : iterable [`str`]
-        The collections to remove from ``chain``.
-
-    Notes
-    -----
-    This function is not safe against concurrent modifications to ``chain``.
-    """
-    contents = list(butler.registry.getCollectionChain(chain))
-    for old in set(old_collections).intersection(contents):
-        contents.remove(old)
-    butler.registry.setCollectionChain(chain, contents, flatten=False)
-
-
 def _filter_calibs_by_date(butler: Butler,
                            collections: typing.Any,
                            unfiltered_calibs: collections.abc.Collection[lsst.daf.butler.DatasetRef],
