@@ -37,6 +37,7 @@ import astro_metadata_translator
 import lsst.pex.config
 import lsst.afw.image
 import lsst.afw.table
+from lsst.dax.apdb import ApdbSql
 from lsst.daf.butler import Butler, CollectionType, DataCoordinate
 import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
@@ -128,9 +129,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                      inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
+        self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
+
+        config = ApdbSql.init_database(db_url=f"sqlite:///{self.local_repo.name}/apdb.db")
+        config_file = tempfile.NamedTemporaryFile(suffix=".py")
+        self.addCleanup(config_file.close)
+        config.save(config_file.name)
 
         env_patcher = unittest.mock.patch.dict(os.environ,
-                                               {"URL_APDB": f"sqlite:///{self.local_repo.name}/apdb.db",
+                                               {"CONFIG_APDB": config_file.name,
                                                 "K_REVISION": "prompt-proto-service-042",
                                                 })
         env_patcher.start()
@@ -163,11 +170,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
                                              pipelines, skymap_name, self.local_repo.name,
                                              prefix="file://")
-
-    def tearDown(self):
-        super().tearDown()
-        # TemporaryDirectory warns on leaks
-        self.local_repo.cleanup()
 
     def test_get_butler(self):
         for butler in [get_central_butler(self.central_repo, "lsst.obs.decam.DarkEnergyCamera"),
@@ -848,8 +850,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, second_local_repo)
 
+        config = ApdbSql.init_database(db_url=f"sqlite:///{local_repo.name}/apdb.db")
+        config_file = tempfile.NamedTemporaryFile(suffix=".py")
+        self.addCleanup(config_file.close)
+        config.save(config_file.name)
+
         env_patcher = unittest.mock.patch.dict(os.environ,
-                                               {"URL_APDB": f"sqlite:///{local_repo.name}/apdb.db",
+                                               {"CONFIG_APDB": config_file.name,
                                                 "K_REVISION": "prompt-proto-service-042",
                                                 })
         env_patcher.start()
