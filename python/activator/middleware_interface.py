@@ -418,8 +418,6 @@ class MiddlewareInterface:
         ``visit`` dimensions, respectively. It may contain other data that would
         not be loaded when processing the visit.
         """
-        # Timing metrics can't be saved to Butler (exposure/visit might not be
-        # defined), so manage them purely in-memory.
         action_id = "prepButlerTimeMetric"  # For consistency with analysis_tools outputs
         bundle = lsst.analysis.tools.interfaces.MetricMeasurementBundle(
             dataset_identifier=self.DATASET_IDENTIFIER,
@@ -866,6 +864,9 @@ class MiddlewareInterface:
         """Pre-register output collections in advance of running the pipeline.
         """
         self.butler.registry.refresh()
+        self.butler.registry.registerCollection(
+            self._get_preload_run(self._day_obs),
+            CollectionType.RUN)
         for pipeline_file in self._get_pipeline_files():
             self.butler.registry.registerCollection(
                 self._get_init_output_run(pipeline_file, self._day_obs),
@@ -1115,7 +1116,7 @@ class MiddlewareInterface:
             Identifiers of the exposures that were processed.
         """
         # Rather than determining which pipeline was run, just try to export all of them.
-        output_runs = []
+        output_runs = [self._get_preload_run(self._day_obs)]
         for f in self._get_pipeline_files():
             output_runs.extend([self._get_init_output_run(f, self._day_obs),
                                 self._get_output_run(f, self._day_obs),
