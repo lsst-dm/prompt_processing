@@ -38,7 +38,7 @@ from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
-from lsst.daf.butler import Butler, CollectionType, Timespan
+from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan
 from lsst.daf.butler.registry import MissingDatasetTypeError
 import lsst.dax.apdb
 import lsst.geom
@@ -510,24 +510,18 @@ class MiddlewareInterface:
                                             "prep_butlerSearchTime",
                                             "prep_butlerTransferTime",
                                             ]})
-        dispatcher = _get_sasquatch_dispatcher()
-        if dispatcher:
-            dispatcher.dispatch(
-                bundle,
-                run=self._get_preload_run(self._day_obs),
-                datasetType="promptPreload_metrics",  # In case we have real Butler datasets in the future
-                identifierFields={"instrument": self.instrument.getName(),
-                                  "skymap": self.skymap_name,
-                                  "detector": self.visit.detector,
-                                  "physical_filter": self.visit.filters,
-                                  "band": self.butler.registry.expandDataId(
-                                      instrument=self.instrument.getName(),
-                                      physical_filter=self.visit.filters)["band"],
-                                  },
-                extraFields={"group": self.visit.groupId,
-                             },
-            )
-            _log.debug(f"Uploaded preload metrics to {dispatcher.url}.")
+        self.butler.registry.registerDatasetType(DatasetType(
+            "promptPreload_metrics",
+            dimensions={"instrument", "group", "detector"},
+            storageClass="MetricMeasurementBundle",
+            universe=self.butler.dimensions,
+        ))
+        self.butler.put(bundle,
+                        "promptPreload_metrics",
+                        run=self._get_preload_run(self._day_obs),
+                        instrument=self.instrument.getName(),
+                        detector=self.visit.detector,
+                        group=self.visit.groupId)
 
     def _export_refcats(self, center, radius):
         """Identify the refcats to export from the central butler.
@@ -1160,7 +1154,7 @@ class MiddlewareInterface:
                     for bundle in bundles:
                         _log_trace.debug("Uploading %s...", bundle)
                         dispatcher.dispatchRef(self.butler.get(bundle), bundle)
-                _log.debug("Uploaded %d pipeline metrics to %s.", len(bundles), dispatcher.url)
+                _log.debug("Uploaded %d metrics to %s.", len(bundles), dispatcher.url)
 
     @staticmethod
     def _get_safe_dataset_types(butler):

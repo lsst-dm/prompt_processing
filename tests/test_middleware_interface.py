@@ -937,6 +937,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          for k, v in self.second_data_id.required.items()}
         # Dataset types defined for local Butler on pipeline run, but code
         # assumes output types already exist in central repo.
+        butler_tests.addDatasetType(self.interface.central_butler, "promptPreload_metrics",
+                                    {"instrument", "group", "detector"},
+                                    "MetricMeasurementBundle")
         butler_tests.addDatasetType(self.interface.central_butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
