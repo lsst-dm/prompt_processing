@@ -1224,11 +1224,6 @@ class MiddlewareInterface:
                               "day_obs",
                               "exposure",
                               "visit",
-                              # TODO: visit_* are not needed from version 4; remove when we require v6
-                              "visit_definition",
-                              "visit_detector_region",
-                              "visit_system",
-                              "visit_system_membership",
                               ]:
                 if dimension in self.butler.registry.dimensions:
                     records = self.butler.registry.queryDimensionRecords(
