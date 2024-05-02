@@ -92,11 +92,13 @@ def fake_file_data(filename, dimensions, instrument, visit):
                                          universe=dimensions)
 
     start_time = astropy.time.Time("2015-02-18T05:28:18.716517500", scale="tai")
+    day_obs = 20150217
     obs_info = astro_metadata_translator.makeObservationInfo(
         instrument=instrument.getName(),
         datetime_begin=start_time,
         datetime_end=start_time + 30*u.second,
         exposure_id=exposure_id,
+        exposure_group=visit.groupId,
         visit_id=exposure_id,
         boresight_rotation_angle=astropy.coordinates.Angle(visit.cameraAngle*u.degree),
         boresight_rotation_coord=visit.rotationSystem.name.lower(),
@@ -105,6 +107,7 @@ def fake_file_data(filename, dimensions, instrument, visit):
         physical_filter=filter,
         exposure_time=30.0*u.second,
         observation_type="science",
+        observing_day=day_obs,
         group_counter_start=exposure_id,
         group_counter_end=exposure_id,
     )
