@@ -910,6 +910,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface = MiddlewareInterface(central_butler, self.input_data, self.second_visit,
                                                     pipelines, skymap_name, second_local_repo.name,
                                                     prefix="file://")
+        self.second_interface.prep_butler()
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
@@ -962,14 +963,20 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         central_butler.registry.registerCollection("emptyrun", CollectionType.RUN)
         central_butler.collection_chains.prepend_chain("refcats", ["emptyrun"])
 
-        self.interface.prep_butler()
+        # Avoid collisions with other calls to prep_butler
+        with make_local_repo(tempfile.gettempdir(), central_butler, instname) as local_repo:
+            interface = MiddlewareInterface(central_butler, self.input_data,
+                                            dataclasses.replace(self.next_visit, groupId="42"),
+                                            pipelines, skymap_name, local_repo,
+                                            prefix="file://")
+            interface.prep_butler()
 
-        self.assertEqual(
-            self._count_datasets(self.interface.butler, "gaia_dr2_20200414", f"{instname}/defaults"),
-            3)
-        self.assertIn(
-            "emptyrun",
-            self.interface.butler.registry.queryCollections("refcats", flattenChains=True))
+            self.assertEqual(
+                self._count_datasets(interface.butler, "gaia_dr2_20200414", f"{instname}/defaults"),
+                3)
+            self.assertIn(
+                "emptyrun",
+                interface.butler.registry.queryCollections("refcats", flattenChains=True))
 
     def test_export_outputs(self):
         self.interface.export_outputs({self.raw_data_id["exposure"]})
