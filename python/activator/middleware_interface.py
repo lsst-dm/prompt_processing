@@ -270,6 +270,7 @@ class MiddlewareInterface:
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self._prep_collections()
+        self._define_dimensions()
         self._init_ingester()
         self._init_visit_definer()
 
@@ -358,6 +359,16 @@ class MiddlewareInterface:
         """
         define_visits_config = lsst.obs.base.DefineVisitsConfig()
         self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
+
+    def _define_dimensions(self):
+        """Define any dimensions that must be computed from this object's visit.
+
+        ``self._init_local_butler`` must have already been run.
+        """
+        self.butler.registry.syncDimensionData("group",
+                                               {"name": self.visit.groupId,
+                                                "instrument": self.instrument.getName(),
+                                                })
 
     def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector) -> lsst.afw.geom.SkyWcs:
         """Calculate the expected detector WCS for an incoming observation.
