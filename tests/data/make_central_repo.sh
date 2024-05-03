@@ -11,12 +11,14 @@ butler import --export-file export.yaml --transfer copy central_repo/ $AP_VERIFY
 butler collection-chain central_repo refcats refcats/DM-28636
 butler collection-chain central_repo DECam/templates u/elhoward/DM-38243/templates/20230320T214145Z
 butler collection-chain central_repo DECam/defaults DECam/calib,refcats,DECam/templates,skymaps
+butler collection-chain central_repo pretrained_models pretrained_models/rbResnet50-DC2
 
 # Empty out files and make them size 0 in the registry.
 # We do not empty the camera description in ``DECAM/calib/unbounded`
 # because we need it to load the camera geometry.
 find central_repo/refcats -name "*.fits" -execdir sh -c '> "$1"' -- {} \;
 find central_repo -name "*templates*fits" -execdir sh -c '> "$1"' -- {} \;
+find central_repo -name "*pretrainedModel*zip" -execdir sh -c '> "$1"' -- {} \;
 find central_repo/DECam/calib/20150218T000000Z -name "*.fits" -execdir sh -c '> "$1"' -- {} \;
 find central_repo/DECam/calib/20150313T000000Z -name "*.fits" -execdir sh -c '> "$1"' -- {} \;
 find central_repo/DECam/calib/curated -name "*.fits" -execdir sh -c '> "$1"' -- {} \;
