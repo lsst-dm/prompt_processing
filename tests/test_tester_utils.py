@@ -52,12 +52,12 @@ class TesterUtilsTest(unittest.TestCase):
         s3.create_bucket(Bucket=self.bucket_name)
 
         path = get_raw_path(
-            "TestCam", 123, "2022-11-02T00:00:00.000001", 2, 30, "TestFilter"
+            "LSSTCam", 123, "2022-11-02T00:00:00.000001", 2, 2022110200001, "TestFilter"
         )
         obj = s3.Object(self.bucket_name, path)
         obj.put(Body=b'test1')
         path = get_raw_path(
-            "TestCam", 123, "2022-11-02T00:00:00.000002", 2, 30, "TestFilter"
+            "LSSTCam", 123, "2022-11-02T00:00:00.000002", 2, 2022110200002, "TestFilter"
         )
         obj = s3.Object(self.bucket_name, path)
         obj.put(Body=b'test2')
@@ -85,11 +85,11 @@ class TesterUtilsTest(unittest.TestCase):
         s3 = boto3.resource("s3")
         bucket = s3.Bucket(self.bucket_name)
 
-        last_group = get_last_group(bucket, "TestCam", "20221102")
+        last_group = get_last_group(bucket, "LSSTCam", "20221102")
         self.assertEqual(last_group, "2022-11-02T00:00:00.000002")
 
         # Test the case of no match
-        last_group = get_last_group(bucket, "TestCam", "20110101")
+        last_group = get_last_group(bucket, "LSSTCam", "20110101")
         self.assertEqual(last_group, "2011-01-01T00:00:00.000000")
 
     def test_exposure_id_hsc(self):
