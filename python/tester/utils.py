@@ -78,12 +78,24 @@ def get_last_group(bucket, instrument, date):
     group : `str`
         The largest existing group for ``instrument``, or a newly generated
         group if none exist.
+
+    Notes
+    -----
+    For LSST instruments, the group is an ISO 8601 timestamp to seconds
+    precision, followed by . and a six-digit counter. For HSC, it is a 4-digit
+    YMD string, followed by a four-digit counter, with the combination
+    guaranteed to be a valid HSC exposure ID.
     """
     if instrument in _LSST_CAMERA_LIST:
         blobs = bucket.objects.filter(
             Prefix=f"{instrument}/{date}/",
         )
         numbers = [int(blob.key.split("/")[2].split("_")[-1]) for blob in blobs]
+        if numbers:
+            last_number = max(numbers)
+        else:
+            last_number = 0
+        return make_group(date, last_number)
     else:
         preblobs = bucket.objects.filter(
             Prefix=f"{instrument}/",
@@ -92,15 +104,43 @@ def get_last_group(bucket, instrument, date):
             (int(preblob.key.split("/")[1]) for preblob in preblobs), default=0
         )
 
-        group_prefix = "-".join([date[:4], date[4:6:], date[-2:]])
+        group_prefix = make_compressed_date(date)
         blobs = preblobs.filter(Prefix=f"{instrument}/{detector}/{group_prefix}")
-        numbers = [int(blob.key.split("/")[2][-6:]) for blob in blobs]
+        numbers = [int(blob.key.split("/")[2][4:]) for blob in blobs]
 
-    if numbers:
-        last_number = max(numbers)
-    else:
-        last_number = 0
-    return make_group(date, last_number)
+        if numbers:
+            last_number = max(numbers)
+        else:
+            last_number = 0
+        return group_prefix + ("%04d" % last_number)
+
+
+def make_compressed_date(date):
+    """Generate a day-unique string suitable for making integer IDs.
+
+    Parameters
+    ----------
+    date : `str`
+        The current date in YYYYMMDD format.
+
+    Returns
+    -------
+    compressed : `str`
+        A digit sequence guaranteed to be unique for ``date``.
+
+    Notes
+    -----
+    The current implementation gives 4-digit results until September 2024.
+    If this generator is still needed after that, it will need to be tweaked.
+    """
+    year = int(date[:4]) - 2023            # Always 1 digit, 0-1
+    night_id = int(date[-4:])              # Always 4 digits up to 1231
+    compressed = year*1200 + night_id      # Always 4 digits
+    limit = max_exposure["HSC"] // 10_000
+    if compressed > limit:
+        raise RuntimeError(f"{date} compressed to {compressed}, "
+                           f"max allowed is {limit}.")
+    return "%04d" % compressed
 
 
 def make_exposure_id(instrument, group_id, snap):
@@ -163,12 +203,7 @@ def make_hsc_id(group_id, snap):
     The current implementation gives illegal exposure IDs after September 2024.
     If this generator is still needed after that, it will need to be tweaked.
     """
-    # This is a bit too dependent on how group_id is generated, but I want the
-    # group number to be discernible even after compressing to 8 digits.
-    date, run_id = decode_group(group_id)  # run_id has up to 5 digits, but usually 2-3
-    year = int(date[:4]) - 2023            # Always 1 digit, 0-1
-    night_id = int(date[-4:])              # Always 4 digits up to 1231
-    exposure_id = (year*1200 + night_id) * 10000 + (run_id % 10000)  # Always 8 digits
+    exposure_id = int(group_id)
     if exposure_id > max_exposure["HSC"]:
         raise RuntimeError(f"{group_id} translated to expId {exposure_id}, "
                            f"max allowed is { max_exposure['HSC']}.")
@@ -323,6 +358,9 @@ def increment_group(instrument, group_base, amount):
         The numerical amount depends on the implementation for ths
         ``intrument``.
     """
-    day_obs, seq_num = decode_group(group_base)
-    seq_num += amount
-    return make_group(day_obs, seq_num)
+    if instrument in _LSST_CAMERA_LIST:
+        day_obs, seq_num = decode_group(group_base)
+        seq_num += amount
+        return make_group(day_obs, seq_num)
+    else:
+        return str(int(group_base) + amount)

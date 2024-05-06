@@ -61,6 +61,11 @@ class TesterUtilsTest(unittest.TestCase):
         )
         obj = s3.Object(self.bucket_name, path)
         obj.put(Body=b'test2')
+        path = get_raw_path(
+            "HSC", 123, "11020002", 2, 30, "TestFilter"
+        )
+        obj = s3.Object(self.bucket_name, path)
+        obj.put(Body=b'test3')
 
     def tearDown(self):
         s3 = boto3.resource("s3")
@@ -92,8 +97,19 @@ class TesterUtilsTest(unittest.TestCase):
         last_group = get_last_group(bucket, "LSSTCam", "20110101")
         self.assertEqual(last_group, "2011-01-01T00:00:00.000000")
 
+    def test_get_last_group_hsc(self):
+        s3 = boto3.resource("s3")
+        bucket = s3.Bucket(self.bucket_name)
+
+        last_group = get_last_group(bucket, "HSC", "20231102")
+        self.assertEqual(last_group, "11020002")
+
+        # Test the case of no match
+        last_group = get_last_group(bucket, "HSC", "20240101")
+        self.assertEqual(last_group, "13010000")
+
     def test_exposure_id_hsc(self):
-        group = "2023011100026"
+        group = "01110026"
         # Need a Butler registry to test IdGenerator
         with tempfile.TemporaryDirectory() as repo:
             butler = butler_tests.makeTestRepo(repo)
@@ -116,13 +132,16 @@ class TesterUtilsTest(unittest.TestCase):
         config = lsst.meas.base.DetectorVisitIdGeneratorConfig()
         lsst.meas.base.IdGenerator.unpacker_from_config(config, data_id)
 
-    def test_exposure_id_hsc_limits(self):
-        # Confirm that the exposure ID generator works as long as advertised:
+    def test_group_id_hsc_limits(self):
+        # Confirm that the group ID generator works as long as advertised:
         # until the end of September 2024.
-        exp_id, _ = make_exposure_id("HSC", "2024-09-30T00:00:00.009999", 0)
-        self.assertEqual(exp_id, 21309999)
+        s3 = boto3.resource("s3")
+        bucket = s3.Bucket(self.bucket_name)
+
+        group = get_last_group(bucket, "HSC", "20240930")
+        self.assertEqual(group, "21300000")
         with self.assertRaises(RuntimeError):
-            make_exposure_id("HSC", "2024-10-01T00:00:00.000000", 0)
+            get_last_group(bucket, "HSC", "20241001")
 
 
 class TesterGoupIdTest(unittest.TestCase):
@@ -140,7 +159,7 @@ class TesterGoupIdTest(unittest.TestCase):
         for group_id in ["2023-01-23T00:00:00.000456", "2024-12-31T00:00:00.001000"]:
             self.assertEqual(group_id, make_group(*decode_group(group_id)))
 
-    def test_increment_group(self):
+    def test_increment_group_latiss(self):
         group_base = "2024-12-31T00:00:00.001000"
         offsets = {
             1: "2024-12-31T00:00:00.001001",
@@ -150,4 +169,16 @@ class TesterGoupIdTest(unittest.TestCase):
         for amount in offsets:
             self.assertEqual(
                 offsets[amount], increment_group("LATISS", group_base, amount)
+            )
+
+    def test_increment_group_hsc(self):
+        group_base = "24310100"
+        offsets = {
+            1: "24310101",
+            99: "24310199",
+            1345: "24311445",
+        }
+        for amount in offsets:
+            self.assertEqual(
+                offsets[amount], increment_group("HSC", group_base, amount)
             )
