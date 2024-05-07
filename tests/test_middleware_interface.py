@@ -92,11 +92,13 @@ def fake_file_data(filename, dimensions, instrument, visit):
                                          universe=dimensions)
 
     start_time = astropy.time.Time("2015-02-18T05:28:18.716517500", scale="tai")
+    day_obs = 20150217
     obs_info = astro_metadata_translator.makeObservationInfo(
         instrument=instrument.getName(),
         datetime_begin=start_time,
         datetime_end=start_time + 30*u.second,
         exposure_id=exposure_id,
+        exposure_group=visit.groupId,
         visit_id=exposure_id,
         boresight_rotation_angle=astropy.coordinates.Angle(visit.cameraAngle*u.degree),
         boresight_rotation_coord=visit.rotationSystem.name.lower(),
@@ -105,6 +107,7 @@ def fake_file_data(filename, dimensions, instrument, visit):
         physical_filter=filter,
         exposure_time=30.0*u.second,
         observation_type="science",
+        observing_day=day_obs,
         group_counter_start=exposure_id,
         group_counter_end=exposure_id,
     )
@@ -907,6 +910,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface = MiddlewareInterface(central_butler, self.input_data, self.second_visit,
                                                     pipelines, skymap_name, second_local_repo.name,
                                                     prefix="file://")
+        self.second_interface.prep_butler()
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
@@ -933,6 +937,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          for k, v in self.second_data_id.required.items()}
         # Dataset types defined for local Butler on pipeline run, but code
         # assumes output types already exist in central repo.
+        butler_tests.addDatasetType(self.interface.central_butler, "promptPreload_metrics",
+                                    {"instrument", "group", "detector"},
+                                    "MetricMeasurementBundle")
         butler_tests.addDatasetType(self.interface.central_butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
@@ -959,14 +966,20 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         central_butler.registry.registerCollection("emptyrun", CollectionType.RUN)
         central_butler.collection_chains.prepend_chain("refcats", ["emptyrun"])
 
-        self.interface.prep_butler()
+        # Avoid collisions with other calls to prep_butler
+        with make_local_repo(tempfile.gettempdir(), central_butler, instname) as local_repo:
+            interface = MiddlewareInterface(central_butler, self.input_data,
+                                            dataclasses.replace(self.next_visit, groupId="42"),
+                                            pipelines, skymap_name, local_repo,
+                                            prefix="file://")
+            interface.prep_butler()
 
-        self.assertEqual(
-            self._count_datasets(self.interface.butler, "gaia_dr2_20200414", f"{instname}/defaults"),
-            3)
-        self.assertIn(
-            "emptyrun",
-            self.interface.butler.registry.queryCollections("refcats", flattenChains=True))
+            self.assertEqual(
+                self._count_datasets(interface.butler, "gaia_dr2_20200414", f"{instname}/defaults"),
+                3)
+            self.assertIn(
+                "emptyrun",
+                interface.butler.registry.queryCollections("refcats", flattenChains=True))
 
     def test_export_outputs(self):
         self.interface.export_outputs({self.raw_data_id["exposure"]})

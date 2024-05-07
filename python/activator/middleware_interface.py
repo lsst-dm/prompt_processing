@@ -38,7 +38,7 @@ from lsst.resources import ResourcePath
 import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
-from lsst.daf.butler import Butler, CollectionType, Timespan
+from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan
 from lsst.daf.butler.registry import MissingDatasetTypeError
 import lsst.dax.apdb
 import lsst.geom
@@ -270,6 +270,7 @@ class MiddlewareInterface:
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self._prep_collections()
+        self._define_dimensions()
         self._init_ingester()
         self._init_visit_definer()
 
@@ -359,6 +360,16 @@ class MiddlewareInterface:
         define_visits_config = lsst.obs.base.DefineVisitsConfig()
         self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
 
+    def _define_dimensions(self):
+        """Define any dimensions that must be computed from this object's visit.
+
+        ``self._init_local_butler`` must have already been run.
+        """
+        self.butler.registry.syncDimensionData("group",
+                                               {"name": self.visit.groupId,
+                                                "instrument": self.instrument.getName(),
+                                                })
+
     def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector) -> lsst.afw.geom.SkyWcs:
         """Calculate the expected detector WCS for an incoming observation.
 
@@ -418,8 +429,6 @@ class MiddlewareInterface:
         ``visit`` dimensions, respectively. It may contain other data that would
         not be loaded when processing the visit.
         """
-        # Timing metrics can't be saved to Butler (exposure/visit might not be
-        # defined), so manage them purely in-memory.
         action_id = "prepButlerTimeMetric"  # For consistency with analysis_tools outputs
         bundle = lsst.analysis.tools.interfaces.MetricMeasurementBundle(
             dataset_identifier=self.DATASET_IDENTIFIER,
@@ -501,24 +510,18 @@ class MiddlewareInterface:
                                             "prep_butlerSearchTime",
                                             "prep_butlerTransferTime",
                                             ]})
-        dispatcher = _get_sasquatch_dispatcher()
-        if dispatcher:
-            dispatcher.dispatch(
-                bundle,
-                run=self._get_preload_run(self._day_obs),
-                datasetType="promptPreload_metrics",  # In case we have real Butler datasets in the future
-                identifierFields={"instrument": self.instrument.getName(),
-                                  "skymap": self.skymap_name,
-                                  "detector": self.visit.detector,
-                                  "physical_filter": self.visit.filters,
-                                  "band": self.butler.registry.expandDataId(
-                                      instrument=self.instrument.getName(),
-                                      physical_filter=self.visit.filters)["band"],
-                                  },
-                extraFields={"group": self.visit.groupId,
-                             },
-            )
-            _log.debug(f"Uploaded preload metrics to {dispatcher.url}.")
+        self.butler.registry.registerDatasetType(DatasetType(
+            "promptPreload_metrics",
+            dimensions={"instrument", "group", "detector"},
+            storageClass="MetricMeasurementBundle",
+            universe=self.butler.dimensions,
+        ))
+        self.butler.put(bundle,
+                        "promptPreload_metrics",
+                        run=self._get_preload_run(self._day_obs),
+                        instrument=self.instrument.getName(),
+                        detector=self.visit.detector,
+                        group=self.visit.groupId)
 
     def _export_refcats(self, center, radius):
         """Identify the refcats to export from the central butler.
@@ -866,6 +869,9 @@ class MiddlewareInterface:
         """Pre-register output collections in advance of running the pipeline.
         """
         self.butler.registry.refresh()
+        self.butler.registry.registerCollection(
+            self._get_preload_run(self._day_obs),
+            CollectionType.RUN)
         for pipeline_file in self._get_pipeline_files():
             self.butler.registry.registerCollection(
                 self._get_init_output_run(pipeline_file, self._day_obs),
@@ -1115,7 +1121,7 @@ class MiddlewareInterface:
             Identifiers of the exposures that were processed.
         """
         # Rather than determining which pipeline was run, just try to export all of them.
-        output_runs = []
+        output_runs = [self._get_preload_run(self._day_obs)]
         for f in self._get_pipeline_files():
             output_runs.extend([self._get_init_output_run(f, self._day_obs),
                                 self._get_output_run(f, self._day_obs),
@@ -1148,7 +1154,7 @@ class MiddlewareInterface:
                     for bundle in bundles:
                         _log_trace.debug("Uploading %s...", bundle)
                         dispatcher.dispatchRef(self.butler.get(bundle), bundle)
-                _log.debug("Uploaded %d pipeline metrics to %s.", len(bundles), dispatcher.url)
+                _log.debug("Uploaded %d metrics to %s.", len(bundles), dispatcher.url)
 
     @staticmethod
     def _get_safe_dataset_types(butler):
@@ -1224,11 +1230,6 @@ class MiddlewareInterface:
                               "day_obs",
                               "exposure",
                               "visit",
-                              # TODO: visit_* are not needed from version 4; remove when we require v6
-                              "visit_definition",
-                              "visit_detector_region",
-                              "visit_system",
-                              "visit_system_membership",
                               ]:
                 if dimension in self.butler.registry.dimensions:
                     records = self.butler.registry.queryDimensionRecords(

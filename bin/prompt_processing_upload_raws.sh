@@ -28,10 +28,10 @@ set -e  # Abort on any error
 
 shopt -s expand_aliases
 alias aws="singularity exec /sdf/sw/s3/aws-cli_latest.sif aws \
-	   --endpoint-url https://s3dfrgw.slac.stanford.edu"
+          --endpoint-url https://s3dfrgw.slac.stanford.edu"
 
 RAW_DIR="/sdf/data/rubin/ddn/ncsa-datasets/hsc/raw/ssp_pdr2/2016-03-07"
-UPLOAD_BUCKET=rubin-pp-users/unobserved
+UPLOAD_BUCKET=rubin-pp-dev-users/unobserved
 
 
 # Need to copy to a temp.fits first before uploading to the bucket because
@@ -44,27 +44,27 @@ fi
 # Filename format is defined in activator/raw.py:
 # instrument/detector/group/snap/exposureId/filter/instrument-group-snap-exposureId-filter-detector
 cp "${RAW_DIR}/HSCA05913553.fits" temp.fits
-aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/0/2016-03-07T00:00:00.000001/0/0059134/HSC-G/HSC-2016-03-07T00:00:00.000001-0-0059134-HSC-G-0.fits
+aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/0/0059134/0/0059134/HSC-G/HSC-0059134-0-0059134-HSC-G-0.fits
 cp "${RAW_DIR}/HSCA05913542.fits" temp.fits
-aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/4/2016-03-07T00:00:00.000001/0/0059134/HSC-G/HSC-2016-03-07T00:00:00.000001-0-0059134-HSC-G-4.fits
+aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/4/0059134/0/0059134/HSC-G/HSC-0059134-0-0059134-HSC-G-4.fits
 cp "${RAW_DIR}/HSCA05913543.fits" temp.fits
-aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/5/2016-03-07T00:00:00.000001/0/0059134/HSC-G/HSC-2016-03-07T00:00:00.000001-0-0059134-HSC-G-5.fits
+aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/5/0059134/0/0059134/HSC-G/HSC-0059134-0-0059134-HSC-G-5.fits
 
 cp "${RAW_DIR}/HSCA05914353.fits" temp.fits
-aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/0/2016-03-07T00:00:00.000002/0/0059142/HSC-G/HSC-2016-03-07T00:00:00.000002-0-0059142-HSC-G-0.fits
+aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/0/0059142/0/0059142/HSC-G/HSC-0059142-0-0059142-HSC-G-0.fits
 cp "${RAW_DIR}/HSCA05914343.fits" temp.fits
-aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/5/2016-03-07T00:00:00.000002/0/0059142/HSC-G/HSC-2016-03-07T00:00:00.000002-0-0059142-HSC-G-5.fits
+aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/5/0059142/0/0059142/HSC-G/HSC-0059142-0-0059142-HSC-G-5.fits
 cp "${RAW_DIR}/HSCA05914337.fits" temp.fits
-aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/11/2016-03-07T00:00:00.000002/0/0059142/HSC-G/HSC-2016-03-07T00:00:00.000002-0-0059142-HSC-G-11.fits
+aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/11/0059142/0/0059142/HSC-G/HSC-0059142-0-0059142-HSC-G-11.fits
 
 cp "${RAW_DIR}/HSCA05915112.fits" temp.fits
-aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/50/2016-03-07T00:00:00.000003/0/0059150/HSC-G/HSC-2016-03-07T00:00:00.000003-0-0059150-HSC-G-50.fits
+aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/50/0059150/0/0059150/HSC-G/HSC-0059150-0-0059150-HSC-G-50.fits
 cp "${RAW_DIR}/HSCA05915116.fits" temp.fits
-aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/58/2016-03-07T00:00:00.000003/0/0059150/HSC-G/HSC-2016-03-07T00:00:00.000003-0-0059150-HSC-G-58.fits
+aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/58/0059150/0/0059150/HSC-G/HSC-0059150-0-0059150-HSC-G-58.fits
 
 cp "${RAW_DIR}/HSCA05916109.fits" temp.fits
-aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/43/2016-03-07T00:00:00.000004/0/0059160/HSC-G/HSC-2016-03-07T00:00:00.000004-0-0059160-HSC-G-43.fits
+aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/43/0059160/0/0059160/HSC-G/HSC-0059160-0-0059160-HSC-G-43.fits
 cp "${RAW_DIR}/HSCA05916113.fits" temp.fits
-aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/51/2016-03-07T00:00:00.000004/0/0059160/HSC-G/HSC-2016-03-07T00:00:00.000004-0-0059160-HSC-G-51.fits
+aws s3 cp temp.fits s3://${UPLOAD_BUCKET}/HSC/51/0059160/0/0059160/HSC-G/HSC-0059160-0-0059160-HSC-G-51.fits
 
 rm temp.fits
