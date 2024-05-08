@@ -1082,14 +1082,11 @@ class MiddlewareInterface:
                 state_changed = True  # better safe than sorry
                 try:
                     data_ids = set(self.butler.registry.queryDataIds(
-                        ["instrument", "visit", "detector"], where=where).expanded())
+                        ["instrument", "visit", "detector"], where=where))
                     if len(data_ids) == 1:
                         data_id = list(data_ids)[0]
-                        packer = self.instrument.make_default_dimension_packer(data_id, is_exposure=False)
-                        ccd_visit_id = packer.pack(data_id, returnMaxBits=False)
                         apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
-                        # HACK: this method only works for ApdbSql; not needed after DM-41671
-                        if not apdb.containsCcdVisit(ccd_visit_id):
+                        if not apdb.containsVisitDetector(data_id["visit"], self.visit.detector):
                             state_changed = False
                     else:
                         # Don't know how this could happen, so won't try to handle it gracefully.
