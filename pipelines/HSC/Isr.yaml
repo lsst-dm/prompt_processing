@@ -1,0 +1,6 @@
+description: ISR-only pipeline specialized for HSC
+
+imports:
+  - location: $PROMPT_PROCESSING_DIR/pipelines/HSC/ApPipe.yaml
+    include:
+      - isr
