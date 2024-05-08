@@ -128,9 +128,9 @@ Add text as follows.
 
 .. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/yml/apdb.yaml#L4
 
-.. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/apdbSql.py#L60-L63
+.. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/sql/apdbSql.py#L67-L71
 
-.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/apdbCassandra.py#L80-L83
+.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L83-L87
 
 .. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
 
