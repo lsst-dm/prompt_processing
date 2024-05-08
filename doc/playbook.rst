@@ -115,7 +115,8 @@ Add text as follows.
 
 * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
 * Science Pipelines version and rubin-env version
-* Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_ versions (see `DMTN-269`_ for rationale)
+* Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_ versions (see `DMTN-269`_ for rationale).
+  A stack quoting a given minor version is compatible with *older* APDBs of that major version but not necessarily newer ones; for example, a release whose baseline is APDB schema 1.4.0 can access a schema 1.0.0 or 1.4.1 database, but not schema 1.5.
 * Supported `Butler dimensions-config`_ versions
 * The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
 
@@ -127,9 +128,9 @@ Add text as follows.
 
 .. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/yml/apdb.yaml#L4
 
-.. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/apdbSql.py#L60-L63
+.. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/sql/apdbSql.py#L67-L71
 
-.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/apdbCassandra.py#L80-L83
+.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L83-L87
 
 .. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
 
