@@ -35,6 +35,7 @@ import sqlalchemy
 
 import lsst.utils.timer
 from lsst.resources import ResourcePath
+import lsst.sphgeom
 import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
@@ -437,6 +438,8 @@ class MiddlewareInterface:
             with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
                 _log.info(f"Preparing Butler for visit {self.visit!r}")
 
+                self._write_region_time()  # Must be done before preprocessing pipeline
+
                 # repos may have been modified by other MWI instances.
                 # TODO: get a proper synchronization API for Butler
                 self.central_butler.registry.refresh()
@@ -808,6 +811,38 @@ class MiddlewareInterface:
         ordered = sorted(refs, key=get_key)
         for k, g in itertools.groupby(ordered, key=get_key):
             yield k, len(list(g))
+
+    def _write_region_time(self):
+        """Store the approximate sky region and timespan for this
+        object's visit.
+        """
+        detector = self.camera[self.visit.detector]
+        wcs = self._predict_wcs(detector)
+
+        # TODO: unify with other region estimates on DM-43712
+        center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
+        corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
+        padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
+        region = lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
+
+        # Assume a padded interval that's centered on the most probable time
+        # TODO: replace with self.visit.startTime after DM-38635
+        start = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
+        end = start + 3.0 * self.visit.duration * astropy.units.second
+        timespan = Timespan(start, end)
+
+        self.butler.registry.registerDatasetType(DatasetType(
+            "regionTimeInfo",
+            dimensions={"instrument", "group", "detector"},
+            storageClass="RegionTimeInfo",
+            universe=self.butler.dimensions,
+        ))
+        self.butler.put(lsst.pipe.base.utils.RegionTimeInfo(region=region, timespan=timespan),
+                        "regionTimeInfo",
+                        run=self._get_preload_run(self._day_obs),
+                        instrument=self.instrument.getName(),
+                        detector=self.visit.detector,
+                        group=self.visit.groupId)
 
     def _get_output_chain(self,
                           date: str) -> str:

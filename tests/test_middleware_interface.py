@@ -285,6 +285,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           full_check=True,
                           collections=preload_collection)
         )
+        self.assertTrue(
+            butler.exists('regionTimeInfo', instrument=instname, group=group, detector=detector,
+                          full_check=True,
+                          collections=preload_collection)
+        )
 
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
@@ -950,6 +955,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.interface.central_butler, "promptPreload_metrics",
                                     {"instrument", "group", "detector"},
                                     "MetricMeasurementBundle")
+        butler_tests.addDatasetType(self.interface.central_butler, "regionTimeInfo",
+                                    {"instrument", "group", "detector"},
+                                    "RegionTimeInfo")
         butler_tests.addDatasetType(self.interface.central_butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
