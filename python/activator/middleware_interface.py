@@ -1040,10 +1040,12 @@ class MiddlewareInterface:
                 pipeline = self._prep_pipeline(pipeline_file)
             except FileNotFoundError as e:
                 raise RuntimeError from e
+            preload_run = self._get_preload_run(self._day_obs)
             init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
             output_run = self._get_output_run(pipeline_file, self._day_obs)
             exec_butler = Butler(butler=self.butler,
-                                 collections=[output_run, init_output_run] + list(self.butler.collections),
+                                 collections=[output_run, init_output_run, preload_run]
+                                 + list(self.butler.collections),
                                  run=output_run)
             factory = lsst.ctrl.mpexec.TaskFactory()
             executor = SeparablePipelineExecutor(
