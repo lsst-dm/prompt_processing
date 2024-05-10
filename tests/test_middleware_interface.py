@@ -574,7 +574,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
-             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
+             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsCcdVisit") as mock_query:
             mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
             mock_query.return_value = False
             with self.assertRaises(RuntimeError):
@@ -589,7 +589,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
-             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
+             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsCcdVisit") as mock_query:
             mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
             mock_query.return_value = True
             with self.assertRaises(NonRetriableError):
@@ -604,7 +604,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
-             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
+             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsCcdVisit") as mock_query:
             mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
             mock_query.side_effect = psycopg2.OperationalError("Database? What database?")
             with self.assertRaises(NonRetriableError):
