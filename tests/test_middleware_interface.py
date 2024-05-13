@@ -477,8 +477,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             The description of the pipeline that should be run, given
             ``pipe_files`` and ``graphs``.
         """
-        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._get_pipeline_files",
-                                 return_value=pipe_files), \
+        with unittest.mock.patch(
+            "activator.middleware_interface.MiddlewareInterface._get_main_pipeline_files",
+            return_value=pipe_files), \
                 unittest.mock.patch(
                     "activator.middleware_interface.SeparablePipelineExecutor.make_quantum_graph",
                     side_effect=graphs), \
