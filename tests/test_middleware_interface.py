@@ -213,7 +213,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
         self.assertEqual(self.interface.rawIngestTask.config.transfer, "copy")
 
-    def _check_imports(self, butler, detector, expected_shards, expected_date):
+    def _check_imports(self, butler, group, detector, expected_shards, expected_date):
         """Test that the butler has the expected supporting data.
         """
         self.assertEqual(butler.get('camera',
@@ -276,6 +276,21 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           collections=self.umbrella)
         )
 
+        # Check that preloaded datasets have been generated
+        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        preload_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
+                             "Preload/prompt-proto-service-042"
+        self.assertTrue(
+            butler.exists('promptPreload_metrics', instrument=instname, group=group, detector=detector,
+                          full_check=True,
+                          collections=preload_collection)
+        )
+        self.assertTrue(
+            butler.exists('regionTimeInfo', instrument=instname, group=group, detector=detector,
+                          full_check=True,
+                          collections=preload_collection)
+        )
+
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """
@@ -286,7 +301,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # TODO DM-34112: check these shards again with some plots, once I've
         # determined whether ci_hits2015 actually has enough shards.
         expected_shards = {157394, 157401, 157405}
-        self._check_imports(self.interface.butler, detector=56,
+        self._check_imports(self.interface.butler, group="1", detector=56,
                             expected_shards=expected_shards, expected_date="20150218T000000Z")
 
     def test_prep_butler_olddate(self):
@@ -305,9 +320,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected_shards = {157394, 157401, 157405}
         with self.assertRaises((AssertionError, lsst.daf.butler.registry.MissingCollectionError)):
             # 20150218T000000Z run should not be imported
-            self._check_imports(self.interface.butler, detector=56,
+            self._check_imports(self.interface.butler, group="1", detector=56,
                                 expected_shards=expected_shards, expected_date="20150218T000000Z")
-        self._check_imports(self.interface.butler, detector=56,
+        self._check_imports(self.interface.butler, group="1", detector=56,
                             expected_shards=expected_shards, expected_date="20150313T000000Z")
 
     # TODO: prep_butler doesn't know what kinds of calibs to expect, so can't
@@ -345,7 +360,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         second_interface.prep_butler()
         expected_shards = {157394, 157401, 157405}
-        self._check_imports(second_interface.butler, detector=56,
+        self._check_imports(second_interface.butler, group="2", detector=56,
                             expected_shards=expected_shards, expected_date="20150218T000000Z")
 
         # Third visit with different detector and coordinates.
@@ -362,7 +377,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                               prefix="file://")
         third_interface.prep_butler()
         expected_shards.update({157393, 157395})
-        self._check_imports(third_interface.butler, detector=5,
+        self._check_imports(third_interface.butler, group="3", detector=5,
                             expected_shards=expected_shards, expected_date="20150218T000000Z")
 
     def test_ingest_image(self):
@@ -940,6 +955,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.interface.central_butler, "promptPreload_metrics",
                                     {"instrument", "group", "detector"},
                                     "MetricMeasurementBundle")
+        butler_tests.addDatasetType(self.interface.central_butler, "regionTimeInfo",
+                                    {"instrument", "group", "detector"},
+                                    "RegionTimeInfo")
         butler_tests.addDatasetType(self.interface.central_butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
