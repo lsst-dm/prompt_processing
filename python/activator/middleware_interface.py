@@ -192,6 +192,8 @@ class MiddlewareInterface:
         See also ``prefix``.
     visit : `activator.visit.FannedOutVisit`
         The visit-detector combination to be processed by this object.
+    pre_pipelines : `activator.config.PipelinesConfig`
+        Information about which pipelines to run before a visit arrives.
     main_pipelines : `activator.config.PipelinesConfig`
         Information about which pipelines to run on ``visit``'s raws.
     skymap: `str`
@@ -243,7 +245,8 @@ class MiddlewareInterface:
     #   self.butler is the only Butler pointing to the local repo.
 
     def __init__(self, central_butler: Butler, image_bucket: str, visit: FannedOutVisit,
-                 main_pipelines: PipelinesConfig, skymap: str, local_repo: str,
+                 pre_pipelines: PipelinesConfig, main_pipelines: PipelinesConfig,
+                 skymap: str, local_repo: str,
                  prefix: str = "s3://"):
         self.visit = visit
         if self.visit.coordinateSystem != FannedOutVisit.CoordSys.ICRS:
@@ -265,6 +268,7 @@ class MiddlewareInterface:
             self._download_store = None
         # TODO: how much overhead do we pick up from going through the registry?
         self.instrument = lsst.obs.base.Instrument.from_string(visit.instrument, central_butler.registry)
+        self.pre_pipelines = pre_pipelines
         self.main_pipelines = main_pipelines
 
         self._day_obs = (astropy.time.Time.now() + _DAY_OBS_DELTA).tai.to_value("iso", "date")
@@ -937,6 +941,18 @@ class MiddlewareInterface:
             self.butler.registry.registerCollection(
                 self._get_output_run(pipeline_file, self._day_obs),
                 CollectionType.RUN)
+
+    def _get_pre_pipeline_files(self) -> collections.abc.Sequence[str]:
+        """Identify the pipelines to be run during preprocessing, based on the
+        configured instrument and visit.
+
+        Returns
+        -------
+        pipelines : sequence [`str`]
+            A sequence of paths to a configured pipeline file, in order from
+            most preferred to least preferred.
+        """
+        return self.pre_pipelines.get_pipeline_files(self.visit)
 
     def _get_main_pipeline_files(self) -> collections.abc.Sequence[str]:
         """Identify the pipelines to be run, based on the configured instrument

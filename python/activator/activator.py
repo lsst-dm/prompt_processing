@@ -69,7 +69,9 @@ kafka_cluster = os.environ["KAFKA_CLUSTER"]
 kafka_group_id = str(uuid.uuid4())
 # The topic on which to listen to updates to image_bucket
 bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
-# The pipelines to execute and the conditions in which to choose them.
+# The preprocessing pipelines to execute and the conditions in which to choose them.
+pre_pipelines = PipelinesConfig(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
+# The main pipelines to execute and the conditions in which to choose them.
 main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
 
 setup_usdf_logger(
@@ -285,6 +287,7 @@ def next_visit_handler() -> Tuple[str, int]:
             mwi = MiddlewareInterface(central_butler,
                                       image_bucket,
                                       expected_visit,
+                                      pre_pipelines,
                                       main_pipelines,
                                       skymap,
                                       local_repo.name)

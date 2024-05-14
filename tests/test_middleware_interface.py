@@ -62,8 +62,12 @@ skymap_name = "decam_rings_v1"
 # the second should not be attempted.
 pipelines = PipelinesConfig('''(survey="SURVEY")=[${PROMPT_PROCESSING_DIR}/tests/data/ApPipe.yaml,
                                                   ${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml]
-                            '''
-                            )
+                            ''')
+pre_pipelines_empty = PipelinesConfig('(survey="SURVEY")=[]')
+pre_pipelines_full = PipelinesConfig(
+    '''(survey="SURVEY")=[${PROMPT_PROCESSING_DIR}/tests/data/Preprocess.yaml,
+                          ${PROMPT_PROCESSING_DIR}/tests/data/MinPrep.yaml]
+    ''')
 
 
 def fake_file_data(filename, dimensions, instrument, visit):
@@ -171,7 +175,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
         self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
-                                             pipelines, skymap_name, self.local_repo.name,
+                                             pre_pipelines_empty, pipelines, skymap_name,
+                                             self.local_repo.name,
                                              prefix="file://")
 
     def test_get_butler(self):
@@ -355,7 +360,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Second visit with everything same except group.
         second_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
         second_interface = MiddlewareInterface(self.central_butler, self.input_data, second_visit,
-                                               pipelines, skymap_name, self.local_repo.name,
+                                               pre_pipelines_empty, pipelines, skymap_name,
+                                               self.local_repo.name,
                                                prefix="file://")
 
         second_interface.prep_butler()
@@ -373,7 +379,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                     self.next_visit.position[1] - 1.2],
                                           )
         third_interface = MiddlewareInterface(self.central_butler, self.input_data, third_visit,
-                                              pipelines, skymap_name, self.local_repo.name,
+                                              pre_pipelines_empty, pipelines, skymap_name,
+                                              self.local_repo.name,
                                               prefix="file://")
         third_interface.prep_butler()
         expected_shards.update({157393, 157395})
@@ -907,7 +914,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         # Populate repository.
         self.interface = MiddlewareInterface(central_butler, self.input_data, self.next_visit,
-                                             pipelines, skymap_name, local_repo.name,
+                                             pre_pipelines_full, pipelines, skymap_name, local_repo.name,
                                              prefix="file://")
         self.interface.prep_butler()
         filename = "fakeRawImage.fits"
@@ -922,9 +929,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                                self.interface.butler.dimensions,
                                                                self.interface.instrument,
                                                                self.second_visit)
-        self.second_interface = MiddlewareInterface(central_butler, self.input_data, self.second_visit,
-                                                    pipelines, skymap_name, second_local_repo.name,
-                                                    prefix="file://")
+        self.second_interface = MiddlewareInterface(
+            central_butler, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
+            skymap_name, second_local_repo.name, prefix="file://")
         self.second_interface.prep_butler()
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
@@ -988,7 +995,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         with make_local_repo(tempfile.gettempdir(), central_butler, instname) as local_repo:
             interface = MiddlewareInterface(central_butler, self.input_data,
                                             dataclasses.replace(self.next_visit, groupId="42"),
-                                            pipelines, skymap_name, local_repo,
+                                            pre_pipelines_empty, pipelines, skymap_name, local_repo,
                                             prefix="file://")
             interface.prep_butler()
 
