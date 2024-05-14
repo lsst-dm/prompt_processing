@@ -1417,11 +1417,11 @@ class MiddlewareInterface:
             )
             self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
             # Outputs are all in their own runs, so just drop them.
+            preload_run = self._get_preload_run(self._day_obs)
+            _remove_run_completely(self.butler, preload_run)
             for pipeline_file in self._get_pipeline_files():
                 output_run = self._get_output_run(pipeline_file, self._day_obs)
-                for chain in self.butler.registry.getCollectionParentChains(output_run):
-                    self.butler.collection_chains.remove_from_chain(chain, [output_run])
-                self.butler.removeRuns([output_run], unstore=True)
+                _remove_run_completely(self.butler, output_run)
             # VALIDITY-HACK: remove cached calibs to avoid future conflicts
             if not cache_calibs:
                 calib_chain = self.instrument.makeCalibrationCollectionName()
@@ -1580,7 +1580,7 @@ def _get_refcat_types(butler):
 
     Parameters
     ---------
-    butler: `lsst.daf.butler.Butler`
+    butler : `lsst.daf.butler.Butler`
         The butler in which to search for refcat dataset types.
 
     Returns
@@ -1592,3 +1592,18 @@ def _get_refcat_types(butler):
     # SimpleCatalog storage class, is a refcat.
     return {t for t in butler.registry.queryDatasetTypes(...)
             if t.storageClass_name == "SimpleCatalog" and len(t.dimensions) == 1 and t.dimensions.skypix}
+
+
+def _remove_run_completely(butler, run):
+    """Remove a run and all references to it from a Butler.
+
+    Parameters
+    ---------
+    butler : `lsst.daf.butler.Butler`
+        The butler in which to search for refcat dataset types.
+    run : `str`
+        The run to remove.
+    """
+    for chain in butler.registry.getCollectionParentChains(run):
+        butler.collection_chains.remove_from_chain(chain, [run])
+    butler.removeRuns([run], unstore=True)
