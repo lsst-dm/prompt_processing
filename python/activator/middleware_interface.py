@@ -938,7 +938,7 @@ class MiddlewareInterface:
                 self._get_output_run(pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
-    def _get_pipeline_files(self) -> str:
+    def _get_pipeline_files(self) -> collections.abc.Sequence[str]:
         """Identify the pipelines to be run, based on the configured instrument
         and visit.
 
