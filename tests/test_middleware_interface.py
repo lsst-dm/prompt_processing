@@ -29,6 +29,7 @@ import unittest.mock
 import warnings
 
 import astropy.coordinates
+import astropy.table
 import astropy.time
 import astropy.units as u
 import psycopg2
@@ -923,18 +924,24 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                      self.interface.butler.dimensions,
                                                      self.interface.instrument,
                                                      self.next_visit)
+        self.group_data_id = {(k if k != "exposure" else "group"): (v if k != "exposure" else str(v))
+                              for k, v in self.raw_data_id.required.items()}
 
         self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.second_data_id, second_file_data = fake_file_data(filepath,
                                                                self.interface.butler.dimensions,
                                                                self.interface.instrument,
                                                                self.second_visit)
+        self.second_group_data_id = {(k if k != "exposure" else "group"): (v if k != "exposure" else str(v))
+                                     for k, v in self.second_data_id.required.items()}
         self.second_interface = MiddlewareInterface(
             central_butler, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
             skymap_name, second_local_repo.name, prefix="file://")
         self.second_interface.prep_butler()
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
+        self.preprocessing_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
+                                 "/Preprocess/prompt-proto-service-042"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                           "/ApPipe/prompt-proto-service-042"
 
@@ -952,6 +959,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
     def _simulate_run(self):
         """Create a mock pipeline execution that stores a calexp for self.raw_data_id.
         """
+        cat = astropy.table.Table()
         exp = lsst.afw.image.ExposureF(20, 20)
         self.processed_data_id = {(k if k != "exposure" else "visit"): v
                                   for k, v in self.raw_data_id.required.items()}
@@ -965,6 +973,15 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.interface.central_butler, "regionTimeInfo",
                                     {"instrument", "group", "detector"},
                                     "RegionTimeInfo")
+        butler_tests.addDatasetType(self.interface.central_butler, "history_diaSource",
+                                    {"instrument", "group", "detector"},
+                                    "ArrowAstropy")
+        butler_tests.addDatasetType(self.interface.butler, "history_diaSource",
+                                    {"instrument", "group", "detector"},
+                                    "ArrowAstropy")
+        butler_tests.addDatasetType(self.second_interface.butler, "history_diaSource",
+                                    {"instrument", "group", "detector"},
+                                    "ArrowAstropy")
         butler_tests.addDatasetType(self.interface.central_butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
@@ -974,6 +991,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.second_interface.butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
+        self.interface.butler.put(cat, "history_diaSource", self.group_data_id, run=self.preprocessing_run)
+        self.second_interface.butler.put(cat, "history_diaSource", self.second_group_data_id,
+                                         run=self.preprocessing_run)
         self.interface.butler.put(exp, "calexp", self.processed_data_id, run=self.output_run)
         self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id, run=self.output_run)
 
@@ -1011,6 +1031,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
+        self.assertEqual(self._count_datasets(central_butler, "history_diaSource", self.preprocessing_run), 2)
+        self.assertEqual(self._count_datasets(central_butler, "history_diaSource", self.output_run), 0)
+        self.assertEqual(self._count_datasets(central_butler, "history_diaSource", self.output_chain), 2)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", self.preprocessing_run), 0)
         self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
         self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_chain), 2)
         # Should be able to look up datasets by both visit and exposure

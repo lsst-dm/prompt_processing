@@ -934,13 +934,27 @@ class MiddlewareInterface:
         self.butler.registry.registerCollection(
             self._get_preload_run(self._day_obs),
             CollectionType.RUN)
-        for pipeline_file in self._get_main_pipeline_files():
+        for pipeline_file in self._get_all_pipeline_files():
             self.butler.registry.registerCollection(
                 self._get_init_output_run(pipeline_file, self._day_obs),
                 CollectionType.RUN)
             self.butler.registry.registerCollection(
                 self._get_output_run(pipeline_file, self._day_obs),
                 CollectionType.RUN)
+
+    def _get_all_pipeline_files(self) -> collections.abc.Iterable[str]:
+        """Identify the pipelines to be run at any point, based on the
+        configured instrument and visit.
+
+        Returns
+        -------
+        pipeline : sequence [`str`]
+            A sequence of paths a configured pipeline file. The order
+            is undefined.
+        """
+        all = list(self._get_pre_pipeline_files())
+        all.extend(self._get_main_pipeline_files())
+        return all
 
     def _get_pre_pipeline_files(self) -> collections.abc.Sequence[str]:
         """Identify the pipelines to be run during preprocessing, based on the
@@ -1108,17 +1122,21 @@ class MiddlewareInterface:
             f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
             " and visit_system = 0"
         )
+        preload_run = self._get_preload_run(self._day_obs)
+        init_pre_runs = [self._get_init_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
+        pre_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
         # Try pipelines in order until one works.
         for pipeline_file in self._get_main_pipeline_files():
             try:
                 pipeline = self._prep_pipeline(pipeline_file)
             except FileNotFoundError as e:
                 raise RuntimeError from e
-            preload_run = self._get_preload_run(self._day_obs)
             init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
             output_run = self._get_output_run(pipeline_file, self._day_obs)
             exec_butler = Butler(butler=self.butler,
-                                 collections=[output_run, init_output_run, preload_run]
+                                 collections=[output_run, init_output_run]
+                                 + pre_runs + init_pre_runs
+                                 + [preload_run]
                                  + list(self.butler.collections),
                                  run=output_run)
             factory = lsst.ctrl.mpexec.TaskFactory()
@@ -1195,7 +1213,7 @@ class MiddlewareInterface:
         """
         # Rather than determining which pipeline was run, just try to export all of them.
         output_runs = [self._get_preload_run(self._day_obs)]
-        for f in self._get_main_pipeline_files():
+        for f in self._get_all_pipeline_files():
             output_runs.extend([self._get_init_output_run(f, self._day_obs),
                                 self._get_output_run(f, self._day_obs),
                                 ])
@@ -1435,7 +1453,7 @@ class MiddlewareInterface:
             # Outputs are all in their own runs, so just drop them.
             preload_run = self._get_preload_run(self._day_obs)
             _remove_run_completely(self.butler, preload_run)
-            for pipeline_file in self._get_main_pipeline_files():
+            for pipeline_file in self._get_all_pipeline_files():
                 output_run = self._get_output_run(pipeline_file, self._day_obs)
                 _remove_run_completely(self.butler, output_run)
             # VALIDITY-HACK: remove cached calibs to avoid future conflicts
