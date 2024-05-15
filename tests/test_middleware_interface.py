@@ -434,9 +434,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                                      collections=[f'{instname}/raw/all']))
         self.assertEqual(datasets, [])
 
-    def _prepare_run_pipeline(self):
+    def _prepare_run_preprocessing(self):
         # Have to setup the data so that we can create the pipeline executor.
         self.interface.prep_butler()
+
+    def _prepare_run_pipeline(self):
+        # Have to setup the data so that we can create the pipeline executor.
+        self._prepare_run_preprocessing()
+
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
@@ -488,8 +493,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             ``pipe_files`` and ``graphs``.
         """
         with unittest.mock.patch(
-            "activator.middleware_interface.MiddlewareInterface._get_main_pipeline_files",
+            "activator.middleware_interface.MiddlewareInterface._get_pre_pipeline_files",
             return_value=pipe_files), \
+                unittest.mock.patch(
+                    "activator.middleware_interface.MiddlewareInterface._get_main_pipeline_files",
+                    return_value=pipe_files), \
                 unittest.mock.patch(
                     "activator.middleware_interface.SeparablePipelineExecutor.make_quantum_graph",
                     side_effect=graphs), \
@@ -641,6 +649,111 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             mock_query.side_effect = psycopg2.OperationalError("Database? What database?")
             with self.assertRaises(NonRetriableError):
                 self.interface.run_pipeline({1})
+
+    def test_run_preprocessing_empty(self):
+        """Test that running the preprocessiing pipeline does nothing if no
+        pipelines configured.
+        """
+        self._prepare_run_preprocessing()
+
+        with self.assertLogs(self.logger_name, level="INFO") as logs:
+            self.interface._run_preprocessing()
+        self.assertIn("skipping", "\n".join(logs.output))
+        # Check that no pipelines mentioned
+        self.assertNotIn(os.path.join(self.data_dir, 'Preprocess.yaml'), "\n".join(logs.output))
+
+    def test_run_preprocessing_full(self):
+        """Test that running the preprocessiing pipeline uses the correct arguments.
+
+        We can't run an actual pipeline because all data are zeroed out.
+        """
+        self._prepare_run_preprocessing()
+
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
+                as mock_preexec, \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+             unittest.mock.patch.object(self.interface, "pre_pipelines", pre_pipelines_full):
+            with self.assertLogs(self.logger_name, level="INFO") as logs:
+                self.interface._run_preprocessing()
+        # Pre-execution and execution should only run once, even if graph
+        # generation is attempted for multiple pipelines.
+        mock_preexec.assert_called_once()
+        # Pre-execution may have other arguments as needed; no requirement either way.
+        self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
+        mock_run.assert_called_once()
+        # Check that we configured the right pipeline.
+        self.assertIn(os.path.join(self.data_dir, 'Preprocess.yaml'), "\n".join(logs.output))
+
+    def test_run_preprocessing_fallback_1failof2(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml')]
+        graph_list = [[], ["node1", "node2"]]
+        expected = "MinPrep.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_1failof2_inverse(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml')]
+        graph_list = [["node1", "node2"], []]
+        expected = "Preprocess.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_2failof2(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml')]
+        graph_list = [[], []]
+        expected = ""
+
+        self._prepare_run_preprocessing()
+        with self.assertRaises(RuntimeError):
+            self._check_run_pipeline_fallback(self.interface._run_preprocessing,
+                                              pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_0failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml'),
+                     os.path.join(self.data_dir, 'NoPrep.yaml')]
+        graph_list = [["node1", "node2"], ["node3", "node4"], ["node5"]]
+        expected = "Preprocess.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_1failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml'),
+                     os.path.join(self.data_dir, 'NoPrep.yaml')]
+        graph_list = [[], ["node3", "node4"], ["node5"]]
+        expected = "MinPrep.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_2failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml'),
+                     os.path.join(self.data_dir, 'NoPrep.yaml')]
+        graph_list = [[], [], ["node5"]]
+        expected = "NoPrep.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_2failof3_inverse(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml'),
+                     os.path.join(self.data_dir, 'NoPrep.yaml')]
+        graph_list = [[], ["node3", "node4"], []]
+        expected = "MinPrep.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
 
     def test_get_output_run(self):
         filename = "ApPipe.yaml"

@@ -1088,6 +1088,85 @@ class MiddlewareInterface:
         )
         return graph_executor
 
+    def _run_preprocessing(self) -> None:
+        """Preprocess a visit ahead of incoming image(s).
+
+        The internal butler must contain all data and all dimensions needed to
+        run the appropriate pipeline on this visit.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if the pipeline could not be loaded or configured, or the
+            graph generated.
+            TODO: could be a good case for a custom exception here.
+        """
+        pipeline_files = self._get_pre_pipeline_files()
+        if not pipeline_files:
+            _log.info(f"No preprocessing pipeline configured for {self.visit}, skipping.")
+            return
+
+        # Inefficient, but most graph builders can't take equality constraints
+        where = (
+            f"instrument='{self.visit.instrument}' and detector={self.visit.detector} "
+            f"and group='{self.visit.groupId}'"
+        )
+        preload_run = self._get_preload_run(self._day_obs)
+        # Try pipelines in order until one works.
+        for pipeline_file in pipeline_files:
+            try:
+                pipeline = self._prep_pipeline(pipeline_file)
+            except FileNotFoundError as e:
+                raise RuntimeError from e
+            init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
+            output_run = self._get_output_run(pipeline_file, self._day_obs)
+            exec_butler = Butler(butler=self.butler,
+                                 collections=[output_run, init_output_run, preload_run]
+                                 + list(self.butler.collections),
+                                 run=output_run)
+            factory = lsst.ctrl.mpexec.TaskFactory()
+            executor = SeparablePipelineExecutor(
+                exec_butler,
+                clobber_output=False,
+                skip_existing_in=None,
+                task_factory=factory,
+            )
+            try:
+                with lsst.utils.timer.time_this(
+                        _log, msg="executor.make_quantum_graph (preprocessing)", level=logging.DEBUG):
+                    qgraph = executor.make_quantum_graph(pipeline, where=where)
+            except MissingDatasetTypeError as e:
+                _log.error(f"Building quantum graph for {pipeline_file} failed ", exc_info=e)
+                continue
+            if len(qgraph) == 0:
+                # Diagnostic logs are the responsibility of GraphBuilder.
+                _log.error(f"Empty quantum graph for {pipeline_file}; "
+                           "see previous logs for details.")
+                continue
+            # Past this point, partial execution creates datasets.
+            # Don't retry -- either fail (raise) or break.
+
+            # If this is a fresh (local) repo, then types like calexp,
+            # *Diff_diaSrcTable, etc. have not been registered.
+            # TODO: after DM-38041, move pre-execution to one-time repo setup.
+            executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
+            _log.info(f"Running '{pipeline_file}' on {where}")
+            try:
+                with lsst.utils.timer.time_this(
+                        _log, msg="executor.run_pipeline (preprocessing)", level=logging.DEBUG):
+                    executor.run_pipeline(
+                        qgraph,
+                        graph_executor=self._get_graph_executor(exec_butler, factory)
+                    )
+                    _log.info("Pipeline successfully run.")
+            finally:
+                # Refresh so that registry queries know the processed products.
+                self.butler.registry.refresh()
+            break
+        else:
+            # TODO: a good place for a custom exception?
+            raise RuntimeError("No preprocessing pipeline graph could be built.")
+
     def run_pipeline(self, exposure_ids: set[int]) -> None:
         """Process the received image(s).
 
@@ -1117,6 +1196,7 @@ class MiddlewareInterface:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.") from e
 
+        # Inefficient, but most graph builders can't take equality constraints
         where = (
             f"instrument='{self.visit.instrument}' and detector={self.visit.detector}"
             f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
