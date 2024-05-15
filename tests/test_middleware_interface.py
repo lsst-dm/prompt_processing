@@ -471,11 +471,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that we configured the right pipeline.
         self.assertIn(os.path.join(self.data_dir, 'ApPipe.yaml'), "\n".join(logs.output))
 
-    def _check_run_pipeline_fallback(self, pipe_files, graphs, final_label):
+    def _check_run_pipeline_fallback(self, callable, pipe_files, graphs, final_label):
         """Generic test for different fallback scenarios.
 
         Parameters
         ----------
+        callable : callable [[]]
+            A nullary callable that runs the target pipeline(s).
         pipe_files : sequence [`str`]
             The list of pipeline files configured for a visit.
         graphs : sequence [`collections.abc.Sized`]
@@ -496,7 +498,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
                 self.assertLogs(self.logger_name, level="INFO") as logs:
-            self.interface.run_pipeline({1})
+            callable()
         mock_run.assert_called_once()
         # Check that we configured the right pipeline.
         self.assertIn(final_label, "\n".join(logs.output))
@@ -508,7 +510,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_1failof2_inverse(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
@@ -517,7 +520,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected = "ApPipe.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_2failof2(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
@@ -527,7 +531,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         self._prepare_run_pipeline()
         with self.assertRaises(RuntimeError):
-            self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+            self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                              pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_0failof3(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
@@ -537,7 +542,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected = "ApPipe.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_1failof3(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
@@ -547,7 +553,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_2failof3(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
@@ -557,7 +564,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected = "ISR.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_2failof3_inverse(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
@@ -567,7 +575,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_bad_visits(self):
         """Test that running a pipeline that results in bad visit definition
