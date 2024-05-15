@@ -176,6 +176,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
         self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
+                                             # TODO: replace pre_pipelines_empty on DM-43418
                                              pre_pipelines_empty, pipelines, skymap_name,
                                              self.local_repo.name,
                                              prefix="file://")
@@ -300,7 +301,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """
-        self.interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            self.interface.prep_butler()
 
         # These shards were identified by plotting the objects in each shard
         # on-sky and overplotting the detector corners.
@@ -310,6 +313,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self._check_imports(self.interface.butler, group="1", detector=56,
                             expected_shards=expected_shards, expected_date="20150218T000000Z")
 
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
+
     def test_prep_butler_olddate(self):
         """Test that prep_butler returns only calibs from a particular date range.
         """
@@ -317,7 +323,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.visit,
             private_sndStamp=datetime.datetime.fromisoformat("20150313T000000Z").timestamp(),
         )
-        self.interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            self.interface.prep_butler()
 
         # These shards were identified by plotting the objects in each shard
         # on-sky and overplotting the detector corners.
@@ -330,6 +338,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 expected_shards=expected_shards, expected_date="20150218T000000Z")
         self._check_imports(self.interface.butler, group="1", detector=56,
                             expected_shards=expected_shards, expected_date="20150313T000000Z")
+
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
 
     # TODO: prep_butler doesn't know what kinds of calibs to expect, so can't
     # tell that there are specifically, e.g., no flats. This test should pass
@@ -346,8 +357,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with warnings.catch_warnings():
             # Avoid "dubious year" warnings from using a 2050 date
             warnings.simplefilter("ignore", category=astropy.utils.exceptions.ErfaWarning)
-            with self.assertRaises(_MissingDatasetError):
+            with self.assertRaises(_MissingDatasetError), \
+                unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                    as mock_pre:
                 self.interface.prep_butler()
+
+        mock_pre.assert_not_called()
 
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
@@ -356,19 +371,26 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         in the local butler" problem that's related to the "can't register
         the skymap in init" problem.
         """
-        self.interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            self.interface.prep_butler()
 
         # Second visit with everything same except group.
         second_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
         second_interface = MiddlewareInterface(self.central_butler, self.input_data, second_visit,
+                                               # TODO: replace pre_pipelines_empty on DM-43418
                                                pre_pipelines_empty, pipelines, skymap_name,
                                                self.local_repo.name,
                                                prefix="file://")
 
-        second_interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            second_interface.prep_butler()
         expected_shards = {157394, 157401, 157405}
         self._check_imports(second_interface.butler, group="2", detector=56,
                             expected_shards=expected_shards, expected_date="20150218T000000Z")
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
 
         # Third visit with different detector and coordinates.
         # Only 5, 10, 56, 60 have valid calibs.
@@ -380,13 +402,18 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                     self.next_visit.position[1] - 1.2],
                                           )
         third_interface = MiddlewareInterface(self.central_butler, self.input_data, third_visit,
+                                              # TODO: replace pre_pipelines_empty on DM-43418
                                               pre_pipelines_empty, pipelines, skymap_name,
                                               self.local_repo.name,
                                               prefix="file://")
-        third_interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            third_interface.prep_butler()
         expected_shards.update({157393, 157395})
         self._check_imports(third_interface.butler, group="3", detector=5,
                             expected_shards=expected_shards, expected_date="20150218T000000Z")
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
 
     def test_ingest_image(self):
         self.interface.prep_butler()  # Ensure raw collections exist.
@@ -451,6 +478,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
+
+        # TODO: add any preprocessing outputs the main pipeline depends on (DM-43418?)
 
     def test_run_pipeline(self):
         """Test that running the pipeline uses the correct arguments.
@@ -1039,7 +1068,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.interface = MiddlewareInterface(central_butler, self.input_data, self.next_visit,
                                              pre_pipelines_full, pipelines, skymap_name, local_repo.name,
                                              prefix="file://")
-        self.interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
+            self.interface.prep_butler()
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         self.raw_data_id, file_data = fake_file_data(filepath,
@@ -1059,7 +1089,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface = MiddlewareInterface(
             central_butler, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
             skymap_name, second_local_repo.name, prefix="file://")
-        self.second_interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
+            self.second_interface.prep_butler()
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
         self.preprocessing_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
@@ -1139,7 +1170,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                             dataclasses.replace(self.next_visit, groupId="42"),
                                             pre_pipelines_empty, pipelines, skymap_name, local_repo,
                                             prefix="file://")
-            interface.prep_butler()
+            with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
+                interface.prep_butler()
 
             self.assertEqual(
                 self._count_datasets(interface.butler, "gaia_dr2_20200414", f"{instname}/defaults"),

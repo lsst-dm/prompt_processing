@@ -455,10 +455,14 @@ class MiddlewareInterface:
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
                     self._transfer_data(all_datasets, calib_datasets)
 
+                with time_this_to_bundle(bundle, action_id, "prep_butlerPreprocessTime"):
+                    self._run_preprocessing()
+
         # IMPORTANT: do not remove or rename entries in this list. New entries can be added as needed.
         enforce_schema(bundle, {action_id: ["prep_butlerTotalTime",
                                             "prep_butlerSearchTime",
                                             "prep_butlerTransferTime",
+                                            "prep_butlerPreprocessTime",
                                             ]})
         self.butler.registry.registerDatasetType(DatasetType(
             "promptPreload_metrics",
