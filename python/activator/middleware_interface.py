@@ -1088,6 +1088,97 @@ class MiddlewareInterface:
         )
         return graph_executor
 
+    def _try_pipelines(self, pipelines, in_collections, data_ids, *, label):
+        """Attempt to run pipelines from a prioritized list.
+
+        On success, exactly one of the pipelines is run, with outputs going to
+        a run named after the pipeline file.
+
+        Parameters
+        ----------
+        pipelines : sequence [`str`]
+            The pipeline file(s) to run, in decreasing order of preference.
+        in_collections : sequence [`str`]
+            Collections, usually containing previous outputs, to search (in
+            order) when reading pipeline inputs. This list is prepended to the
+            collections in ``self.butler``.
+        data_ids : `str`
+            A query string, in the format of the ``where`` parameter to
+            `lsst.daf.butler.Registry.queryDataIds`, specifying the data IDs
+            over which to run the pipelines.
+        label : `str`
+            A unique name to disambiguate this pipeline run for logging
+            purposes.
+
+        Returns
+        -------
+        init_output_run, output_run : `str`
+            The runs to which the successful pipeline wrote its init-outputs
+            and outputs, respectively.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if any pipeline could not be loaded/configured, or if graph
+            generation failed for all pipelines.
+            TODO: could be a good case for a custom exception here.
+        """
+        # Try pipelines in order until one works.
+        for pipeline_file in pipelines:
+            try:
+                pipeline = self._prep_pipeline(pipeline_file)
+            except FileNotFoundError as e:
+                raise RuntimeError from e
+            init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
+            output_run = self._get_output_run(pipeline_file, self._day_obs)
+            exec_butler = Butler(butler=self.butler,
+                                 collections=[output_run, init_output_run]
+                                 + in_collections
+                                 + list(self.butler.collections),
+                                 run=output_run)
+            factory = lsst.ctrl.mpexec.TaskFactory()
+            executor = SeparablePipelineExecutor(
+                exec_butler,
+                clobber_output=False,
+                skip_existing_in=None,
+                task_factory=factory,
+            )
+            try:
+                with lsst.utils.timer.time_this(
+                        _log, msg=f"executor.make_quantum_graph ({label})", level=logging.DEBUG):
+                    qgraph = executor.make_quantum_graph(pipeline, where=data_ids)
+            except MissingDatasetTypeError as e:
+                _log.error(f"Building quantum graph for {pipeline_file} failed ", exc_info=e)
+                continue
+            if len(qgraph) == 0:
+                # Diagnostic logs are the responsibility of GraphBuilder.
+                _log.error(f"Empty quantum graph for {pipeline_file}; see previous logs for details.")
+                continue
+            # Past this point, partial execution creates datasets.
+            # Don't retry -- either fail (raise) or break.
+
+            # If this is a fresh (local) repo, then types like calexp,
+            # *Diff_diaSrcTable, etc. have not been registered.
+            # TODO: after DM-38041, move pre-execution to one-time repo setup.
+            executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
+            _log.info(f"Running '{pipeline_file}' on {data_ids}")
+            try:
+                with lsst.utils.timer.time_this(
+                        _log, msg=f"executor.run_pipeline ({label})", level=logging.DEBUG):
+                    executor.run_pipeline(
+                        qgraph,
+                        graph_executor=self._get_graph_executor(exec_butler, factory)
+                    )
+                    _log.info(f"{label.capitalize()} pipeline successfully run.")
+                    return init_output_run, output_run
+            finally:
+                # Refresh so that registry queries know the processed products.
+                self.butler.registry.refresh()
+            break
+        else:
+            # TODO: a good place for a custom exception?
+            raise RuntimeError(f"No {label} pipeline graph could be built.")
+
     def _run_preprocessing(self) -> None:
         """Preprocess a visit ahead of incoming image(s).
 
@@ -1097,8 +1188,8 @@ class MiddlewareInterface:
         Raises
         ------
         RuntimeError
-            Raised if the pipeline could not be loaded or configured, or the
-            graph generated.
+            Raised if any pipeline could not be loaded/configured, or if graph
+            generation failed for all pipelines.
             TODO: could be a good case for a custom exception here.
         """
         pipeline_files = self._get_pre_pipeline_files()
@@ -1112,60 +1203,12 @@ class MiddlewareInterface:
             f"and group='{self.visit.groupId}'"
         )
         preload_run = self._get_preload_run(self._day_obs)
-        # Try pipelines in order until one works.
-        for pipeline_file in pipeline_files:
-            try:
-                pipeline = self._prep_pipeline(pipeline_file)
-            except FileNotFoundError as e:
-                raise RuntimeError from e
-            init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
-            output_run = self._get_output_run(pipeline_file, self._day_obs)
-            exec_butler = Butler(butler=self.butler,
-                                 collections=[output_run, init_output_run, preload_run]
-                                 + list(self.butler.collections),
-                                 run=output_run)
-            factory = lsst.ctrl.mpexec.TaskFactory()
-            executor = SeparablePipelineExecutor(
-                exec_butler,
-                clobber_output=False,
-                skip_existing_in=None,
-                task_factory=factory,
-            )
-            try:
-                with lsst.utils.timer.time_this(
-                        _log, msg="executor.make_quantum_graph (preprocessing)", level=logging.DEBUG):
-                    qgraph = executor.make_quantum_graph(pipeline, where=where)
-            except MissingDatasetTypeError as e:
-                _log.error(f"Building quantum graph for {pipeline_file} failed ", exc_info=e)
-                continue
-            if len(qgraph) == 0:
-                # Diagnostic logs are the responsibility of GraphBuilder.
-                _log.error(f"Empty quantum graph for {pipeline_file}; "
-                           "see previous logs for details.")
-                continue
-            # Past this point, partial execution creates datasets.
-            # Don't retry -- either fail (raise) or break.
 
-            # If this is a fresh (local) repo, then types like calexp,
-            # *Diff_diaSrcTable, etc. have not been registered.
-            # TODO: after DM-38041, move pre-execution to one-time repo setup.
-            executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
-            _log.info(f"Running '{pipeline_file}' on {where}")
-            try:
-                with lsst.utils.timer.time_this(
-                        _log, msg="executor.run_pipeline (preprocessing)", level=logging.DEBUG):
-                    executor.run_pipeline(
-                        qgraph,
-                        graph_executor=self._get_graph_executor(exec_butler, factory)
-                    )
-                    _log.info("Pipeline successfully run.")
-            finally:
-                # Refresh so that registry queries know the processed products.
-                self.butler.registry.refresh()
-            break
-        else:
-            # TODO: a good place for a custom exception?
-            raise RuntimeError("No preprocessing pipeline graph could be built.")
+        self._try_pipelines(self._get_pre_pipeline_files(),
+                            in_collections=[preload_run],
+                            data_ids=where,
+                            label="preprocessing",
+                            )
 
     def run_pipeline(self, exposure_ids: set[int]) -> None:
         """Process the received image(s).
@@ -1182,9 +1225,14 @@ class MiddlewareInterface:
         Raises
         ------
         RuntimeError
-            Raised if the pipeline could not be loaded or configured, or the
-            graph generated.
+            Raised if any pipeline could not be loaded/configured, or if graph
+            generation failed for all pipelines.
             TODO: could be a good case for a custom exception here.
+        NonRetriableError
+            Raised if external resources (such as the APDB or alert stream)
+            may have been left in a state that makes it unsafe to retry
+            failures. This exception is always chained to another exception
+            representing the original error.
         """
         # TODO: we want to define visits earlier, but we have to ingest a
         # faked raw file and appropriate SSO data during prep (and then
@@ -1205,82 +1253,35 @@ class MiddlewareInterface:
         preload_run = self._get_preload_run(self._day_obs)
         init_pre_runs = [self._get_init_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
         pre_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
-        # Try pipelines in order until one works.
-        for pipeline_file in self._get_main_pipeline_files():
-            try:
-                pipeline = self._prep_pipeline(pipeline_file)
-            except FileNotFoundError as e:
-                raise RuntimeError from e
-            init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
-            output_run = self._get_output_run(pipeline_file, self._day_obs)
-            exec_butler = Butler(butler=self.butler,
-                                 collections=[output_run, init_output_run]
-                                 + pre_runs + init_pre_runs
-                                 + [preload_run]
-                                 + list(self.butler.collections),
-                                 run=output_run)
-            factory = lsst.ctrl.mpexec.TaskFactory()
-            executor = SeparablePipelineExecutor(
-                exec_butler,
-                clobber_output=False,
-                skip_existing_in=None,
-                task_factory=factory,
-            )
-            try:
-                with lsst.utils.timer.time_this(_log, msg="executor.make_quantum_graph", level=logging.DEBUG):
-                    qgraph = executor.make_quantum_graph(pipeline, where=where)
-            except MissingDatasetTypeError as e:
-                _log.error(f"Building quantum graph for {pipeline_file} failed ", exc_info=e)
-                continue
-            if len(qgraph) == 0:
-                # Diagnostic logs are the responsibility of GraphBuilder.
-                _log.error(f"Empty quantum graph for {pipeline_file}; "
-                           "see previous logs for details.")
-                continue
-            # Past this point, partial execution creates datasets.
-            # Don't retry -- either fail (raise) or break.
 
-            # If this is a fresh (local) repo, then types like calexp,
-            # *Diff_diaSrcTable, etc. have not been registered.
-            # TODO: after DM-38041, move pre-execution to one-time repo setup.
-            executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
-            _log.info(f"Running '{pipeline_file}' on {where}")
+        try:
+            self._try_pipelines(self._get_main_pipeline_files(),
+                                in_collections=pre_runs + init_pre_runs + [preload_run],
+                                data_ids=where,
+                                label="main",
+                                )
+        except Exception as e:
+            state_changed = True  # better safe than sorry
             try:
-                with lsst.utils.timer.time_this(_log, msg="executor.run_pipeline", level=logging.DEBUG):
-                    executor.run_pipeline(
-                        qgraph,
-                        graph_executor=self._get_graph_executor(exec_butler, factory)
-                    )
-                    _log.info("Pipeline successfully run.")
-            except Exception as e:
-                state_changed = True  # better safe than sorry
-                try:
-                    data_ids = set(self.butler.registry.queryDataIds(
-                        ["instrument", "visit", "detector"], where=where))
-                    if len(data_ids) == 1:
-                        data_id = list(data_ids)[0]
-                        apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
-                        if not apdb.containsVisitDetector(data_id["visit"], self.visit.detector):
-                            state_changed = False
-                    else:
-                        # Don't know how this could happen, so won't try to handle it gracefully.
-                        _log.warning("Unexpected visit ids: %s. Assuming APDB modified.", data_ids)
-                except Exception:
-                    # Failure in registry or APDB queries
-                    _log.exception("Could not determine APDB state, assuming modified.")
-                    raise NonRetriableError("APDB potentially modified") from e
+                data_ids = set(self.butler.registry.queryDataIds(
+                    ["instrument", "visit", "detector"], where=where))
+                if len(data_ids) == 1:
+                    data_id = list(data_ids)[0]
+                    apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
+                    if not apdb.containsVisitDetector(data_id["visit"], self.visit.detector):
+                        state_changed = False
                 else:
-                    if state_changed:
-                        raise NonRetriableError("APDB modified") from e
-                    else:
-                        raise
-            finally:
-                # Refresh so that registry queries know the processed products.
-                self.butler.registry.refresh()
-            break
-        else:
-            # TODO: a good place for a custom exception?
-            raise RuntimeError("No pipeline graph could be built.")
+                    # Don't know how this could happen, so won't try to handle it gracefully.
+                    _log.warning("Unexpected visit ids: %s. Assuming APDB modified.", data_ids)
+            except Exception:
+                # Failure in registry or APDB queries
+                _log.exception("Could not determine APDB state, assuming modified.")
+                raise NonRetriableError("APDB potentially modified") from e
+            else:
+                if state_changed:
+                    raise NonRetriableError("APDB modified") from e
+                else:
+                    raise
 
     def export_outputs(self, exposure_ids: set[int]) -> None:
         """Copy pipeline outputs from processing a set of images back
