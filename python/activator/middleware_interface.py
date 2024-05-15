@@ -1130,7 +1130,7 @@ class MiddlewareInterface:
             # *Diff_diaSrcTable, etc. have not been registered.
             # TODO: after DM-38041, move pre-execution to one-time repo setup.
             executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
-            _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
+            _log.info(f"Running '{pipeline_file}' on {where}")
             try:
                 with lsst.utils.timer.time_this(_log, msg="executor.run_pipeline", level=logging.DEBUG):
                     executor.run_pipeline(

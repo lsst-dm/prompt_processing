@@ -461,8 +461,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
         mock_run.assert_called_once()
         # Check that we configured the right pipeline.
-        self.assertIn("End to end Alert Production pipeline specialized for HiTS-2015",
-                      "\n".join(logs.output))
+        self.assertIn(os.path.join(self.data_dir, 'ApPipe.yaml'), "\n".join(logs.output))
 
     def _check_run_pipeline_fallback(self, pipe_files, graphs, final_label):
         """Generic test for different fallback scenarios.
@@ -497,7 +496,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml')]
         graph_list = [[], ["node1", "node2"]]
-        expected = "Test pipeline consisting only of single-frame steps."
+        expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
         self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
@@ -506,7 +505,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml')]
         graph_list = [["node1", "node2"], []]
-        expected = "End to end Alert Production pipeline specialized for HiTS-2015"
+        expected = "ApPipe.yaml"
 
         self._prepare_run_pipeline()
         self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
@@ -526,7 +525,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
         graph_list = [["node1", "node2"], ["node3", "node4"], ["node5"]]
-        expected = "End to end Alert Production pipeline specialized for HiTS-2015"
+        expected = "ApPipe.yaml"
 
         self._prepare_run_pipeline()
         self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
@@ -536,7 +535,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
         graph_list = [[], ["node3", "node4"], ["node5"]]
-        expected = "Test pipeline consisting only of single-frame steps."
+        expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
         self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
@@ -546,7 +545,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
         graph_list = [[], [], ["node5"]]
-        expected = "Test pipeline consisting only of ISR."
+        expected = "ISR.yaml"
 
         self._prepare_run_pipeline()
         self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
@@ -556,7 +555,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
         graph_list = [[], ["node3", "node4"], []]
-        expected = "Test pipeline consisting only of single-frame steps."
+        expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
         self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
