@@ -996,11 +996,9 @@ class MiddlewareInterface:
         """
         pipeline = lsst.pipe.base.Pipeline.fromFile(pipeline_file)
 
-        try:
-            pipeline.addConfigOverride("parameters", "apdb_config", self._apdb_config)
-        except LookupError:
-            _log.warning(f"{pipeline_file} does not have an `apdb_config` parameter; "
-                         "assuming no APDB support is needed.")
+        # Config overrides are not validated until graph generation.
+        pipeline.addConfigOverride("parameters", "apdb_config", self._apdb_config)
+
         return pipeline
 
     def _download(self, remote):
