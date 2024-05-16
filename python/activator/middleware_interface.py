@@ -1283,21 +1283,7 @@ class MiddlewareInterface:
             # Transferring governor dimensions in parallel can cause deadlocks in
             # central registry. We need to transfer our exposure/visit dimensions,
             # so handle those manually.
-            for dimension in ["group",
-                              "day_obs",
-                              "exposure",
-                              "visit",
-                              ]:
-                if dimension in self.butler.registry.dimensions:
-                    records = self.butler.registry.queryDimensionRecords(
-                        dimension,
-                        where="exposure in (exposure_ids)",
-                        bind={"exposure_ids": exposure_ids},
-                        instrument=self.instrument.getName(),
-                        detector=self.visit.detector,
-                    )
-                    # If records don't match, this is not an error, and central takes precedence.
-                    self.central_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
+            self._export_exposure_dimensions(exposure_ids)
             transferred = self.central_butler.transfer_from(self.butler, datasets,
                                                             transfer="copy", transfer_dimensions=False)
             if len(transferred) != len(datasets):
@@ -1306,6 +1292,35 @@ class MiddlewareInterface:
                            set(datasets) - set(transferred))
 
         return transferred
+
+    def _export_exposure_dimensions(self, exposure_ids):
+        """Transfer dimensions generated from an exposure to the central repo.
+
+        In many cases the exposure records will already exist in the central
+        repo, but this is not guaranteed (especially in dev environments).
+        Visit records never exist in the central repo and are the sole
+        responsibility of Prompt Processing.
+
+        Parameters
+        ----------
+        exposure_ids : `set` [`int`]
+            Identifiers of the exposures that were processed.
+        """
+        for dimension in ["group",
+                          "day_obs",
+                          "exposure",
+                          "visit",
+                          ]:
+            if dimension in self.butler.registry.dimensions:
+                records = self.butler.registry.queryDimensionRecords(
+                    dimension,
+                    where="exposure in (exposure_ids)",
+                    bind={"exposure_ids": exposure_ids},
+                    instrument=self.instrument.getName(),
+                    detector=self.visit.detector,
+                )
+                # If records don't match, this is not an error, and central takes precedence.
+                self.central_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
 
     def _chain_exports(self, output_chain: str, output_runs: collections.abc.Iterable[str]) -> None:
         """Associate exported datasets with a chained collection in the
