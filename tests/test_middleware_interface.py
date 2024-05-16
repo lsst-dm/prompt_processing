@@ -1006,6 +1006,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         central_butler = Butler(self.central_repo.name, writeable=False)
         self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
         self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_chain), 2)
+        # Should be able to look up datasets by both visit and exposure
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.raw_data_id),
+            1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.second_data_id),
+            1)
         self.assertEqual(
             self._count_datasets_with_id(central_butler, "calexp", self.output_run, self.processed_data_id),
             1)
