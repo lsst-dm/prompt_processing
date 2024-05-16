@@ -1306,21 +1306,30 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
         """
-        for dimension in ["group",
-                          "day_obs",
-                          "exposure",
-                          "visit",
-                          ]:
-            if dimension in self.butler.registry.dimensions:
-                records = self.butler.registry.queryDimensionRecords(
-                    dimension,
-                    where="exposure in (exposure_ids)",
-                    bind={"exposure_ids": exposure_ids},
-                    instrument=self.instrument.getName(),
-                    detector=self.visit.detector,
-                )
-                # If records don't match, this is not an error, and central takes precedence.
-                self.central_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
+        core_dimensions = ["group",
+                           "day_obs",
+                           "exposure",
+                           "visit",
+                           "visit_system",
+                           ]
+        universe = self.butler.dimensions
+
+        full_dimensions = [universe[d] for d in core_dimensions if d in universe]
+        extra_dimensions = []
+        for d in full_dimensions:
+            extra_dimensions.extend(universe.get_elements_populated_by(universe[d]))
+        sorted_dimensions = universe.sorted(full_dimensions + extra_dimensions)
+
+        for dimension in sorted_dimensions:
+            records = self.butler.registry.queryDimensionRecords(
+                dimension,
+                where="exposure in (exposure_ids)",
+                bind={"exposure_ids": exposure_ids},
+                instrument=self.instrument.getName(),
+                detector=self.visit.detector,
+            )
+            # If records don't match, this is not an error, and central takes precedence.
+            self.central_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
 
     def _chain_exports(self, output_chain: str, output_runs: collections.abc.Iterable[str]) -> None:
         """Associate exported datasets with a chained collection in the
