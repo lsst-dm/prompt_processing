@@ -1,0 +1,5 @@
+instrument: LATISS
+query:
+  collections: LATISS/raw/all
+  where: "exposure.science_program='AUXTEL_PHOTO_IMAGING' and exposure.day_obs=20240403"
+repo: /repo/embargo

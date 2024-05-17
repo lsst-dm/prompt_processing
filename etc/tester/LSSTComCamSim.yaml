@@ -1,0 +1,5 @@
+instrument: LSSTComCamSim
+query:
+  collections: LSSTComCamSim/raw/all
+  where: "exposure.science_program='ops-rehearsal-3' and exposure.day_obs=20240404"
+repo: /repo/embargo

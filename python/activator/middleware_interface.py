@@ -1425,6 +1425,9 @@ class MiddlewareInterface:
             # VALIDITY-HACK: remove cached calibs to avoid future conflicts
             if not cache_calibs:
                 calib_chain = self.instrument.makeCalibrationCollectionName()
+                calib_refs = self.butler.registry.queryDatasets(
+                    ...,
+                    collections=calib_chain)
                 calib_taggeds = self.butler.registry.queryCollections(
                     calib_chain,
                     flattenChains=True,
@@ -1434,6 +1437,7 @@ class MiddlewareInterface:
                     flattenChains=True,
                     collectionTypes=CollectionType.RUN)
                 self.butler.collection_chains.redefine_chain(calib_chain, [])
+                self.butler.pruneDatasets(calib_refs, disassociate=True, unstore=True, purge=True)
                 for member in calib_taggeds:
                     self.butler.registry.removeCollection(member)
                 self.butler.removeRuns(calib_runs, unstore=True)

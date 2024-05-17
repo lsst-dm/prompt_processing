@@ -44,6 +44,7 @@ from activator.raw import (
 )
 from activator.visit import FannedOutVisit, SummitVisit
 from tester.utils import (
+    INSTRUMENTS,
     get_last_group,
     increment_group,
     make_exposure_id,
@@ -52,21 +53,6 @@ from tester.utils import (
 )
 
 
-@dataclasses.dataclass
-class Instrument:
-    n_snaps: int
-    n_detectors: int
-    sal_index: int = 0
-
-
-INSTRUMENTS = {
-    "LSSTCam": Instrument(2, 189 + 8 + 8, 1),
-    "LSSTComCam": Instrument(2, 9, 1),
-    "LSSTComCamSim": Instrument(1, 9, 3),
-    "LATISS": Instrument(1, 1, 2),
-    "DECam": Instrument(1, 62),
-    "HSC": Instrument(1, 112),
-}
 EXPOSURE_INTERVAL = 18
 SLEW_INTERVAL = 2
 
@@ -384,14 +370,6 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
                 make_exposure_id(visit.instrument, visit.groupId, snap_id)
             filename = get_raw_path(visit.instrument, visit.detector, visit.groupId, snap_id,
                                     exposure_num, visit.filters)
-            # r+b required by replace_header_key.
-            with tempfile.TemporaryFile(mode="r+b") as buffer:
-                src_bucket.download_fileobj(src_blob.key, buffer)
-                for header_key in headers:
-                    replace_header_key(buffer, header_key, headers[header_key])
-                buffer.seek(0)  # Assumed by upload_fileobj.
-                dest_bucket.upload_fileobj(buffer, filename)
-            _log.debug(f"{filename} is uploaded to {dest_bucket}")
 
             if instrument in _LSST_CAMERA_LIST:
                 # Upload a corresponding sidecar json file
@@ -401,9 +379,17 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
                 filename_sidecar = filename.removesuffix("fits") + "json"
                 with sidecar.open("r") as f:
                     md = json.load(f)
-                    for header_key in headers:
-                        md[header_key] = headers[header_key]
+                    md.update(headers)
                     dest_bucket.put_object(Body=json.dumps(md), Key=filename_sidecar)
+
+            # r+b required by replace_header_key.
+            with tempfile.TemporaryFile(mode="r+b") as buffer:
+                src_bucket.download_fileobj(src_blob.key, buffer)
+                for header_key in headers:
+                    replace_header_key(buffer, header_key, headers[header_key])
+                buffer.seek(0)  # Assumed by upload_fileobj.
+                dest_bucket.upload_fileobj(buffer, filename)
+            _log.debug(f"{filename} is uploaded to {dest_bucket}")
 
         process_group(kafka_url, visit_infos, upload_from_pool)
 

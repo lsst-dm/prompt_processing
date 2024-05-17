@@ -375,7 +375,7 @@ If in doubt, check the logs first.
 Testers
 =======
 
-``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` are scripts that simulate the CCS image writer.
+``python/tester/upload.py`` and ``python/tester/upload_from_repo.py`` are scripts that simulate the CCS image writer.
 It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
 
 You must have a profile set up for the ``rubin-pp-dev`` bucket (see `Buckets`_, above).
@@ -410,17 +410,21 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
   This visit can test pipeline fallback features.
 * For LSSTComCamSim, 2 groups, in total 18 raw fits files and their corresponding json metadata files, are curated.
 
-``python/tester/upload_hsc_rc2.py``: Command line argument is the number of groups of images to send.
+``python/tester/upload_from_repo.py``: Command line arguments are a configuration file and the number of groups of images to send.
 
 Sample command line:
 
 .. code-block:: sh
 
-   python upload_hsc_rc2.py 3
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/HSC.yaml 3
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LATISS.yaml 4
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LSSTComCamSim.yaml 2 --ordered
 
-This scripts draws images from the curated ``HSC/RC2/defaults`` collection at USDF's ``/repo/main`` butler repository.
-The source collection includes 432 visits, each with 103 detector images.
-The visits are randomly selected and uploaded as one new group for each visit.
+This scripts draws images from a butler repository as defined in the input configuration file.
+A butler query constrains the data selection.
+By default, visits are randomly selected and uploaded as one new group for each visit.
+With the optional ``--ordered`` command line argument, images are uploaded following the order of the original exposure IDs.
+Currently the upload script does not follow the actual relative timing of the input exposures.
 Images can be uploaded in parallel processes.
 
 
@@ -432,7 +436,7 @@ The schema of the ``next_visit`` events from the summit can be found at `ScriptQ
 To implement schema changes in the development environment:
 
 * Update the ``*Visit`` classes in ``python/activator/visit.py`` accordingly.
-* Update the upload tester scripts ``python/tester/upload.py`` and ``python/tester/upload_hsc_rc2.py`` where simulated ``next_visit`` events originate.
+* Update the upload tester scripts ``python/tester/upload.py`` and ``python/tester/upload_from_repo.py`` where simulated ``next_visit`` events originate.
 * Update relevant unit tests.
 * Register the new schema to the Sasquatch's schema registry for the ``test.next-visit`` topic.
   The `Sasquatch documentation <https://sasquatch.lsst.io/user-guide/avro.html>`_ describes the schema evolution.

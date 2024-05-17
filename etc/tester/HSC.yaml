@@ -1,0 +1,6 @@
+instrument: HSC
+query:
+  collections: HSC/RC2/defaults
+  # Select only non-narrow bands
+  where: "exposure.observation_type='science' and band in ('g', 'r', 'i', 'z', 'y')"
+repo: /repo/main

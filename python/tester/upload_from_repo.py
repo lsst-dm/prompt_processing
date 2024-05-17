@@ -19,13 +19,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import argparse
+import json
 import logging
 import math
 import multiprocessing
 import random
-import sys
 import tempfile
 import time
+import yaml
 
 import boto3
 from botocore.handlers import validate_bucket_name
@@ -33,9 +35,10 @@ from botocore.handlers import validate_bucket_name
 from lsst.utils.timer import time_this
 from lsst.daf.butler import Butler
 
-from activator.raw import get_raw_path
+from activator.raw import get_raw_path, _LSST_CAMERA_LIST
 from activator.visit import SummitVisit
 from tester.utils import (
+    INSTRUMENTS,
     get_last_group,
     increment_group,
     make_exposure_id,
@@ -74,23 +77,51 @@ def _set_s3_bucket():
         dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
 
+def _make_parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "config",
+        help="URI to a YAML file contianing the configurations "
+             "of the upload test, including the instrument name "
+             "the data repo, and the dataset selection.",
+    )
+    parser.add_argument(
+        "n_groups",
+        type=int,
+        help="The number of groups to upload.",
+    )
+    parser.add_argument(
+        "--ordered",
+        action="store_true",
+        help="Upload the exposures following the order of the "
+             "original exposure IDs."
+    )
+    return parser
+
+
 def main():
-    if len(sys.argv) < 2:
-        print(f"Usage: {sys.argv[0]} N_GROUPS")
-        sys.exit(1)
-    n_groups = int(sys.argv[1])
+    args = _make_parser().parse_args()
+    with open(args.config) as file:
+        configs = yaml.safe_load(file)
+    instrument = configs["instrument"]
 
     date = time.strftime("%Y%m%d")
 
     kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
     _set_s3_bucket()
 
-    last_group = get_last_group(dest_bucket, "HSC", date)
-    group = increment_group("HSC", last_group, random.randrange(10, 19))
+    last_group = get_last_group(dest_bucket, instrument, date)
+    group = increment_group(instrument, last_group, random.randrange(10, 19))
     _log.debug(f"Last group {last_group}; new group base {group}")
 
-    butler = Butler("/repo/main")
-    visit_list = get_hsc_visit_list(butler, n_groups)
+    butler = Butler(configs["repo"])
+    visit_list = get_visit_list(
+        butler,
+        args.n_groups,
+        ordered=args.ordered,
+        instrument=instrument,
+        **configs["query"],
+    )
 
     # fork pools don't work well with connection pools, such as those used
     # for Butler registry or S3.
@@ -103,50 +134,54 @@ def main():
     with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool, \
             tempfile.TemporaryDirectory() as temp_dir:
         for visit in visit_list:
-            group = increment_group("HSC", group, 1)
-            refs = prepare_one_visit(kafka_url, group, butler, visit)
-            _log.info(f"Slewing to group {group}, with HSC visit {visit}")
+            group = increment_group(instrument, group, 1)
+            refs = prepare_one_visit(kafka_url, group, butler, instrument, visit)
+            _log.info(f"Slewing to group {group}, with {instrument} visit {visit}")
             time.sleep(SLEW_INTERVAL)
             _log.info(f"Taking exposure for group {group}")
             time.sleep(EXPOSURE_INTERVAL)
             _log.info(f"Uploading detector images for group {group}")
-            upload_hsc_images(pool, temp_dir, group, butler, refs)
+            upload_images(pool, temp_dir, group, butler, refs)
         pool.close()
         _log.info("Waiting for uploads to finish...")
         pool.join()
 
 
-def get_hsc_visit_list(butler, n_sample):
-    """Return a list of randomly selected raw visits from HSC-RC2 in the butler repo.
+def get_visit_list(butler, n_sample, ordered=False, **kwargs):
+    """Return a list of selected raw visits in the butler repo.
 
     Parameters
     ----------
     butler : `lsst.daf.butler.Butler`
         The Butler in which to search for records of raw data.
-    n_sample: `int`
+    n_sample : `int`
         The number of visits to select.
+    ordered : `bool`
+        If `True`, return the first ``n_sample`` visits in the order of the visit
+        IDs. Otherwise, return ``n_sample`` randomly selected visit IDs.
+    **kwargs
+        Additional parameters for the butler query. They have the same meanings
+        as the parameters of `lsst.daf.butler.Registry.queryDimensionRecords`.
+        The query must be valid for ``butler``.
 
     Returns
     -------
     visits : `list` [`int`]
-        A list of randomly selected non-narrow-band visit IDs from the HSC-RC2 dataset
+        A list of ``n_sample`` selected visit IDs from the dataset.
     """
-    results = butler.registry.queryDimensionRecords(
-        "visit",
-        datasets="raw",
-        collections="HSC/RC2/defaults",
-        where="instrument='HSC' and exposure.observation_type='science' "
-              "and band in ('g', 'r', 'i', 'z', 'y')",
-    )
-    rc2 = [record.id for record in set(results)]
-    if n_sample > len(rc2):
-        raise ValueError(f"Requested {n_sample} groups, but only {len(rc2)} are available.")
-    visits = random.sample(rc2, k=n_sample)
-    return visits
+    results = butler.registry.queryDimensionRecords("visit", datasets="raw", **kwargs)
+    records = [record.id for record in set(results)]
+    if n_sample > len(records):
+        raise ValueError(f"Requested {n_sample} groups, but only {len(records)} are available.")
+    if ordered:
+        return sorted(records)[:n_sample]
+    else:
+        visits = random.sample(records, k=n_sample)
+        return visits
 
 
-def prepare_one_visit(kafka_url, group_id, butler, visit_id):
-    """Extract metadata and send next_visit events for one HSC-RC2 visit
+def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
+    """Extract metadata and send next_visit events for one visit
 
     One ``next_visit`` message is sent to the development fan-out service,
     which translates it into multiple messages.
@@ -159,8 +194,10 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
         The group ID for the message to send.
     butler : `lsst.daf.butler.Butler`
         The Butler with the raw data.
+    instrument : `str`
+        The short instrument name of this visit.
     visit_id : `int`
-        The ID of a visit in the HSC-RC2 dataset.
+        The ID of a visit in the dataset.
 
     Returns
     -------
@@ -169,15 +206,15 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     """
     refs = butler.registry.queryDatasets(
         datasetType="raw",
-        collections="HSC/RC2/defaults",
-        dataId={"exposure": visit_id, "instrument": "HSC"},
+        collections=f"{instrument}/raw/all",
+        dataId={"visit": visit_id, "instrument": instrument},
     )
 
     duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
     # all items in refs share the same visit info and one event is to be sent
     for data_id in refs.dataIds.limit(1).expanded():
         visit = SummitVisit(
-            instrument="HSC",
+            instrument=instrument,
             groupId=group_id,
             nimages=1,
             filters=data_id.records["physical_filter"].name,
@@ -187,7 +224,7 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
             rotationSystem=SummitVisit.RotSys.SKY,
             cameraAngle=data_id.records["exposure"].sky_angle,
             survey="SURVEY",
-            salIndex=999,
+            salIndex=INSTRUMENTS[instrument].sal_index,
             scriptSalIndex=999,
             dome=SummitVisit.Dome.OPEN,
             duration=duration,
@@ -199,8 +236,8 @@ def prepare_one_visit(kafka_url, group_id, butler, visit_id):
     return refs
 
 
-def upload_hsc_images(pool, temp_dir, group_id, butler, refs):
-    """Upload one group of raw HSC images to the central repo
+def upload_images(pool, temp_dir, group_id, butler, refs):
+    """Upload one group of raw images to the central repo
 
     Parameters
     ----------
@@ -242,7 +279,7 @@ def _get_max_processes():
 
 
 def _upload_one_image(temp_dir, group_id, butler, ref):
-    """Upload a raw HSC image to the central repo.
+    """Upload a raw image to the central repo.
 
     Parameters
     ----------
@@ -256,16 +293,28 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
     ref : `lsst.daf.butler.DatasetRef`
         The dataset to upload.
     """
+    instrument = ref.dataId["instrument"]
     with time_this(log=_log, msg="Single-image processing", prefix=None):
-        exposure_num, headers = make_exposure_id("HSC", group_id, 0)
+        exposure_num, headers = make_exposure_id(instrument, group_id, 0)
         dest_key = get_raw_path(
-            "HSC",
+            instrument,
             ref.dataId["detector"],
             group_id,
             0,
             exposure_num,
             ref.dataId["physical_filter"],
         )
+
+        if instrument in _LSST_CAMERA_LIST:
+            # Upload a corresponding sidecar json file
+            sidecar = butler.getURI(ref).updatedExtension("json")
+            with sidecar.open("r") as f:
+                md = json.load(f)
+                md.update(headers)
+                dest_bucket.put_object(
+                    Body=json.dumps(md), Key=dest_key.removesuffix("fits") + "json"
+                )
+
         # Each ref is done separately because butler.retrieveArtifacts does not preserve the order.
         transferred = butler.retrieveArtifacts(
             [ref],
