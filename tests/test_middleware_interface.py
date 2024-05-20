@@ -29,6 +29,7 @@ import unittest.mock
 import warnings
 
 import astropy.coordinates
+import astropy.table
 import astropy.time
 import astropy.units as u
 import psycopg2
@@ -62,8 +63,12 @@ skymap_name = "decam_rings_v1"
 # the second should not be attempted.
 pipelines = PipelinesConfig('''(survey="SURVEY")=[${PROMPT_PROCESSING_DIR}/tests/data/ApPipe.yaml,
                                                   ${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml]
-                            '''
-                            )
+                            ''')
+pre_pipelines_empty = PipelinesConfig('(survey="SURVEY")=[]')
+pre_pipelines_full = PipelinesConfig(
+    '''(survey="SURVEY")=[${PROMPT_PROCESSING_DIR}/tests/data/Preprocess.yaml,
+                          ${PROMPT_PROCESSING_DIR}/tests/data/MinPrep.yaml]
+    ''')
 
 
 def fake_file_data(filename, dimensions, instrument, visit):
@@ -171,7 +176,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
         self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
-                                             pipelines, skymap_name, self.local_repo.name,
+                                             # TODO: replace pre_pipelines_empty on DM-43418
+                                             pre_pipelines_empty, pipelines, skymap_name,
+                                             self.local_repo.name,
                                              prefix="file://")
 
     def test_get_butler(self):
@@ -294,7 +301,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """
-        self.interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            self.interface.prep_butler()
 
         # These shards were identified by plotting the objects in each shard
         # on-sky and overplotting the detector corners.
@@ -304,6 +313,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self._check_imports(self.interface.butler, group="1", detector=56,
                             expected_shards=expected_shards, expected_date="20150218T000000Z")
 
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
+
     def test_prep_butler_olddate(self):
         """Test that prep_butler returns only calibs from a particular date range.
         """
@@ -311,7 +323,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.visit,
             private_sndStamp=datetime.datetime.fromisoformat("20150313T000000Z").timestamp(),
         )
-        self.interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            self.interface.prep_butler()
 
         # These shards were identified by plotting the objects in each shard
         # on-sky and overplotting the detector corners.
@@ -324,6 +338,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                 expected_shards=expected_shards, expected_date="20150218T000000Z")
         self._check_imports(self.interface.butler, group="1", detector=56,
                             expected_shards=expected_shards, expected_date="20150313T000000Z")
+
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
 
     # TODO: prep_butler doesn't know what kinds of calibs to expect, so can't
     # tell that there are specifically, e.g., no flats. This test should pass
@@ -340,8 +357,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with warnings.catch_warnings():
             # Avoid "dubious year" warnings from using a 2050 date
             warnings.simplefilter("ignore", category=astropy.utils.exceptions.ErfaWarning)
-            with self.assertRaises(_MissingDatasetError):
+            with self.assertRaises(_MissingDatasetError), \
+                unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                    as mock_pre:
                 self.interface.prep_butler()
+
+        mock_pre.assert_not_called()
 
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
@@ -350,18 +371,26 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         in the local butler" problem that's related to the "can't register
         the skymap in init" problem.
         """
-        self.interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            self.interface.prep_butler()
 
         # Second visit with everything same except group.
         second_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
         second_interface = MiddlewareInterface(self.central_butler, self.input_data, second_visit,
-                                               pipelines, skymap_name, self.local_repo.name,
+                                               # TODO: replace pre_pipelines_empty on DM-43418
+                                               pre_pipelines_empty, pipelines, skymap_name,
+                                               self.local_repo.name,
                                                prefix="file://")
 
-        second_interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            second_interface.prep_butler()
         expected_shards = {157394, 157401, 157405}
         self._check_imports(second_interface.butler, group="2", detector=56,
                             expected_shards=expected_shards, expected_date="20150218T000000Z")
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
 
         # Third visit with different detector and coordinates.
         # Only 5, 10, 56, 60 have valid calibs.
@@ -373,12 +402,18 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                     self.next_visit.position[1] - 1.2],
                                           )
         third_interface = MiddlewareInterface(self.central_butler, self.input_data, third_visit,
-                                              pipelines, skymap_name, self.local_repo.name,
+                                              # TODO: replace pre_pipelines_empty on DM-43418
+                                              pre_pipelines_empty, pipelines, skymap_name,
+                                              self.local_repo.name,
                                               prefix="file://")
-        third_interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            third_interface.prep_butler()
         expected_shards.update({157393, 157395})
         self._check_imports(third_interface.butler, group="3", detector=5,
                             expected_shards=expected_shards, expected_date="20150218T000000Z")
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
 
     def test_ingest_image(self):
         self.interface.prep_butler()  # Ensure raw collections exist.
@@ -426,9 +461,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                                      collections=[f'{instname}/raw/all']))
         self.assertEqual(datasets, [])
 
-    def _prepare_run_pipeline(self):
+    def _prepare_run_preprocessing(self):
         # Have to setup the data so that we can create the pipeline executor.
         self.interface.prep_butler()
+
+    def _prepare_run_pipeline(self):
+        # Have to setup the data so that we can create the pipeline executor.
+        self._prepare_run_preprocessing()
+
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = fake_file_data(filepath,
@@ -438,6 +478,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
+
+        # TODO: add any preprocessing outputs the main pipeline depends on (DM-43418?)
 
     def test_run_pipeline(self):
         """Test that running the pipeline uses the correct arguments.
@@ -461,14 +503,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
         mock_run.assert_called_once()
         # Check that we configured the right pipeline.
-        self.assertIn("End to end Alert Production pipeline specialized for HiTS-2015",
-                      "\n".join(logs.output))
+        self.assertIn(os.path.join(self.data_dir, 'ApPipe.yaml'), "\n".join(logs.output))
 
-    def _check_run_pipeline_fallback(self, pipe_files, graphs, final_label):
+    def _check_run_pipeline_fallback(self, callable, pipe_files, graphs, final_label):
         """Generic test for different fallback scenarios.
 
         Parameters
         ----------
+        callable : callable [[]]
+            A nullary callable that runs the target pipeline(s).
         pipe_files : sequence [`str`]
             The list of pipeline files configured for a visit.
         graphs : sequence [`collections.abc.Sized`]
@@ -478,8 +521,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             The description of the pipeline that should be run, given
             ``pipe_files`` and ``graphs``.
         """
-        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._get_pipeline_files",
-                                 return_value=pipe_files), \
+        with unittest.mock.patch(
+            "activator.middleware_interface.MiddlewareInterface._get_pre_pipeline_files",
+            return_value=pipe_files), \
+                unittest.mock.patch(
+                    "activator.middleware_interface.MiddlewareInterface._get_main_pipeline_files",
+                    return_value=pipe_files), \
                 unittest.mock.patch(
                     "activator.middleware_interface.SeparablePipelineExecutor.make_quantum_graph",
                     side_effect=graphs), \
@@ -488,7 +535,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
                 self.assertLogs(self.logger_name, level="INFO") as logs:
-            self.interface.run_pipeline({1})
+            callable()
         mock_run.assert_called_once()
         # Check that we configured the right pipeline.
         self.assertIn(final_label, "\n".join(logs.output))
@@ -497,19 +544,21 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml')]
         graph_list = [[], ["node1", "node2"]]
-        expected = "Test pipeline consisting only of single-frame steps."
+        expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_1failof2_inverse(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml')]
         graph_list = [["node1", "node2"], []]
-        expected = "End to end Alert Production pipeline specialized for HiTS-2015"
+        expected = "ApPipe.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_2failof2(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
@@ -519,47 +568,52 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         self._prepare_run_pipeline()
         with self.assertRaises(RuntimeError):
-            self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+            self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                              pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_0failof3(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
         graph_list = [["node1", "node2"], ["node3", "node4"], ["node5"]]
-        expected = "End to end Alert Production pipeline specialized for HiTS-2015"
+        expected = "ApPipe.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_1failof3(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
         graph_list = [[], ["node3", "node4"], ["node5"]]
-        expected = "Test pipeline consisting only of single-frame steps."
+        expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_2failof3(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
         graph_list = [[], [], ["node5"]]
-        expected = "Test pipeline consisting only of ISR."
+        expected = "ISR.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_fallback_2failof3_inverse(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
         graph_list = [[], ["node3", "node4"], []]
-        expected = "Test pipeline consisting only of single-frame steps."
+        expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
-        self._check_run_pipeline_fallback(pipe_list, graph_list, expected)
+        self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
+                                          pipe_list, graph_list, expected)
 
     def test_run_pipeline_bad_visits(self):
         """Test that running a pipeline that results in bad visit definition
@@ -624,6 +678,111 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             mock_query.side_effect = psycopg2.OperationalError("Database? What database?")
             with self.assertRaises(NonRetriableError):
                 self.interface.run_pipeline({1})
+
+    def test_run_preprocessing_empty(self):
+        """Test that running the preprocessiing pipeline does nothing if no
+        pipelines configured.
+        """
+        self._prepare_run_preprocessing()
+
+        with self.assertLogs(self.logger_name, level="INFO") as logs:
+            self.interface._run_preprocessing()
+        self.assertIn("skipping", "\n".join(logs.output))
+        # Check that no pipelines mentioned
+        self.assertNotIn(os.path.join(self.data_dir, 'Preprocess.yaml'), "\n".join(logs.output))
+
+    def test_run_preprocessing_full(self):
+        """Test that running the preprocessiing pipeline uses the correct arguments.
+
+        We can't run an actual pipeline because all data are zeroed out.
+        """
+        self._prepare_run_preprocessing()
+
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
+                as mock_preexec, \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+             unittest.mock.patch.object(self.interface, "pre_pipelines", pre_pipelines_full):
+            with self.assertLogs(self.logger_name, level="INFO") as logs:
+                self.interface._run_preprocessing()
+        # Pre-execution and execution should only run once, even if graph
+        # generation is attempted for multiple pipelines.
+        mock_preexec.assert_called_once()
+        # Pre-execution may have other arguments as needed; no requirement either way.
+        self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
+        mock_run.assert_called_once()
+        # Check that we configured the right pipeline.
+        self.assertIn(os.path.join(self.data_dir, 'Preprocess.yaml'), "\n".join(logs.output))
+
+    def test_run_preprocessing_fallback_1failof2(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml')]
+        graph_list = [[], ["node1", "node2"]]
+        expected = "MinPrep.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_1failof2_inverse(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml')]
+        graph_list = [["node1", "node2"], []]
+        expected = "Preprocess.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_2failof2(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml')]
+        graph_list = [[], []]
+        expected = ""
+
+        self._prepare_run_preprocessing()
+        with self.assertRaises(RuntimeError):
+            self._check_run_pipeline_fallback(self.interface._run_preprocessing,
+                                              pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_0failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml'),
+                     os.path.join(self.data_dir, 'NoPrep.yaml')]
+        graph_list = [["node1", "node2"], ["node3", "node4"], ["node5"]]
+        expected = "Preprocess.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_1failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml'),
+                     os.path.join(self.data_dir, 'NoPrep.yaml')]
+        graph_list = [[], ["node3", "node4"], ["node5"]]
+        expected = "MinPrep.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_2failof3(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml'),
+                     os.path.join(self.data_dir, 'NoPrep.yaml')]
+        graph_list = [[], [], ["node5"]]
+        expected = "NoPrep.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
+
+    def test_run_preprocessing_fallback_2failof3_inverse(self):
+        pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
+                     os.path.join(self.data_dir, 'MinPrep.yaml'),
+                     os.path.join(self.data_dir, 'NoPrep.yaml')]
+        graph_list = [[], ["node3", "node4"], []]
+        expected = "MinPrep.yaml"
+
+        self._prepare_run_preprocessing()
+        self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
 
     def test_get_output_run(self):
         filename = "ApPipe.yaml"
@@ -907,27 +1066,35 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         # Populate repository.
         self.interface = MiddlewareInterface(central_butler, self.input_data, self.next_visit,
-                                             pipelines, skymap_name, local_repo.name,
+                                             pre_pipelines_full, pipelines, skymap_name, local_repo.name,
                                              prefix="file://")
-        self.interface.prep_butler()
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
+            self.interface.prep_butler()
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         self.raw_data_id, file_data = fake_file_data(filepath,
                                                      self.interface.butler.dimensions,
                                                      self.interface.instrument,
                                                      self.next_visit)
+        self.group_data_id = {(k if k != "exposure" else "group"): (v if k != "exposure" else str(v))
+                              for k, v in self.raw_data_id.required.items()}
 
         self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.second_data_id, second_file_data = fake_file_data(filepath,
                                                                self.interface.butler.dimensions,
                                                                self.interface.instrument,
                                                                self.second_visit)
-        self.second_interface = MiddlewareInterface(central_butler, self.input_data, self.second_visit,
-                                                    pipelines, skymap_name, second_local_repo.name,
-                                                    prefix="file://")
-        self.second_interface.prep_butler()
+        self.second_group_data_id = {(k if k != "exposure" else "group"): (v if k != "exposure" else str(v))
+                                     for k, v in self.second_data_id.required.items()}
+        self.second_interface = MiddlewareInterface(
+            central_butler, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
+            skymap_name, second_local_repo.name, prefix="file://")
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
+            self.second_interface.prep_butler()
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
+        self.preprocessing_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
+                                 "/Preprocess/prompt-proto-service-042"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                           "/ApPipe/prompt-proto-service-042"
 
@@ -945,6 +1112,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
     def _simulate_run(self):
         """Create a mock pipeline execution that stores a calexp for self.raw_data_id.
         """
+        cat = astropy.table.Table()
         exp = lsst.afw.image.ExposureF(20, 20)
         self.processed_data_id = {(k if k != "exposure" else "visit"): v
                                   for k, v in self.raw_data_id.required.items()}
@@ -958,6 +1126,15 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.interface.central_butler, "regionTimeInfo",
                                     {"instrument", "group", "detector"},
                                     "RegionTimeInfo")
+        butler_tests.addDatasetType(self.interface.central_butler, "history_diaSource",
+                                    {"instrument", "group", "detector"},
+                                    "ArrowAstropy")
+        butler_tests.addDatasetType(self.interface.butler, "history_diaSource",
+                                    {"instrument", "group", "detector"},
+                                    "ArrowAstropy")
+        butler_tests.addDatasetType(self.second_interface.butler, "history_diaSource",
+                                    {"instrument", "group", "detector"},
+                                    "ArrowAstropy")
         butler_tests.addDatasetType(self.interface.central_butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
@@ -967,6 +1144,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.second_interface.butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
+        self.interface.butler.put(cat, "history_diaSource", self.group_data_id, run=self.preprocessing_run)
+        self.second_interface.butler.put(cat, "history_diaSource", self.second_group_data_id,
+                                         run=self.preprocessing_run)
         self.interface.butler.put(exp, "calexp", self.processed_data_id, run=self.output_run)
         self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id, run=self.output_run)
 
@@ -988,9 +1168,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         with make_local_repo(tempfile.gettempdir(), central_butler, instname) as local_repo:
             interface = MiddlewareInterface(central_butler, self.input_data,
                                             dataclasses.replace(self.next_visit, groupId="42"),
-                                            pipelines, skymap_name, local_repo,
+                                            pre_pipelines_empty, pipelines, skymap_name, local_repo,
                                             prefix="file://")
-            interface.prep_butler()
+            with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
+                interface.prep_butler()
 
             self.assertEqual(
                 self._count_datasets(interface.butler, "gaia_dr2_20200414", f"{instname}/defaults"),
@@ -1004,6 +1185,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
         central_butler = Butler(self.central_repo.name, writeable=False)
+        self.assertEqual(self._count_datasets(central_butler, "history_diaSource", self.preprocessing_run), 2)
+        self.assertEqual(self._count_datasets(central_butler, "history_diaSource", self.output_run), 0)
+        self.assertEqual(self._count_datasets(central_butler, "history_diaSource", self.output_chain), 2)
+        self.assertEqual(self._count_datasets(central_butler, "calexp", self.preprocessing_run), 0)
         self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_run), 2)
         self.assertEqual(self._count_datasets(central_butler, "calexp", self.output_chain), 2)
         # Should be able to look up datasets by both visit and exposure

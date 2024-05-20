@@ -192,8 +192,10 @@ class MiddlewareInterface:
         See also ``prefix``.
     visit : `activator.visit.FannedOutVisit`
         The visit-detector combination to be processed by this object.
-    pipelines : `activator.config.PipelinesConfig`
-        Information about which pipelines to run on ``visit``.
+    pre_pipelines : `activator.config.PipelinesConfig`
+        Information about which pipelines to run before a visit arrives.
+    main_pipelines : `activator.config.PipelinesConfig`
+        Information about which pipelines to run on ``visit``'s raws.
     skymap: `str`
         Name of the skymap in the central repo for querying templates.
     local_repo : `str`
@@ -243,7 +245,8 @@ class MiddlewareInterface:
     #   self.butler is the only Butler pointing to the local repo.
 
     def __init__(self, central_butler: Butler, image_bucket: str, visit: FannedOutVisit,
-                 pipelines: PipelinesConfig, skymap: str, local_repo: str,
+                 pre_pipelines: PipelinesConfig, main_pipelines: PipelinesConfig,
+                 skymap: str, local_repo: str,
                  prefix: str = "s3://"):
         self.visit = visit
         if self.visit.coordinateSystem != FannedOutVisit.CoordSys.ICRS:
@@ -265,7 +268,8 @@ class MiddlewareInterface:
             self._download_store = None
         # TODO: how much overhead do we pick up from going through the registry?
         self.instrument = lsst.obs.base.Instrument.from_string(visit.instrument, central_butler.registry)
-        self.pipelines = pipelines
+        self.pre_pipelines = pre_pipelines
+        self.main_pipelines = main_pipelines
 
         self._day_obs = (astropy.time.Time.now() + _DAY_OBS_DELTA).tai.to_value("iso", "date")
 
@@ -451,10 +455,14 @@ class MiddlewareInterface:
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
                     self._transfer_data(all_datasets, calib_datasets)
 
+                with time_this_to_bundle(bundle, action_id, "prep_butlerPreprocessTime"):
+                    self._run_preprocessing()
+
         # IMPORTANT: do not remove or rename entries in this list. New entries can be added as needed.
         enforce_schema(bundle, {action_id: ["prep_butlerTotalTime",
                                             "prep_butlerSearchTime",
                                             "prep_butlerTransferTime",
+                                            "prep_butlerPreprocessTime",
                                             ]})
         self.butler.registry.registerDatasetType(DatasetType(
             "promptPreload_metrics",
@@ -930,7 +938,7 @@ class MiddlewareInterface:
         self.butler.registry.registerCollection(
             self._get_preload_run(self._day_obs),
             CollectionType.RUN)
-        for pipeline_file in self._get_pipeline_files():
+        for pipeline_file in self._get_all_pipeline_files():
             self.butler.registry.registerCollection(
                 self._get_init_output_run(pipeline_file, self._day_obs),
                 CollectionType.RUN)
@@ -938,7 +946,33 @@ class MiddlewareInterface:
                 self._get_output_run(pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
-    def _get_pipeline_files(self) -> str:
+    def _get_all_pipeline_files(self) -> collections.abc.Iterable[str]:
+        """Identify the pipelines to be run at any point, based on the
+        configured instrument and visit.
+
+        Returns
+        -------
+        pipeline : sequence [`str`]
+            A sequence of paths a configured pipeline file. The order
+            is undefined.
+        """
+        all = list(self._get_pre_pipeline_files())
+        all.extend(self._get_main_pipeline_files())
+        return all
+
+    def _get_pre_pipeline_files(self) -> collections.abc.Sequence[str]:
+        """Identify the pipelines to be run during preprocessing, based on the
+        configured instrument and visit.
+
+        Returns
+        -------
+        pipelines : sequence [`str`]
+            A sequence of paths to a configured pipeline file, in order from
+            most preferred to least preferred.
+        """
+        return self.pre_pipelines.get_pipeline_files(self.visit)
+
+    def _get_main_pipeline_files(self) -> collections.abc.Sequence[str]:
         """Identify the pipelines to be run, based on the configured instrument
         and visit.
 
@@ -948,7 +982,7 @@ class MiddlewareInterface:
             A sequence of paths to a configured pipeline file, in order from
             most preferred to least preferred.
         """
-        return self.pipelines.get_pipeline_files(self.visit)
+        return self.main_pipelines.get_pipeline_files(self.visit)
 
     def _prep_pipeline(self, pipeline_file) -> lsst.pipe.base.Pipeline:
         """Setup the pipeline to be run, based on the configured instrument and
@@ -966,11 +1000,9 @@ class MiddlewareInterface:
         """
         pipeline = lsst.pipe.base.Pipeline.fromFile(pipeline_file)
 
-        try:
-            pipeline.addConfigOverride("parameters", "apdb_config", self._apdb_config)
-        except LookupError:
-            _log.warning(f"{pipeline_file} does not have an `apdb_config` parameter; "
-                         "assuming no APDB support is needed.")
+        # Config overrides are not validated until graph generation.
+        pipeline.addConfigOverride("parameters", "apdb_config", self._apdb_config)
+
         return pipeline
 
     def _download(self, remote):
@@ -1058,6 +1090,128 @@ class MiddlewareInterface:
         )
         return graph_executor
 
+    def _try_pipelines(self, pipelines, in_collections, data_ids, *, label):
+        """Attempt to run pipelines from a prioritized list.
+
+        On success, exactly one of the pipelines is run, with outputs going to
+        a run named after the pipeline file.
+
+        Parameters
+        ----------
+        pipelines : sequence [`str`]
+            The pipeline file(s) to run, in decreasing order of preference.
+        in_collections : sequence [`str`]
+            Collections, usually containing previous outputs, to search (in
+            order) when reading pipeline inputs. This list is prepended to the
+            collections in ``self.butler``.
+        data_ids : `str`
+            A query string, in the format of the ``where`` parameter to
+            `lsst.daf.butler.Registry.queryDataIds`, specifying the data IDs
+            over which to run the pipelines.
+        label : `str`
+            A unique name to disambiguate this pipeline run for logging
+            purposes.
+
+        Returns
+        -------
+        init_output_run, output_run : `str`
+            The runs to which the successful pipeline wrote its init-outputs
+            and outputs, respectively.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if any pipeline could not be loaded/configured, or if graph
+            generation failed for all pipelines.
+            TODO: could be a good case for a custom exception here.
+        """
+        # Try pipelines in order until one works.
+        for pipeline_file in pipelines:
+            try:
+                pipeline = self._prep_pipeline(pipeline_file)
+            except FileNotFoundError as e:
+                raise RuntimeError from e
+            init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
+            output_run = self._get_output_run(pipeline_file, self._day_obs)
+            exec_butler = Butler(butler=self.butler,
+                                 collections=[output_run, init_output_run]
+                                 + in_collections
+                                 + list(self.butler.collections),
+                                 run=output_run)
+            factory = lsst.ctrl.mpexec.TaskFactory()
+            executor = SeparablePipelineExecutor(
+                exec_butler,
+                clobber_output=False,
+                skip_existing_in=None,
+                task_factory=factory,
+            )
+            try:
+                with lsst.utils.timer.time_this(
+                        _log, msg=f"executor.make_quantum_graph ({label})", level=logging.DEBUG):
+                    qgraph = executor.make_quantum_graph(pipeline, where=data_ids)
+            except MissingDatasetTypeError as e:
+                _log.error(f"Building quantum graph for {pipeline_file} failed ", exc_info=e)
+                continue
+            if len(qgraph) == 0:
+                # Diagnostic logs are the responsibility of GraphBuilder.
+                _log.error(f"Empty quantum graph for {pipeline_file}; see previous logs for details.")
+                continue
+            # Past this point, partial execution creates datasets.
+            # Don't retry -- either fail (raise) or break.
+
+            # If this is a fresh (local) repo, then types like calexp,
+            # *Diff_diaSrcTable, etc. have not been registered.
+            # TODO: after DM-38041, move pre-execution to one-time repo setup.
+            executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
+            _log.info(f"Running '{pipeline_file}' on {data_ids}")
+            try:
+                with lsst.utils.timer.time_this(
+                        _log, msg=f"executor.run_pipeline ({label})", level=logging.DEBUG):
+                    executor.run_pipeline(
+                        qgraph,
+                        graph_executor=self._get_graph_executor(exec_butler, factory)
+                    )
+                    _log.info(f"{label.capitalize()} pipeline successfully run.")
+                    return init_output_run, output_run
+            finally:
+                # Refresh so that registry queries know the processed products.
+                self.butler.registry.refresh()
+            break
+        else:
+            # TODO: a good place for a custom exception?
+            raise RuntimeError(f"No {label} pipeline graph could be built.")
+
+    def _run_preprocessing(self) -> None:
+        """Preprocess a visit ahead of incoming image(s).
+
+        The internal butler must contain all data and all dimensions needed to
+        run the appropriate pipeline on this visit.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if any pipeline could not be loaded/configured, or if graph
+            generation failed for all pipelines.
+            TODO: could be a good case for a custom exception here.
+        """
+        pipeline_files = self._get_pre_pipeline_files()
+        if not pipeline_files:
+            _log.info(f"No preprocessing pipeline configured for {self.visit}, skipping.")
+            return
+
+        # Inefficient, but most graph builders can't take equality constraints
+        where = (
+            f"instrument='{self.visit.instrument}' and detector={self.visit.detector} "
+            f"and group='{self.visit.groupId}'"
+        )
+        preload_run = self._get_preload_run(self._day_obs)
+
+        self._try_pipelines(self._get_pre_pipeline_files(),
+                            in_collections=[preload_run],
+                            data_ids=where,
+                            label="preprocessing",
+                            )
+
     def run_pipeline(self, exposure_ids: set[int]) -> None:
         """Process the received image(s).
 
@@ -1073,9 +1227,14 @@ class MiddlewareInterface:
         Raises
         ------
         RuntimeError
-            Raised if the pipeline could not be loaded or configured, or the
-            graph generated.
+            Raised if any pipeline could not be loaded/configured, or if graph
+            generation failed for all pipelines.
             TODO: could be a good case for a custom exception here.
+        NonRetriableError
+            Raised if external resources (such as the APDB or alert stream)
+            may have been left in a state that makes it unsafe to retry
+            failures. This exception is always chained to another exception
+            representing the original error.
         """
         # TODO: we want to define visits earlier, but we have to ingest a
         # faked raw file and appropriate SSO data during prep (and then
@@ -1087,86 +1246,44 @@ class MiddlewareInterface:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.") from e
 
+        # Inefficient, but most graph builders can't take equality constraints
         where = (
             f"instrument='{self.visit.instrument}' and detector={self.visit.detector}"
             f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
             " and visit_system = 0"
         )
-        # Try pipelines in order until one works.
-        for pipeline_file in self._get_pipeline_files():
-            try:
-                pipeline = self._prep_pipeline(pipeline_file)
-            except FileNotFoundError as e:
-                raise RuntimeError from e
-            preload_run = self._get_preload_run(self._day_obs)
-            init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
-            output_run = self._get_output_run(pipeline_file, self._day_obs)
-            exec_butler = Butler(butler=self.butler,
-                                 collections=[output_run, init_output_run, preload_run]
-                                 + list(self.butler.collections),
-                                 run=output_run)
-            factory = lsst.ctrl.mpexec.TaskFactory()
-            executor = SeparablePipelineExecutor(
-                exec_butler,
-                clobber_output=False,
-                skip_existing_in=None,
-                task_factory=factory,
-            )
-            try:
-                with lsst.utils.timer.time_this(_log, msg="executor.make_quantum_graph", level=logging.DEBUG):
-                    qgraph = executor.make_quantum_graph(pipeline, where=where)
-            except MissingDatasetTypeError as e:
-                _log.error(f"Building quantum graph for {pipeline_file} failed ", exc_info=e)
-                continue
-            if len(qgraph) == 0:
-                # Diagnostic logs are the responsibility of GraphBuilder.
-                _log.error(f"Empty quantum graph for {pipeline_file}; "
-                           "see previous logs for details.")
-                continue
-            # Past this point, partial execution creates datasets.
-            # Don't retry -- either fail (raise) or break.
+        preload_run = self._get_preload_run(self._day_obs)
+        init_pre_runs = [self._get_init_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
+        pre_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
 
-            # If this is a fresh (local) repo, then types like calexp,
-            # *Diff_diaSrcTable, etc. have not been registered.
-            # TODO: after DM-38041, move pre-execution to one-time repo setup.
-            executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
-            _log.info(f"Running '{pipeline._pipelineIR.description}' on {where}")
+        try:
+            self._try_pipelines(self._get_main_pipeline_files(),
+                                in_collections=pre_runs + init_pre_runs + [preload_run],
+                                data_ids=where,
+                                label="main",
+                                )
+        except Exception as e:
+            state_changed = True  # better safe than sorry
             try:
-                with lsst.utils.timer.time_this(_log, msg="executor.run_pipeline", level=logging.DEBUG):
-                    executor.run_pipeline(
-                        qgraph,
-                        graph_executor=self._get_graph_executor(exec_butler, factory)
-                    )
-                    _log.info("Pipeline successfully run.")
-            except Exception as e:
-                state_changed = True  # better safe than sorry
-                try:
-                    data_ids = set(self.butler.registry.queryDataIds(
-                        ["instrument", "visit", "detector"], where=where))
-                    if len(data_ids) == 1:
-                        data_id = list(data_ids)[0]
-                        apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
-                        if not apdb.containsVisitDetector(data_id["visit"], self.visit.detector):
-                            state_changed = False
-                    else:
-                        # Don't know how this could happen, so won't try to handle it gracefully.
-                        _log.warning("Unexpected visit ids: %s. Assuming APDB modified.", data_ids)
-                except Exception:
-                    # Failure in registry or APDB queries
-                    _log.exception("Could not determine APDB state, assuming modified.")
-                    raise NonRetriableError("APDB potentially modified") from e
+                data_ids = set(self.butler.registry.queryDataIds(
+                    ["instrument", "visit", "detector"], where=where))
+                if len(data_ids) == 1:
+                    data_id = list(data_ids)[0]
+                    apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
+                    if not apdb.containsVisitDetector(data_id["visit"], self.visit.detector):
+                        state_changed = False
                 else:
-                    if state_changed:
-                        raise NonRetriableError("APDB modified") from e
-                    else:
-                        raise
-            finally:
-                # Refresh so that registry queries know the processed products.
-                self.butler.registry.refresh()
-            break
-        else:
-            # TODO: a good place for a custom exception?
-            raise RuntimeError("No pipeline graph could be built.")
+                    # Don't know how this could happen, so won't try to handle it gracefully.
+                    _log.warning("Unexpected visit ids: %s. Assuming APDB modified.", data_ids)
+            except Exception:
+                # Failure in registry or APDB queries
+                _log.exception("Could not determine APDB state, assuming modified.")
+                raise NonRetriableError("APDB potentially modified") from e
+            else:
+                if state_changed:
+                    raise NonRetriableError("APDB modified") from e
+                else:
+                    raise
 
     def export_outputs(self, exposure_ids: set[int]) -> None:
         """Copy pipeline outputs from processing a set of images back
@@ -1179,7 +1296,7 @@ class MiddlewareInterface:
         """
         # Rather than determining which pipeline was run, just try to export all of them.
         output_runs = [self._get_preload_run(self._day_obs)]
-        for f in self._get_pipeline_files():
+        for f in self._get_all_pipeline_files():
             output_runs.extend([self._get_init_output_run(f, self._day_obs),
                                 self._get_output_run(f, self._day_obs),
                                 ])
@@ -1417,11 +1534,11 @@ class MiddlewareInterface:
             )
             self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
             # Outputs are all in their own runs, so just drop them.
-            for pipeline_file in self._get_pipeline_files():
+            preload_run = self._get_preload_run(self._day_obs)
+            _remove_run_completely(self.butler, preload_run)
+            for pipeline_file in self._get_all_pipeline_files():
                 output_run = self._get_output_run(pipeline_file, self._day_obs)
-                for chain in self.butler.registry.getCollectionParentChains(output_run):
-                    self.butler.collection_chains.remove_from_chain(chain, [output_run])
-                self.butler.removeRuns([output_run], unstore=True)
+                _remove_run_completely(self.butler, output_run)
             # VALIDITY-HACK: remove cached calibs to avoid future conflicts
             if not cache_calibs:
                 calib_chain = self.instrument.makeCalibrationCollectionName()
@@ -1580,7 +1697,7 @@ def _get_refcat_types(butler):
 
     Parameters
     ---------
-    butler: `lsst.daf.butler.Butler`
+    butler : `lsst.daf.butler.Butler`
         The butler in which to search for refcat dataset types.
 
     Returns
@@ -1592,3 +1709,18 @@ def _get_refcat_types(butler):
     # SimpleCatalog storage class, is a refcat.
     return {t for t in butler.registry.queryDatasetTypes(...)
             if t.storageClass_name == "SimpleCatalog" and len(t.dimensions) == 1 and t.dimensions.skypix}
+
+
+def _remove_run_completely(butler, run):
+    """Remove a run and all references to it from a Butler.
+
+    Parameters
+    ---------
+    butler : `lsst.daf.butler.Butler`
+        The butler in which to search for refcat dataset types.
+    run : `str`
+        The run to remove.
+    """
+    for chain in butler.registry.getCollectionParentChains(run):
+        butler.collection_chains.remove_from_chain(chain, [run])
+    butler.removeRuns([run], unstore=True)

@@ -1,0 +1,4 @@
+description: A preprocessing pipeline for testing. Must generate quantum graph, but no tasks actually run.
+tasks:
+  # TODO: replace after DM-31833 or DM-42576
+  dummy: dummyTask.DummyTask

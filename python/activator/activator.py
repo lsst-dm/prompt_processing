@@ -69,8 +69,10 @@ kafka_cluster = os.environ["KAFKA_CLUSTER"]
 kafka_group_id = str(uuid.uuid4())
 # The topic on which to listen to updates to image_bucket
 bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
-# The pipelines to execute and the conditions in which to choose them.
-pipelines = PipelinesConfig(os.environ["PIPELINES_CONFIG"])
+# The preprocessing pipelines to execute and the conditions in which to choose them.
+pre_pipelines = PipelinesConfig(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
+# The main pipelines to execute and the conditions in which to choose them.
+main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
 
 setup_usdf_logger(
     labels={"instrument": instrument_name},
@@ -269,7 +271,7 @@ def next_visit_handler() -> Tuple[str, int]:
             return f"Bad Request: {msg}", 400
         assert expected_visit.instrument == instrument_name, \
             f"Expected {instrument_name}, received {expected_visit.instrument}."
-        if not pipelines.get_pipeline_files(expected_visit):
+        if not main_pipelines.get_pipeline_files(expected_visit):
             _log.info(f"No pipeline configured for {expected_visit}, skipping.")
             return "No pipeline configured for the received visit.", 422
 
@@ -285,7 +287,8 @@ def next_visit_handler() -> Tuple[str, int]:
             mwi = MiddlewareInterface(central_butler,
                                       image_bucket,
                                       expected_visit,
-                                      pipelines,
+                                      pre_pipelines,
+                                      main_pipelines,
                                       skymap,
                                       local_repo.name)
             # Copy calibrations for this detector/visit
