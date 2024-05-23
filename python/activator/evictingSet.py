@@ -20,12 +20,15 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-__all__ = ["EvictingSet"]
+__all__ = ["EvictingSet", "RandomReplacementSet"]
 
 
 import abc
 import collections.abc
+import copy
 from typing import Any, Self
+
+import numpy
 
 
 # TODO: implementing the full MutableSet API is overkill, and both the API's
@@ -64,6 +67,10 @@ class EvictingSet(collections.abc.MutableSet):
         """
         return super().__and__(other)
 
+    def __rand__(self, other: collections.abc.Set) -> collections.abc.Set:
+        # Ignore eviction on the RHS
+        return other & frozenset(self)
+
     def __or__(self, other: collections.abc.Set) -> Self:
         """Return a new set with elements from the set and ``other``.
 
@@ -73,6 +80,10 @@ class EvictingSet(collections.abc.MutableSet):
         """
         return super().__or__(other)
 
+    def __ror__(self, other: collections.abc.Set) -> collections.abc.Set:
+        # Ignore eviction on the RHS
+        return other | frozenset(self)
+
     def __sub__(self, other: collections.abc.Set) -> Self:
         """Return a new set with elements in the set that are not in the others.
 
@@ -80,6 +91,10 @@ class EvictingSet(collections.abc.MutableSet):
         same `max_size`.
         """
         return super().__sub__(other)
+
+    def __rsub__(self, other: collections.abc.Set) -> collections.abc.Set:
+        # Ignore eviction on the RHS
+        return other - frozenset(self)
 
     def __xor__(self, other: collections.abc.Set) -> Self:
         """Return a new set with elements in either the set or ``other`` but
@@ -90,6 +105,10 @@ class EvictingSet(collections.abc.MutableSet):
         evictions are made as if this set had been copied, then updated with ^=.
         """
         return super().__xor__(other)
+
+    def __rxor__(self, other: collections.abc.Set) -> collections.abc.Set:
+        # Ignore eviction on the RHS
+        return other ^ frozenset(self)
 
     @abc.abstractmethod
     def add(self, elem: Any) -> Any | None:
@@ -172,3 +191,179 @@ class EvictingSet(collections.abc.MutableSet):
     # symmetric_difference, copy, update, intersection_update,
     # difference_update, and symmetric_difference_update, but MutableSet does
     # not require these.
+
+    def _setlike(self) -> str:
+        """Return a representation of the set's contents in the form
+        {A, B, ...}.
+
+        This method is intended for use in implementations of `__str__`
+        and `__repr__`.
+        """
+        return "{" + ", ".join(repr(x) for x in self) + "}"
+
+    def __str__(self) -> str:
+        return self._setlike()
+
+
+class RandomReplacementSet(EvictingSet):
+    """An EvictingSet that evicts elements at random, without considering usage
+    or insertion order.
+
+    This implementation requires that elements be hashable.
+
+    Parameters
+    ----------
+    max_size : `int`
+        The maximum number of elements allowed in the set.
+    iterable
+        The initial elements of the set. If larger than ``max_size``, this set
+        will contain a random subset of ``iterable``.
+    seed : `int`, optional
+        A seed for the random evictions.
+    """
+
+    def __init__(self,
+                 max_size: int,
+                 iterable: collections.abc.Iterable = frozenset(),
+                 *,
+                 seed: int | None = None
+                 ):
+        self._max_size = max_size
+        if self._max_size < 0:
+            raise ValueError(f"Maximum size must be nonnegative, gave {self._max_size}.")
+        self._impl = set(iterable)
+        self._rng = numpy.random.default_rng(seed)
+        self._seed = seed  # Needed for _from_iterable before Numpy 1.25
+        self._evict(self._impl, self.max_size)
+
+    # This override is an instance method (explicitly allowed by the Set docs)
+    # so that the LHS of any binary op can copy over its max_size.
+    def _from_iterable(self, it: collections.abc.Iterable) -> Self:
+        return type(self)(max_size=self.max_size, iterable=it, seed=self._seed)
+
+    def _evict(self, target_set: set, desired: int) -> collections.abc.Collection[Any]:
+        """Remove elements until the set is capped at a given size.
+
+        Parameters
+        ----------
+        target_set : `set`
+            The set from which to evict elements.
+        desired : `int`
+            The number of elements that should remain after eviction.
+
+        Returns
+        -------
+        evicted : collection
+            The elements that were removed.
+        """
+        if len(target_set) > desired:
+            n_extra = len(target_set) - desired
+            evicted = self._rng.choice(list(target_set), n_extra, replace=False, shuffle=False)
+            target_set.difference_update(evicted)
+            assert len(target_set) == desired
+            return evicted
+        else:
+            return set()
+
+    @property
+    def max_size(self) -> int:
+        return self._max_size
+
+    def __contains__(self, item: Any) -> bool:
+        return item in self._impl
+
+    def __iter__(self) -> collections.abc.Iterator:
+        return iter(self._impl)
+
+    def __len__(self) -> int:
+        return len(self._impl)
+
+    def add(self, elem: Any) -> Any | None:
+        # Copy-and-swap to ensure atomic behavior
+        _temp = self._impl.copy()
+        # Evict first to ensure elem is not removed.
+        if elem not in _temp and self.max_size > 0:
+            evicted = self._evict(_temp, self.max_size - 1)
+            _temp.add(elem)
+            self._impl = _temp
+        else:
+            evicted = set()
+        if evicted:
+            return next(iter(evicted))
+        else:
+            return None
+
+    def get(self, elem: Any) -> Any:
+        if elem in self:
+            return elem
+        else:
+            raise KeyError(f"No such element: {elem!r}")
+
+    def discard(self, elem: Any):
+        return self._impl.discard(elem)
+
+    def __or__(self, other: collections.abc.Set) -> Self:
+        # Enforce eviction order guarantees
+        merged = copy.copy(self)
+        merged.__ior__(other)  # DO NOT use |=; it can change the type of the LHS!
+        return merged
+
+    def __xor__(self, other: collections.abc.Set) -> Self:
+        # Enforce eviction order guarantees
+        merged = copy.copy(self)
+        merged.__ixor__(other)  # DO NOT user ^=; it can change the type of the LHS!
+        return merged
+
+    def __ior__(self, other: collections.abc.Iterable) -> Self:
+        # Let a, b, c be disjoint sets such that A = a | c and B = b | c
+        # Let clip(S, N) denote the eviction of S down to size N
+        # Method must guarantee clip(A | B, N) = { a | b | c               if |A | B| <= N
+        #                                          clip(a, N-|B|) | b | c  if |A | B| > N and |B| <= N
+        #                                          clip(b | c, N)          if |B| > N
+        # It can be shown that implementing clip(A | B, N) = clip(a, N-|B|) | clip(B, N)
+        # guarantees this for all a, b, c, and N.
+
+        # Copy-and-swap to ensure atomic behavior
+        _temp = self._impl.copy()
+        # Evict first to ensure new inputs are not removed unless necessary.
+        incoming_values = set(other)
+
+        # If something needs to be evicted, first cut is values that aren't in the RHS
+        low_priority_values = _temp - incoming_values
+        to_keep = max(self.max_size - len(incoming_values), 0)
+        first_evicted = self._evict(low_priority_values, to_keep)
+        _temp.difference_update(first_evicted)  # DO NOT use -=; it can change the type of the LHS!
+
+        self._evict(incoming_values, self.max_size)
+        _temp.update(incoming_values)  # DO NOT use |=
+        self._impl = _temp
+        return self
+
+    def __ixor__(self, other: collections.abc.Iterable) -> Self:
+        # Let a, b, c be disjoint sets such that A = a | c and B = b | c
+        # Let clip(S, N) denote the eviction of S down to size N
+        # Method must guarantee clip(A ^ B, N) = { a | b               if |a | b| <= N
+        #                                          clip(a, N-|b|) | b  if |a | b| > N and |b| <= N
+        #                                          clip(b, N)          if |b| > N
+        # It can be shown that implementing clip(A ^ B, N) = clip(a, N-|b|) | clip(b, N)
+        # guarantees this for all a, b, c, and N.
+
+        # Copy-and-swap to ensure atomic behavior
+        _temp = self._impl.copy()
+        incoming_values = set(other)
+        excess_values = _temp & incoming_values
+        _temp.difference_update(excess_values)  # DO NOT use -=; it can change the type of the LHS!
+
+        # If something needs to be evicted, first cut is values that aren't in the RHS
+        new_values = incoming_values - excess_values
+        to_keep = max(self.max_size - len(new_values), 0)
+        self._evict(_temp, to_keep)
+
+        self._evict(new_values, self.max_size)
+        _temp.update(new_values)  # DO NOT use |=
+        self._impl = _temp
+        return self
+
+    def __repr__(self) -> str:
+        # It's not possible to extract the original seed from a Generator
+        return f"{type(self).__name__}({self.max_size}, {self._setlike()})"
