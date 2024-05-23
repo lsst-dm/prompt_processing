@@ -39,6 +39,14 @@ class EvictingSet(collections.abc.MutableSet):
     All operations are guaranteed to be atomic; in particular, a failed
     operation never evicts. The actual eviction policy is up to
     the implementation.
+
+    Notes
+    -----
+    The definitions of binary operators guarantee that the values from the
+    right-hand-side will not be evicted unless necessary. This convention allows
+    the creating and in-place operations to behave consistently (e.g.,
+    ``a |= b`` is equivalent to ``a = a | b``). However, this means that binary
+    operations are not symmetric.
     """
     @property
     @abc.abstractmethod
@@ -128,8 +136,11 @@ class EvictingSet(collections.abc.MutableSet):
         """Update the set, adding elements from all others.
 
         If the length of the result would exceed `max_size`, evictions are made
-        as if each object returned from ``other`` had been inserted, one by one,
-        by `add`.
+        as if each object returned from ``other`` had been inserted
+        simultaneously. The new objects are only evicted if the length of
+        ``other`` also exceeds `max_size`. This guarantee gives behavior
+        inconsistent with iterating and calling `add`, but gives sensible
+        results for eviction strategies that penalize recently-added objects.
 
         Parameters
         ----------
@@ -144,8 +155,11 @@ class EvictingSet(collections.abc.MutableSet):
 
         If the length of the result would exceed `max_size`, evictions are made
         as if all ineligible members of this set had been removed first, then
-        each eligible object returned from ``other`` had been inserted, one by
-        one, by `add`.
+        each eligible object returned from ``other`` had been inserted
+        simultaneously. The new objects are only evicted if their number
+        also exceeds `max_size`. This guarantee gives behavior
+        inconsistent with iterating and calling `add`, but gives sensible
+        results for eviction strategies that penalize recently-added objects.
 
         Parameters
         ----------
