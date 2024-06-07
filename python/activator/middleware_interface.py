@@ -535,7 +535,11 @@ class MiddlewareInterface:
                       collections=self.instrument.makeRefCatCollectionName(),
                       where=htm_where,
                       findFirst=True))
-        _log.debug("Found %d new refcat datasets.", len(refcats))
+        if refcats:
+            for dataset_type, n_datasets in self._count_by_type(refcats):
+                _log.debug("Found %d new refcat datasets from catalog '%s'.", n_datasets, dataset_type)
+        else:
+            _log.debug("Found 0 new refcat datasets.")
         return refcats
 
     def _export_skymap_and_templates(self, center, detector, wcs, filter):
