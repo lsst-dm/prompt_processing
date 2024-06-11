@@ -283,12 +283,6 @@ class MiddlewareInterface:
         constructing URIs to retrieve incoming files. The default is
         appropriate for use in the USDF environment; typically only
         change this when running local tests.
-
-    Raises
-    ------
-    ValueError
-        Raised if ``visit`` does not have equatorial coordinates and sky
-        rotation angles.
     """
     DATASET_IDENTIFIER = "Live"
     """The dataset ID used for Sasquatch uploads.
@@ -327,12 +321,15 @@ class MiddlewareInterface:
                  skymap: str, local_repo: str, local_cache: DatasetCache,
                  prefix: str = "s3://"):
         self.visit = visit
+        # Usually prompt processing only cares about on-sky images and expects all of them
+        # to have equatorial coordinates and sky rotation angles. However here we only warn
+        # and not raise so to allow special cases such as using calibration frames to test.
         if self.visit.coordinateSystem != FannedOutVisit.CoordSys.ICRS:
-            raise ValueError("Only ICRS coordinates are supported in Visit, "
-                             f"got {self.visit.coordinateSystem!r} instead.")
+            _log.warning("Got non-ICRS coordinates %r in Visit %s.",
+                         self.visit.coordinateSystem, self.visit)
         if self.visit.rotationSystem != FannedOutVisit.RotSys.SKY:
-            raise ValueError("Only sky camera rotations are supported in Visit, "
-                             f"got {self.visit.rotationSystem!r} instead.")
+            _log.warning("Got non-sky camera rotations %r in Visit %s.",
+                         self.visit.rotationSystem, self.visit)
 
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
