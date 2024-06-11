@@ -441,7 +441,7 @@ class MiddlewareInterface:
 
         ``self._init_local_butler`` must have already been run.
         """
-        define_visits_config = lsst.obs.base.DefineVisitsConfig()
+        define_visits_config = lsst.obs.base.DefineVisitsConfig(groupExposures="one-to-one")
         self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
 
     def _define_dimensions(self):
@@ -1386,7 +1386,6 @@ class MiddlewareInterface:
         where = (
             f"instrument='{self.visit.instrument}' and detector={self.visit.detector}"
             f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
-            " and visit_system = 0"
         )
         preload_run = self._get_preload_run(self._day_obs)
         init_pre_runs = [self._get_init_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
