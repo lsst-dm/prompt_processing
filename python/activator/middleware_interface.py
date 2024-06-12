@@ -1576,10 +1576,15 @@ class _MissingDatasetError(RuntimeError):
     pass
 
 
+# TODO: refactor this function so that querying the src repo (with timestamp),
+# querying the dest repo (without timestamp), and differencing the two are
+# properly separated.
 def _filter_datasets(src_repo: Butler,
                      dest_repo: Butler,
                      *args,
                      calib_date: astropy.time.Time | None = None,
+                     all_callback: typing.Callable[[collections.abc.Iterable[lsst.daf.butler.DatasetRef]],
+                                                   typing.Any] | None = None,
                      **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
     """Identify datasets in a source repository, filtering out those already
     present in a destination.
@@ -1596,6 +1601,10 @@ def _filter_datasets(src_repo: Butler,
     calib_date : `astropy.time.Time`, optional
         If provided, also filter anything other than calibs valid at
         ``calib_date`` and check that at least one valid calib was found.
+    all_callback: callable, optional
+        If provided, a callable that is called with *all* datasets picked up by
+        the query, before filtering out those already present in ``dest_repo``.
+        This callable is not called if the query returns no results.
     *args, **kwargs
         Parameters for describing the dataset query. They have the same
         meanings as the parameters of `lsst.daf.butler.Registry.queryDatasets`.
@@ -1637,16 +1646,18 @@ def _filter_datasets(src_repo: Butler,
         # In many contexts, src_datasets is too large to print.
         _log_trace3.debug("Source datasets: %s", src_datasets)
     if calib_date:
-        src_datasets = _filter_calibs_by_date(
+        src_datasets = set(_filter_calibs_by_date(
             src_repo,
             kwargs["collections"] if "collections" in kwargs else ...,
             src_datasets,
             calib_date,
-        )
+        ))
         _log_trace.debug("Sources filtered to %s: %s", calib_date.iso, src_datasets)
     if not src_datasets:
         raise _MissingDatasetError(
             "Source repo query with args '{}' found no matches.".format(formatted_args))
+    if all_callback:
+        all_callback(src_datasets)
     return itertools.filterfalse(lambda ref: ref in known_datasets, src_datasets)
 
 

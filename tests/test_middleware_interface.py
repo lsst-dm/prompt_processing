@@ -21,6 +21,7 @@
 
 import dataclasses
 import datetime
+import functools
 import itertools
 import tempfile
 import os.path
@@ -924,6 +925,45 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
                     _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam")
+
+    def test_filter_datasets_all_callback(self):
+        """Test that _filter_datasets passes the correct values to its callback.
+        """
+        def test_function(expected, incoming):
+            self.assertEqual(expected, incoming)
+
+        # Much easier to create DatasetRefs with a real repo.
+        registry = self.central_butler.registry
+        data1 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 5}, "dummy")
+        data2 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 25}, "dummy")
+        data3 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 42}, "dummy")
+
+        combinations = [{data1, data2}, {data1, data2, data3}]
+        # Case where src is empty covered below.
+        for src, existing in itertools.product(combinations, [set()] + combinations):
+            src_butler = unittest.mock.Mock(
+                **{"registry.queryDatasets.return_value.expanded.return_value": src})
+            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+
+            with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
+                              existing=sorted(ref.dataId["detector"] for ref in existing)):
+                _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam",
+                                 all_callback=functools.partial(test_function, src))
+
+        # Should not call
+
+        def non_callable(_):
+            self.fail("Callback called during _MissingDatasetError.")
+
+        for existing in [set()] + combinations:
+            src_butler = unittest.mock.Mock(
+                **{"registry.queryDatasets.return_value.expanded.return_value": set()})
+            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+
+            with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
+                with self.assertRaises(_MissingDatasetError):
+                    _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam",
+                                     all_callback=non_callable)
 
     def test_filter_calibs_by_date_early(self):
         # _filter_calibs_by_date requires a collection, not merely an iterable
