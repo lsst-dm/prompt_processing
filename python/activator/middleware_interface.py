@@ -72,8 +72,6 @@ template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
 # VALIDITY-HACK: local-only calib collections break if calibs are not requested
 # in chronological order. Turn off for large development runs.
 cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
-# TODO: workaround for DM-40193
-cache_anything = bool(int(os.environ.get("DEBUG_CACHE_INPUTS", '1')))
 
 
 def get_central_butler(central_repo: str, instrument_class: str):
@@ -1628,10 +1626,6 @@ class MiddlewareInterface:
             if excess_datasets:
                 _log_trace.debug("Clearing out %s.", excess_datasets)
                 self.butler.pruneDatasets(excess_datasets, disassociate=True, unstore=True, purge=True)
-            # TODO: workaround for DM-40193
-            if not cache_anything:
-                self.butler.pruneDatasets(self.butler.registry.queryDatasets(...),
-                                          disassociate=True, unstore=True, purge=True)
 
 
 class _MissingDatasetError(RuntimeError):
