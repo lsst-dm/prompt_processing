@@ -84,7 +84,10 @@ def process_group(kafka_url, visit_infos, uploader):
     for info in visit_infos:
         group = info.groupId
         n_snaps = info.nimages
-        visit = SummitVisit(**info.get_bare_visit(), private_sndStamp=info.private_sndStamp)
+        visit = SummitVisit(**info.get_bare_visit(),
+                            private_sndStamp=info.private_sndStamp,
+                            private_efdStamp=astropy.time.Time(info.private_sndStamp, format="unix_tai").unix,
+                            )
         send_next_visit(kafka_url, group, {visit})
         break
     else:
