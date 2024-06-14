@@ -561,7 +561,16 @@ To restore the APDB to a clean state, add the ``--drop`` option to  ``apdb-cli c
 Checking the APDB Version
 -------------------------
 
-To identify which schema and ApdbSql version a PostgreSQL APDB is using, run, e.g.:
+If you have credentials for `rubin-pp-dev-users` configured (see `Buckets`_), you can identify an APDB's schema and ApdbSql/ApdbCassandra versions with ``apdb-cli``.
+For example:
+
+.. code-block:: sh
+
+   apdb-cli metadata show label:pp-dev:latiss:sql
+
+See ``apdb-cli list-index`` for a list of valid labels.
+
+For a PostgreSQL APDB, you can do the check without bucket access by running, e.g.:
 
 .. code-block:: sh
 
