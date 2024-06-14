@@ -461,6 +461,12 @@ The server is visible from ``rubin-devl``, and can be accessed through, e.g.,
 
    psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin
 
+Credentials
+-----------
+
+Postgres
+^^^^^^^^
+
 For passwordless login, create a ``~/.pgpass`` file with contents:
 
 .. code-block::
@@ -471,6 +477,37 @@ For passwordless login, create a ``~/.pgpass`` file with contents:
    usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:lsstcomcamsim_prompt:PASSWORD
 
 and execute ``chmod 0600 ~/.pgpass``.
+
+Cassandra
+^^^^^^^^^
+
+We have a Cassandra cluster at the USDF on dedicated hardware, that is currently deployed in parallell across 12 nodes.
+Of those, 6 are reserved for Andy Salnikov's development and testing, and 6 are available for Prompt Processing.
+The status of the cluster can be monitored with the `cassandra_dashboard`_ in grafana.
+
+.. _cassandra_dashboard: https://grafana.slac.stanford.edu/d/d7d52e6b-e376-49dc-8ef8-e4742dd229a9/cassandra-system-metrics?orgId=1&refresh=5m
+
+The nodes available for Prompt Processing are ``sdfk8sk001`` through ``sdfk8sk006``.
+
+To access the Cassandra cluster, you must add credentials to your ``~/.lsst/db-auth.yaml``.
+The appropriate credentials are stored in the SLAC Vault, under ``rubin/usdf-apdb-dev/cassandra``.
+Add the following to your ``db-auth.yaml``, replacing ``PORT`` and ``PASSWORD`` from the Vault:
+
+.. code-block:: sh
+
+   - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/*
+     username: apdb
+     password: PASSWORD
+
+and execute ``chmod 0600 ~/.lsst/db-auth.yaml``.
+
+The credentials for the Butler (``ppcentralbutler``) can be stored in a ``~/.pgpass`` file as above, or in ``db-auth.yaml``.
+
+Creating an APDB
+----------------
+
+Postgres
+^^^^^^^^
 
 From ``rubin-devl``, new APDB schemas can be created in the usual way:
 
@@ -483,10 +520,28 @@ From ``rubin-devl``, new APDB schemas can be created in the usual way:
    apdb-cli create-sql --namespace="pp_apdb_lsstcomcamsim" \
        "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_lsstcomcamsim.py
 
+Cassandra
+^^^^^^^^^
+
+To set up a new keyspace and connection, use:
+
+.. code-block:: sh
+
+   apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
+       pp_apdb_latiss pp_apdb_latiss-dev.py --replication-factor=3 --enable-replica
+   apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
+       pp_apdb_hsc pp_apdb_hsc-dev.py --replication-factor=3 --enable-replica
+   apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
+       pp_apdb_lsstcomcamsim pp_apdb_lsstcomcamsim-dev.py --replication-factor=3 --enable-replica
+
+Here ``sdfk8sk001.sdf.slac.stanford.edu`` and ``sdfk8sk004.sdf.slac.stanford.edu`` are two nodes within the Prompt Processing allocation, which are the ``contact_points`` used for the initial connection.
+All of the available nodes will be used.
+In the above example, ``pp_apdb_latiss`` is the Cassandra keyspace (similar to schema for Postgres), and ``pp_apdb_latiss-dev.py`` is the usual APDB config.
+
 Resetting the APDB
 ------------------
 
-To restore the APDB to a clean state, run ``apdb-cli create-sql`` with ``--drop`` option which recreates all tables:
+To restore the APDB to a clean state, add the ``--drop`` option to  ``apdb-cli create-sql`` or ``apdb-cli create-cassandra`` which will recreate all tables:
 
 .. code-block:: sh
 
