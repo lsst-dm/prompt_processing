@@ -39,7 +39,7 @@ from werkzeug.exceptions import ServiceUnavailable
 from .config import PipelinesConfig
 from .exception import NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
-from .middleware_interface import get_central_butler, make_local_repo, MiddlewareInterface
+from .middleware_interface import get_central_butler, make_local_repo, make_local_cache, MiddlewareInterface
 from .raw import (
     get_prefix_from_snap,
     is_path_consistent,
@@ -96,6 +96,7 @@ try:
     central_butler = get_central_butler(calib_repo, instrument_name)
     # local_repo is a temporary directory with the same lifetime as this process.
     local_repo = make_local_repo(local_repos, central_butler, instrument_name)
+    local_cache = make_local_cache()
 except Exception as e:
     _log.critical("Failed to start worker; aborting.")
     _log.exception(e)
@@ -290,7 +291,8 @@ def next_visit_handler() -> Tuple[str, int]:
                                       pre_pipelines,
                                       main_pipelines,
                                       skymap,
-                                      local_repo.name)
+                                      local_repo.name,
+                                      local_cache)
             # Copy calibrations for this detector/visit
             mwi.prep_butler()
 

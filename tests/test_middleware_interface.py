@@ -21,6 +21,7 @@
 
 import dataclasses
 import datetime
+import functools
 import itertools
 import tempfile
 import os.path
@@ -45,6 +46,7 @@ from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
 
+from activator.caching import DatasetCache
 from activator.config import PipelinesConfig
 from activator.exception import NonRetriableError
 from activator.visit import FannedOutVisit
@@ -137,6 +139,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                      inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
+        self.local_cache = DatasetCache(2, {"ps1_pv3_3pi_20170110": 10, "gaia_dr2_20200414": 10})
         self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
 
         config = ApdbSql.init_database(db_url=f"sqlite:///{self.local_repo.name}/apdb.db")
@@ -178,7 +181,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
                                              # TODO: replace pre_pipelines_empty on DM-43418
                                              pre_pipelines_empty, pipelines, skymap_name,
-                                             self.local_repo.name,
+                                             self.local_repo.name, self.local_cache,
                                              prefix="file://")
 
     def test_get_butler(self):
@@ -380,7 +383,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         second_interface = MiddlewareInterface(self.central_butler, self.input_data, second_visit,
                                                # TODO: replace pre_pipelines_empty on DM-43418
                                                pre_pipelines_empty, pipelines, skymap_name,
-                                               self.local_repo.name,
+                                               self.local_repo.name, self.local_cache,
                                                prefix="file://")
 
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
@@ -404,7 +407,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         third_interface = MiddlewareInterface(self.central_butler, self.input_data, third_visit,
                                               # TODO: replace pre_pipelines_empty on DM-43418
                                               pre_pipelines_empty, pipelines, skymap_name,
-                                              self.local_repo.name,
+                                              self.local_repo.name, self.local_cache,
                                               prefix="file://")
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
                 as mock_pre:
@@ -817,34 +820,59 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         butler.dimensions,
                                         self.interface.instrument,
                                         self.next_visit)
+        calib_data_id_1 = {k: v for k, v in raw_data_id.required.items() if k in {"instrument", "detector"}}
+        calib_data_id_2 = {"instrument": self.interface.instrument.getName(), "detector": 11}
+        calib_data_id_3 = {"instrument": self.interface.instrument.getName(), "detector": 12}
         processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.required.items()}
         butler_tests.addDataIdValue(butler, "exposure", raw_data_id["exposure"])
         butler_tests.addDataIdValue(butler, "visit", processed_data_id["visit"])
         butler_tests.addDatasetType(butler, "raw", raw_data_id.required.keys(), "Exposure")
         butler_tests.addDatasetType(butler, "src", processed_data_id.keys(), "SourceCatalog")
         butler_tests.addDatasetType(butler, "calexp", processed_data_id.keys(), "ExposureF")
+        butler_tests.addDatasetType(butler, "bias", calib_data_id_1.keys(), "ExposureF")
 
         exp = lsst.afw.image.ExposureF(20, 20)
         cat = lsst.afw.table.SourceCatalog()
+        # Since we're not calling prep_butler, need to set up the collections by hand
         raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
         butler.registry.registerCollection(raw_collection, CollectionType.RUN)
         out_collection = self.interface._get_output_run("ApPipe.yaml", self.interface._day_obs)
         butler.registry.registerCollection(out_collection, CollectionType.RUN)
-        chain = "generic-chain"
+        calib_collection = self.interface.instrument.makeCalibrationCollectionName()
+        butler.registry.registerCollection(calib_collection, CollectionType.RUN)
+        chain = self.interface.instrument.makeUmbrellaCollectionName()
         butler.registry.registerCollection(chain, CollectionType.CHAINED)
-        butler.registry.setCollectionChain(chain, [out_collection, raw_collection])
+        butler.registry.setCollectionChain(chain, [out_collection, raw_collection, calib_collection])
 
         butler.put(exp, "raw", raw_data_id, run=raw_collection)
         butler.put(cat, "src", processed_data_id, run=out_collection)
         butler.put(exp, "calexp", processed_data_id, run=out_collection)
+        bias_1 = butler.put(exp, "bias", calib_data_id_1, run=calib_collection)
+        bias_2 = butler.put(exp, "bias", calib_data_id_2, run=calib_collection)
+        bias_3 = butler.put(exp, "bias", calib_data_id_3, run=calib_collection)
+        with self.assertWarns(RuntimeWarning):  # Deliberately overflowing cache
+            self.local_cache.update([bias_1, bias_2, bias_3, ])
         self._assert_in_collection(butler, "*", "raw", raw_data_id)
         self._assert_in_collection(butler, "*", "src", processed_data_id)
         self._assert_in_collection(butler, "*", "calexp", processed_data_id)
+        self._assert_in_collection(butler, "*", "bias", calib_data_id_1)
+        self._assert_in_collection(butler, "*", "bias", calib_data_id_2)
+        self._assert_in_collection(butler, "*", "bias", calib_data_id_3)
 
         self.interface.clean_local_repo({raw_data_id["exposure"]})
         self._assert_not_in_collection(butler, "*", "raw", raw_data_id)
         self._assert_not_in_collection(butler, "*", "src", processed_data_id)
         self._assert_not_in_collection(butler, "*", "calexp", processed_data_id)
+        # Default cache has size 2, so one of the biases should have been removed
+        self._check_cache_vs_collection(butler, self.local_cache, bias_1)
+        self._check_cache_vs_collection(butler, self.local_cache, bias_2)
+        self._check_cache_vs_collection(butler, self.local_cache, bias_3)
+
+    def _check_cache_vs_collection(self, butler, cache, ref):
+        if ref in cache:
+            self._assert_in_collection(butler, "*", ref.datasetType, ref.dataId)
+        else:
+            self._assert_not_in_collection(butler, "*", ref.datasetType, ref.dataId)
 
     @staticmethod
     def _make_expanded_ref(registry, dtype, data_id, run):
@@ -924,6 +952,45 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
                     _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam")
+
+    def test_filter_datasets_all_callback(self):
+        """Test that _filter_datasets passes the correct values to its callback.
+        """
+        def test_function(expected, incoming):
+            self.assertEqual(expected, incoming)
+
+        # Much easier to create DatasetRefs with a real repo.
+        registry = self.central_butler.registry
+        data1 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 5}, "dummy")
+        data2 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 25}, "dummy")
+        data3 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 42}, "dummy")
+
+        combinations = [{data1, data2}, {data1, data2, data3}]
+        # Case where src is empty covered below.
+        for src, existing in itertools.product(combinations, [set()] + combinations):
+            src_butler = unittest.mock.Mock(
+                **{"registry.queryDatasets.return_value.expanded.return_value": src})
+            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+
+            with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
+                              existing=sorted(ref.dataId["detector"] for ref in existing)):
+                _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam",
+                                 all_callback=functools.partial(test_function, src))
+
+        # Should not call
+
+        def non_callable(_):
+            self.fail("Callback called during _MissingDatasetError.")
+
+        for existing in [set()] + combinations:
+            src_butler = unittest.mock.Mock(
+                **{"registry.queryDatasets.return_value.expanded.return_value": set()})
+            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+
+            with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
+                with self.assertRaises(_MissingDatasetError):
+                    _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam",
+                                     all_callback=non_callable)
 
     def test_filter_calibs_by_date_early(self):
         # _filter_calibs_by_date requires a collection, not merely an iterable
@@ -1021,7 +1088,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.input_data = os.path.join(data_dir, "input_data")
 
         local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
+        self.local_cache = DatasetCache(2, {"ps1_pv3_3pi_20170110": 10, "gaia_dr2_20200414": 10})
         second_local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
+        self.second_local_cache = DatasetCache(2, {"ps1_pv3_3pi_20170110": 10, "gaia_dr2_20200414": 10})
         # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
         # getting garbage-collected.
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
@@ -1067,6 +1136,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # Populate repository.
         self.interface = MiddlewareInterface(central_butler, self.input_data, self.next_visit,
                                              pre_pipelines_full, pipelines, skymap_name, local_repo.name,
+                                             self.local_cache,
                                              prefix="file://")
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.interface.prep_butler()
@@ -1088,7 +1158,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                      for k, v in self.second_data_id.required.items()}
         self.second_interface = MiddlewareInterface(
             central_butler, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
-            skymap_name, second_local_repo.name, prefix="file://")
+            skymap_name, second_local_repo.name, self.second_local_cache, prefix="file://")
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.second_interface.prep_butler()
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
@@ -1169,6 +1239,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             interface = MiddlewareInterface(central_butler, self.input_data,
                                             dataclasses.replace(self.next_visit, groupId="42"),
                                             pre_pipelines_empty, pipelines, skymap_name, local_repo,
+                                            DatasetCache(3, {"ps1_pv3_3pi_20170110": 10,
+                                                             "gaia_dr2_20200414": 10}),
                                             prefix="file://")
             with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
                 interface.prep_butler()

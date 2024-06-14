@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["get_central_butler", "make_local_repo", "MiddlewareInterface"]
+__all__ = ["get_central_butler", "make_local_repo", "make_local_cache", "MiddlewareInterface"]
 
 import collections.abc
 import hashlib
@@ -49,6 +49,7 @@ import lsst.pipe.base
 import lsst.analysis.tools
 from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can't use fully-qualified name
 
+from .caching import DatasetCache
 from .config import PipelinesConfig
 from .exception import NonRetriableError
 from .visit import FannedOutVisit
@@ -62,11 +63,15 @@ _log_trace.setLevel(logging.CRITICAL)  # Turn off by default.
 _log_trace3 = logging.getLogger("TRACE3.lsst." + __name__)
 _log_trace3.setLevel(logging.CRITICAL)  # Turn off by default.
 
+# The number of calib datasets to keep from previous runs, or one less than the
+# number of calibs that may be present *during* a run.
+base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))-1
+# Multipliers to base_keep_limit for refcats and templates.
+refcat_factor = int(os.environ.get("REFCATS_PER_IMAGE", 4))
+template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
 # VALIDITY-HACK: local-only calib collections break if calibs are not requested
 # in chronological order. Turn off for large development runs.
 cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
-# TODO: workaround for DM-40193
-cache_anything = bool(int(os.environ.get("DEBUG_CACHE_INPUTS", '1')))
 
 
 def get_central_butler(central_repo: str, instrument_class: str):
@@ -141,6 +146,31 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
     return repo_dir
 
 
+def make_local_cache():
+    """Set up a cache for preloaded datasets.
+
+    Returns
+    -------
+    cache : `activator.caching.DatasetCache`
+        An empty cache with configured caching strategy and limits.
+    """
+    return DatasetCache(
+        base_keep_limit,
+        cache_sizes={
+            # TODO: find an API that doesn't require explicit enumeration
+            "goodSeeingCoadd": template_factor * base_keep_limit,
+            "deepCoadd": template_factor * base_keep_limit,
+            "uw_stars_20240524": refcat_factor * base_keep_limit,
+            "uw_stars_20240228": refcat_factor * base_keep_limit,
+            "uw_stars_20240130": refcat_factor * base_keep_limit,
+            "ps1_pv3_3pi_20170110": refcat_factor * base_keep_limit,
+            "gaia_dr3_20230707": refcat_factor * base_keep_limit,
+            "gaia_dr2_20200414": refcat_factor * base_keep_limit,
+            "atlas_refcat2_20220201": refcat_factor * base_keep_limit,
+        },
+    )
+
+
 def _get_sasquatch_dispatcher():
     """Get a SasquatchDispatcher object ready for use by Prompt Processing.
 
@@ -201,6 +231,9 @@ class MiddlewareInterface:
     local_repo : `str`
         A URI to the local Butler repo, which is assumed to already exist and
         contain standard collections and the registration of ``instrument``.
+    local_cache : `activator.caching.DatasetCache`
+        A cache holding datasets and usage history for preloaded dataset types
+        in ``local_repo``.
     prefix : `str`, optional
         URI scheme followed by ``://``; prepended to ``image_bucket`` when
         constructing URIs to retrieve incoming files. The default is
@@ -246,7 +279,8 @@ class MiddlewareInterface:
 
     def __init__(self, central_butler: Butler, image_bucket: str, visit: FannedOutVisit,
                  pre_pipelines: PipelinesConfig, main_pipelines: PipelinesConfig,
-                 skymap: str, local_repo: str,
+                 # TODO: encapsulate relationship between local_repo and local_cache
+                 skymap: str, local_repo: str, local_cache: DatasetCache,
                  prefix: str = "s3://"):
         self.visit = visit
         if self.visit.coordinateSystem != FannedOutVisit.CoordSys.ICRS:
@@ -274,6 +308,7 @@ class MiddlewareInterface:
         self._day_obs = (astropy.time.Time.now() + _DAY_OBS_DELTA).tai.to_value("iso", "date")
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
+        self.cache = local_cache  # DO NOT copy -- we want to persist this state!
         self._prep_collections()
         self._define_dimensions()
         self._init_ingester()
@@ -374,6 +409,20 @@ class MiddlewareInterface:
                                                {"name": self.visit.groupId,
                                                 "instrument": self.instrument.getName(),
                                                 })
+
+    def _mark_dataset_usage(self, refs: collections.abc.Iterable[lsst.daf.butler.DatasetRef]):
+        """Mark requested datasets in the cache.
+
+        Parameters
+        ----------
+        refs : iterable [`lsst.daf.butler.DatasetRef`]
+            The datasets to mark. Assumed to all fit inside the cache.
+        """
+        self.cache.update(refs)
+        try:
+            self.cache.access(refs)
+        except LookupError as e:
+            raise RuntimeError("Cache is too small for one run's worth of datasets.") from e
 
     def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector) -> lsst.afw.geom.SkyWcs:
         """Calculate the expected detector WCS for an incoming observation.
@@ -534,7 +583,9 @@ class MiddlewareInterface:
                       possible_refcats,
                       collections=self.instrument.makeRefCatCollectionName(),
                       where=htm_where,
-                      findFirst=True))
+                      findFirst=True,
+                      all_callback=self._mark_dataset_usage,
+                      ))
         if refcats:
             for dataset_type, n_datasets in self._count_by_type(refcats):
                 _log.debug("Found %d new refcat datasets from catalog '%s'.", n_datasets, dataset_type)
@@ -568,7 +619,9 @@ class MiddlewareInterface:
             "skyMap",
             skymap=self.skymap_name,
             collections=self._collection_skymap,
-            findFirst=True))
+            findFirst=True,
+            all_callback=self._mark_dataset_usage,
+        ))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
         # Getting only one tract should be safe: we're getting the
         # tract closest to this detector, so we should be well within
@@ -594,7 +647,9 @@ class MiddlewareInterface:
                 tract=tract.tract_id,
                 physical_filter=filter,
                 where=template_where,
-                findFirst=True))
+                findFirst=True,
+                all_callback=self._mark_dataset_usage,
+            ))
         except _MissingDatasetError as err:
             _log.error(err)
             templates = set()
@@ -633,6 +688,7 @@ class MiddlewareInterface:
             detector=detector_id,
             physical_filter=filter,
             calib_date=calib_date,
+            all_callback=self._mark_dataset_usage,
         ))
         if calibs:
             for dataset_type, n_datasets in self._count_by_type(calibs):
@@ -658,7 +714,9 @@ class MiddlewareInterface:
                 self.central_butler, self.butler,
                 "pretrainedModelPackage",
                 collections=self._collection_ml_model,
-                findFirst=True))
+                findFirst=True,
+                all_callback=self._mark_dataset_usage,
+            ))
         except _MissingDatasetError as err:
             _log.error(err)
             models = set()
@@ -1563,10 +1621,11 @@ class MiddlewareInterface:
                     self.butler.registry.removeCollection(member)
                 self.butler.removeRuns(calib_runs, unstore=True)
 
-            # TODO: workaround for DM-40193
-            if not cache_anything:
-                self.butler.pruneDatasets(self.butler.registry.queryDatasets(...),
-                                          disassociate=True, unstore=True, purge=True)
+            # Clean out calibs, templates, and other preloaded datasets
+            excess_datasets = frozenset(self.butler.registry.queryDatasets(...)) - frozenset(self.cache)
+            if excess_datasets:
+                _log_trace.debug("Clearing out %s.", excess_datasets)
+                self.butler.pruneDatasets(excess_datasets, disassociate=True, unstore=True, purge=True)
 
 
 class _MissingDatasetError(RuntimeError):
@@ -1576,10 +1635,15 @@ class _MissingDatasetError(RuntimeError):
     pass
 
 
+# TODO: refactor this function so that querying the src repo (with timestamp),
+# querying the dest repo (without timestamp), and differencing the two are
+# properly separated.
 def _filter_datasets(src_repo: Butler,
                      dest_repo: Butler,
                      *args,
                      calib_date: astropy.time.Time | None = None,
+                     all_callback: typing.Callable[[collections.abc.Iterable[lsst.daf.butler.DatasetRef]],
+                                                   typing.Any] | None = None,
                      **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
     """Identify datasets in a source repository, filtering out those already
     present in a destination.
@@ -1596,6 +1660,10 @@ def _filter_datasets(src_repo: Butler,
     calib_date : `astropy.time.Time`, optional
         If provided, also filter anything other than calibs valid at
         ``calib_date`` and check that at least one valid calib was found.
+    all_callback: callable, optional
+        If provided, a callable that is called with *all* datasets picked up by
+        the query, before filtering out those already present in ``dest_repo``.
+        This callable is not called if the query returns no results.
     *args, **kwargs
         Parameters for describing the dataset query. They have the same
         meanings as the parameters of `lsst.daf.butler.Registry.queryDatasets`.
@@ -1637,16 +1705,18 @@ def _filter_datasets(src_repo: Butler,
         # In many contexts, src_datasets is too large to print.
         _log_trace3.debug("Source datasets: %s", src_datasets)
     if calib_date:
-        src_datasets = _filter_calibs_by_date(
+        src_datasets = set(_filter_calibs_by_date(
             src_repo,
             kwargs["collections"] if "collections" in kwargs else ...,
             src_datasets,
             calib_date,
-        )
+        ))
         _log_trace.debug("Sources filtered to %s: %s", calib_date.iso, src_datasets)
     if not src_datasets:
         raise _MissingDatasetError(
             "Source repo query with args '{}' found no matches.".format(formatted_args))
+    if all_callback:
+        all_callback(src_datasets)
     return itertools.filterfalse(lambda ref: ref in known_datasets, src_datasets)
 
 
