@@ -558,6 +558,27 @@ To restore the APDB to a clean state, add the ``--drop`` option to  ``apdb-cli c
    apdb-cli create-sql --drop --namespace="pp_apdb_lsstcomcamsim" \
        "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_lsstcomcamsim.py
 
+Removing APDB Instances
+-----------------------
+
+For Postgres the easiest way is to drop corresponding schema from the database using ``psql`` or other SQL tool.
+
+The ``apdb--cli`` tool has sub-command to list existing APDB instances:
+
+.. code-block:: sh
+
+   apdb-cli list-cassandra sdfk8sk001.sdf.slac.stanford.edu
+
+To delete an existing APDB instance in Cassandra cluster:
+
+.. code-block:: sh
+
+   apdb-cli delete-cassandra sdfk8sk001.sdf.slac.stanford.edu <keyspace>
+
+The command will ask for confirmation before it tries to delete specified keyspace.
+Cassandra creates keyspace snapshot before deleting it, so disk space is not released immediately.
+Snapshots will be removed after some delay during regular management operations.
+
 Checking the APDB Version
 -------------------------
 
