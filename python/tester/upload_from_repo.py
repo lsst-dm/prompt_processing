@@ -230,6 +230,7 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
             duration=duration,
             totalCheckpoints=1,
             private_sndStamp=data_id.records["exposure"].timespan.begin.unix_tai-2*duration,
+            private_efdStamp=data_id.records["exposure"].timespan.begin.unix-2*duration,
         )
         send_next_visit(kafka_url, group_id, {visit})
 
