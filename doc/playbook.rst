@@ -528,11 +528,11 @@ To set up a new keyspace and connection, use:
 .. code-block:: sh
 
    apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
-       pp_apdb_latiss pp_apdb_latiss-dev.py --replication-factor=3 --enable-replica
+       pp_apdb_latiss_dev pp_apdb_latiss-dev.py --user apdb --replication-factor=3 --enable-replica
    apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
-       pp_apdb_hsc pp_apdb_hsc-dev.py --replication-factor=3 --enable-replica
+       pp_apdb_hsc_dev pp_apdb_hsc-dev.py --user apdb --replication-factor=3 --enable-replica
    apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
-       pp_apdb_lsstcomcamsim pp_apdb_lsstcomcamsim-dev.py --replication-factor=3 --enable-replica
+       pp_apdb_lsstcomcamsim_dev pp_apdb_lsstcomcamsim-dev.py --user apdb --replication-factor=3 --enable-replica
 
 Here ``sdfk8sk001.sdf.slac.stanford.edu`` and ``sdfk8sk004.sdf.slac.stanford.edu`` are two nodes within the Prompt Processing allocation, which are the ``contact_points`` used for the initial connection.
 All of the available nodes will be used.
