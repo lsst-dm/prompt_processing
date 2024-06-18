@@ -545,6 +545,17 @@ Here ``sdfk8sk001.sdf.slac.stanford.edu`` and ``sdfk8sk004.sdf.slac.stanford.edu
 All of the available nodes will be used.
 In the above example, ``pp_apdb_latiss`` is the Cassandra keyspace (similar to schema for Postgres), and ``pp_apdb_latiss-dev.py`` is the usual APDB config.
 
+The APDB Index
+--------------
+
+Standard APDBs, including those used by Prompt Processing, are registered in the file pointed to by ``$DAX_APDB_INDEX_URI``.
+This file is **not** visible from Prompt Processing pods, but can be used to operate on existing DBs from ``sdfrome``.
+For example, the ``dev`` LATISS APDB is registered under ``pp-dev:latiss``, and ``Apdb`` calls and ``apdb-cli`` commands can substitute ``label:pp-dev:latiss`` for the config URI everywhere except database creation.
+
+In most cases, there is no need to edit the registry.
+If you are creating a genuinely new APDB (for example, for a new instrument), add its entry(ies) to the file.
+All Prompt Processing APDBs store their config file on S3, so that the file is visible to the pods.
+
 Resetting the APDB
 ------------------
 
