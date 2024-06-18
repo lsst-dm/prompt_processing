@@ -495,8 +495,13 @@ Add the following to your ``db-auth.yaml``, replacing ``PORT`` and ``PASSWORD`` 
 
 .. code-block:: sh
 
-   - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/*
+   # Cassandra dev APDBs
+   - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/pp_apdb_*_dev
      username: apdb
+     password: PASSWORD
+   # Workaround for list-cassandra not having keyspace-agnostic credentials, MUST go after all other entries
+   - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/*
+     username: ANY_CASSANDRA_ACCOUNT
      password: PASSWORD
 
 and execute ``chmod 0600 ~/.lsst/db-auth.yaml``.
