@@ -473,7 +473,7 @@ For passwordless login, create a ``~/.pgpass`` file with contents:
 
    # Dev APDBs
    usdf-prompt-processing-dev.slac.stanford.edu:5432:lsst-devl:rubin:PASSWORD
-   # Dev central repo
+   # Dev central repo, can also go in db-auth (see below)
    usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:pp:PASSWORD
 
 and execute ``chmod 0600 ~/.pgpass``.
@@ -499,14 +499,16 @@ Add the following to your ``db-auth.yaml``, replacing ``PORT`` and ``PASSWORD`` 
    - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/pp_apdb_*_dev
      username: apdb
      password: PASSWORD
+   # Dev central repo, can also go in .pgpass (see above)
+   - url: postgresql://usdf-prompt-processing-dev.slac.stanford.edu/ppcentralbutler
+     username: pp
+     password: PASSWORD
    # Workaround for list-cassandra not having keyspace-agnostic credentials, MUST go after all other entries
    - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/*
      username: ANY_CASSANDRA_ACCOUNT
      password: PASSWORD
 
 and execute ``chmod 0600 ~/.lsst/db-auth.yaml``.
-
-The credentials for the Butler (``ppcentralbutler``) can be stored in a ``~/.pgpass`` file as above, or in ``db-auth.yaml``.
 
 Creating an APDB
 ----------------
