@@ -481,16 +481,12 @@ and execute ``chmod 0600 ~/.pgpass``.
 Cassandra
 ^^^^^^^^^
 
-We have a Cassandra cluster at the USDF on dedicated hardware, that is currently deployed in parallell across 12 nodes.
+We have a Cassandra cluster at the USDF on dedicated hardware, that is currently deployed in parallel across 12 nodes.
 Of those, 6 are reserved for Andy Salnikov's development and testing, and 6 are available for Prompt Processing.
-The status of the cluster can be monitored with the `cassandra_dashboard`_ in grafana.
-
-.. _cassandra_dashboard: https://grafana.slac.stanford.edu/d/d7d52e6b-e376-49dc-8ef8-e4742dd229a9/cassandra-system-metrics?orgId=1&refresh=5m
-
 The nodes available for Prompt Processing are ``sdfk8sk001`` through ``sdfk8sk006``.
 
 To access the Cassandra cluster, you must add credentials to your ``~/.lsst/db-auth.yaml``.
-The appropriate credentials are stored in the SLAC Vault, under ``rubin/usdf-apdb-dev/cassandra``.
+The appropriate credentials are stored in the `SLAC Vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-apdb-dev/cassandra>`_.
 Add the following to your ``db-auth.yaml``, replacing ``PORT`` and ``PASSWORD`` from the Vault:
 
 .. code-block:: sh
