@@ -471,10 +471,10 @@ For passwordless login, create a ``~/.pgpass`` file with contents:
 
 .. code-block::
 
+   # Dev APDBs
    usdf-prompt-processing-dev.slac.stanford.edu:5432:lsst-devl:rubin:PASSWORD
-   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:latiss_prompt:PASSWORD
-   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:hsc_prompt:PASSWORD
-   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:lsstcomcamsim_prompt:PASSWORD
+   # Dev central repo
+   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:pp:PASSWORD
 
 and execute ``chmod 0600 ~/.pgpass``.
 
