@@ -265,7 +265,7 @@ One raw was ingested, visit-defined, and kept in the development central repo, s
 .. code-block:: sh
 
    apdb-cli create-sql "sqlite:///apdb.db" apdb_config.py
-   pipetask run -b s3://rubin-pp-dev-users/central_repo -i LATISS/raw/all,LATISS/defaults,LATISS/templates -o u/username/collection  -d "detector=0 and instrument='LATISS' and exposure=2023082900500 and visit_system=0" -p $PROMPT_PROCESSING_DIR/pipelines/LATISS/ApPipe.yaml -c parameters:apdb_config=apdb_config.py -c diaPipe:doPackageAlerts=False --register-dataset-types
+   pipetask run -b s3://rubin-pp-dev-users/central_repo -i LATISS/raw/all,LATISS/defaults,LATISS/templates -o u/username/collection  -d "detector=0 and instrument='LATISS' and exposure=2023082900500 and visit_system=0" -p $PROMPT_PROCESSING_DIR/pipelines/LATISS/ApPipe.yaml -c parameters:apdb_config=apdb_config.py -c diaPipe:doPackageAlerts=False --register-dataset-types --init-only
 
 .. TODO: update pipetask call after DM-43416
 
@@ -471,37 +471,40 @@ For passwordless login, create a ``~/.pgpass`` file with contents:
 
 .. code-block::
 
+   # Dev APDBs
    usdf-prompt-processing-dev.slac.stanford.edu:5432:lsst-devl:rubin:PASSWORD
-   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:latiss_prompt:PASSWORD
-   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:hsc_prompt:PASSWORD
-   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:lsstcomcamsim_prompt:PASSWORD
+   # Dev central repo, can also go in db-auth (see below)
+   usdf-prompt-processing-dev.slac.stanford.edu:5432:ppcentralbutler:pp:PASSWORD
 
 and execute ``chmod 0600 ~/.pgpass``.
 
 Cassandra
 ^^^^^^^^^
 
-We have a Cassandra cluster at the USDF on dedicated hardware, that is currently deployed in parallell across 12 nodes.
+We have a Cassandra cluster at the USDF on dedicated hardware, that is currently deployed in parallel across 12 nodes.
 Of those, 6 are reserved for Andy Salnikov's development and testing, and 6 are available for Prompt Processing.
-The status of the cluster can be monitored with the `cassandra_dashboard`_ in grafana.
-
-.. _cassandra_dashboard: https://grafana.slac.stanford.edu/d/d7d52e6b-e376-49dc-8ef8-e4742dd229a9/cassandra-system-metrics?orgId=1&refresh=5m
-
 The nodes available for Prompt Processing are ``sdfk8sk001`` through ``sdfk8sk006``.
 
 To access the Cassandra cluster, you must add credentials to your ``~/.lsst/db-auth.yaml``.
-The appropriate credentials are stored in the SLAC Vault, under ``rubin/usdf-apdb-dev/cassandra``.
+The appropriate credentials are stored in the `SLAC Vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-apdb-dev/cassandra>`_.
 Add the following to your ``db-auth.yaml``, replacing ``PORT`` and ``PASSWORD`` from the Vault:
 
 .. code-block:: sh
 
-   - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/*
+   # Cassandra dev APDBs
+   - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/pp_apdb_*_dev
      username: apdb
+     password: PASSWORD
+   # Dev central repo, can also go in .pgpass (see above)
+   - url: postgresql://usdf-prompt-processing-dev.slac.stanford.edu/ppcentralbutler
+     username: pp
+     password: PASSWORD
+   # Workaround for list-cassandra not having keyspace-agnostic credentials, MUST go after all other entries
+   - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/*
+     username: ANY_CASSANDRA_ACCOUNT
      password: PASSWORD
 
 and execute ``chmod 0600 ~/.lsst/db-auth.yaml``.
-
-The credentials for the Butler (``ppcentralbutler``) can be stored in a ``~/.pgpass`` file as above, or in ``db-auth.yaml``.
 
 Creating an APDB
 ----------------
@@ -528,15 +531,26 @@ To set up a new keyspace and connection, use:
 .. code-block:: sh
 
    apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
-       pp_apdb_latiss pp_apdb_latiss-dev.py --replication-factor=3 --enable-replica
+       pp_apdb_latiss_dev pp_apdb_latiss-dev.py --user apdb --replication-factor=3 --enable-replica
    apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
-       pp_apdb_hsc pp_apdb_hsc-dev.py --replication-factor=3 --enable-replica
+       pp_apdb_hsc_dev pp_apdb_hsc-dev.py --user apdb --replication-factor=3 --enable-replica
    apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
-       pp_apdb_lsstcomcamsim pp_apdb_lsstcomcamsim-dev.py --replication-factor=3 --enable-replica
+       pp_apdb_lsstcomcamsim_dev pp_apdb_lsstcomcamsim-dev.py --user apdb --replication-factor=3 --enable-replica
 
 Here ``sdfk8sk001.sdf.slac.stanford.edu`` and ``sdfk8sk004.sdf.slac.stanford.edu`` are two nodes within the Prompt Processing allocation, which are the ``contact_points`` used for the initial connection.
 All of the available nodes will be used.
 In the above example, ``pp_apdb_latiss`` is the Cassandra keyspace (similar to schema for Postgres), and ``pp_apdb_latiss-dev.py`` is the usual APDB config.
+
+The APDB Index
+--------------
+
+Standard APDBs, including those used by Prompt Processing, are registered in the file pointed to by ``$DAX_APDB_INDEX_URI``.
+This file is **not** visible from Prompt Processing pods, but can be used to operate on existing DBs from ``sdfrome``.
+For example, the ``dev`` LATISS APDB is registered under ``pp-dev:latiss``, and ``Apdb`` calls and ``apdb-cli`` commands can substitute ``label:pp-dev:latiss`` for the config URI everywhere except database creation.
+
+In most cases, there is no need to edit the registry.
+If you are creating a genuinely new APDB (for example, for a new instrument), add its entry(ies) to the file.
+All Prompt Processing APDBs store their config file on S3, so that the file is visible to the pods.
 
 Resetting the APDB
 ------------------
