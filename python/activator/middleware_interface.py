@@ -1462,7 +1462,14 @@ class MiddlewareInterface:
             # Transferring governor dimensions in parallel can cause deadlocks in
             # central registry. We need to transfer our exposure/visit dimensions,
             # so handle those manually.
-            self._export_exposure_dimensions(exposure_ids)
+            self._export_exposure_dimensions(
+                self.butler,
+                self.central_butler,
+                where="exposure in (exposure_ids)",
+                bind={"exposure_ids": exposure_ids},
+                instrument=self.instrument.getName(),
+                detector=self.visit.detector,
+            )
             transferred = self.central_butler.transfer_from(self.butler, datasets,
                                                             transfer="copy", transfer_dimensions=False)
             if len(transferred) != len(datasets):
@@ -1472,7 +1479,8 @@ class MiddlewareInterface:
 
         return transferred
 
-    def _export_exposure_dimensions(self, exposure_ids):
+    @staticmethod
+    def _export_exposure_dimensions(src_butler, dest_butler, **kwargs):
         """Transfer dimensions generated from an exposure to the central repo.
 
         In many cases the exposure records will already exist in the central
@@ -1482,8 +1490,14 @@ class MiddlewareInterface:
 
         Parameters
         ----------
-        exposure_ids : `set` [`int`]
-            Identifiers of the exposures that were processed.
+        src_butler : `lsst.daf.butler.Butler`
+            The butler from which to transfer dimension records.
+        dest_butler : `lsst.daf.butler.Butler`
+            The butler to which to transfer records.
+        **kwargs
+            Any data ID parameters to select specific records. They have the
+            same meanings as the parameters of
+            `lsst.daf.butler.Registry.queryDimensionRecords`.
         """
         core_dimensions = ["group",
                            "day_obs",
@@ -1491,7 +1505,7 @@ class MiddlewareInterface:
                            "visit",
                            "visit_system",
                            ]
-        universe = self.butler.dimensions
+        universe = src_butler.dimensions
 
         full_dimensions = [universe[d] for d in core_dimensions if d in universe]
         extra_dimensions = []
@@ -1500,15 +1514,9 @@ class MiddlewareInterface:
         sorted_dimensions = universe.sorted(full_dimensions + extra_dimensions)
 
         for dimension in sorted_dimensions:
-            records = self.butler.registry.queryDimensionRecords(
-                dimension,
-                where="exposure in (exposure_ids)",
-                bind={"exposure_ids": exposure_ids},
-                instrument=self.instrument.getName(),
-                detector=self.visit.detector,
-            )
+            records = src_butler.registry.queryDimensionRecords(dimension, **kwargs)
             # If records don't match, this is not an error, and central takes precedence.
-            self.central_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
+            dest_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
 
     def _chain_exports(self, output_chain: str, output_runs: collections.abc.Iterable[str]) -> None:
         """Associate exported datasets with a chained collection in the
