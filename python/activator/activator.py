@@ -39,7 +39,8 @@ from werkzeug.exceptions import ServiceUnavailable
 from .config import PipelinesConfig
 from .exception import NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
-from .middleware_interface import get_central_butler, make_local_repo, make_local_cache, MiddlewareInterface
+from .middleware_interface import get_central_butler, flush_local_repo, \
+    make_local_repo, make_local_cache, MiddlewareInterface
 from .raw import (
     get_prefix_from_snap,
     is_path_consistent,
@@ -81,6 +82,23 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
+def find_local_repos(base_path):
+    """Search for existing local repos.
+
+    Parameters
+    ----------
+    base_path : `str`
+        The directory in which to search for repos.
+
+    Returns
+    -------
+    repos : collection [`str`]
+        The root directories of any local repos found.
+    """
+    subdirs = {entry.path for entry in os.scandir(base_path) if entry.is_dir()}
+    return {d for d in subdirs if os.path.exists(os.path.join(d, "butler.yaml"))}
+
+
 try:
     app = Flask(__name__)
 
@@ -94,6 +112,9 @@ try:
     storage_client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
     central_butler = get_central_butler(calib_repo, instrument_name)
+    for old_repo in find_local_repos(local_repos):
+        _log.warning("Orphaned repo found at %s, attempting to remove.", old_repo)
+        flush_local_repo(old_repo, central_butler)
     # local_repo is a temporary directory with the same lifetime as this process.
     local_repo = make_local_repo(local_repos, central_butler, instrument_name)
     local_cache = make_local_cache()
