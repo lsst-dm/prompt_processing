@@ -25,6 +25,7 @@ import functools
 import itertools
 import tempfile
 import os.path
+import shutil
 import unittest
 import unittest.mock
 import warnings
@@ -50,8 +51,8 @@ from activator.caching import DatasetCache
 from activator.config import PipelinesConfig
 from activator.exception import NonRetriableError
 from activator.visit import FannedOutVisit
-from activator.middleware_interface import get_central_butler, make_local_repo, _get_sasquatch_dispatcher, \
-    MiddlewareInterface, \
+from activator.middleware_interface import get_central_butler, flush_local_repo, make_local_repo, \
+    _get_sasquatch_dispatcher, MiddlewareInterface, \
     _filter_datasets, _filter_calibs_by_date, _MissingDatasetError
 
 # The short name of the instrument used in the test repo.
@@ -1225,6 +1226,40 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
     def _count_datasets_with_id(self, butler, types, collections, data_id):
         return len(set(butler.registry.queryDatasets(types, collections=collections, dataId=data_id)))
+
+    def test_flush_local_repo(self):
+        central_butler = Butler(self.central_repo.name, writeable=True)
+        butler_tests.addDataIdValue(central_butler, "detector", 0)
+        # Exposure is defined by the local repo, not the central repo.
+        butler_tests.addDatasetType(central_butler, "testData", {"instrument", "exposure", "detector"}, "int")
+        # Implementation detail: flush_local_repo looks for output-like
+        # collections to avoid transferring inputs.
+        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
+              "NoPipe/prompt-proto-service-042"
+
+        dimension_config = central_butler.dimensions.dimensionConfig
+        # Need to clean up the directory iff the method fails
+        repo_dir = tempfile.mkdtemp()
+        try:
+            butler = Butler(Butler.makeRepo(repo_dir, dimensionConfig=dimension_config), writeable=True)
+            instrument = self.interface.instrument
+            instrument.register(butler.registry)
+            butler_tests.addDataIdValue(butler, "detector", 0)
+            butler_tests.addDataIdValue(butler, "day_obs", 20240627)
+            butler_tests.addDataIdValue(butler, "group", "42")
+            butler_tests.addDataIdValue(butler, "exposure", 42, physical_filter=filter)
+            butler_tests.addDatasetType(butler, "testData", {"instrument", "exposure", "detector"}, "int")
+            butler.registry.registerCollection(run, CollectionType.RUN)
+            butler.put(42, "testData", run=run, instrument=instname, exposure=42, detector=0)
+
+            flush_local_repo(repo_dir, central_butler)
+            self.assertTrue(central_butler.exists("testData", collections=run,
+                                                  instrument=instname, exposure=42, detector=0))
+            self.assertFalse(os.path.exists(repo_dir))
+        except Exception:
+            shutil.rmtree(repo_dir, ignore_errors=True)
+            raise
 
     def test_extra_collection(self):
         """Test that extra collections in the chain will not lead to MissingCollectionError

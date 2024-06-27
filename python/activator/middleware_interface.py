@@ -19,7 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["get_central_butler", "make_local_repo", "make_local_cache", "MiddlewareInterface"]
+__all__ = ["get_central_butler", "make_local_repo", "flush_local_repo", "make_local_cache",
+           "MiddlewareInterface"]
 
 import collections.abc
 import hashlib
@@ -27,6 +28,7 @@ import itertools
 import logging
 import os
 import os.path
+import shutil
 import tempfile
 import typing
 
@@ -101,6 +103,48 @@ def get_central_butler(central_repo: str, instrument_class: str):
                   writeable=True,
                   inferDefaults=False,
                   )
+
+
+def flush_local_repo(repo_dir: str, central_butler: Butler):
+    """Clean up a local repository abandoned by a different PP instance.
+
+    The function attempts to pass datasets to the local repo; as with
+    `MiddlewareInterface.export_outputs`, only datasets that would not collide
+    with other pods are handled at this time.
+
+    Parameters
+    ----------
+    repo_dir : `str`
+        An absolute path to a local repo that is *not* being managed by
+        TemporaryDirectory or similar.
+    central_butler : `lsst.daf.butler.Butler`
+        Butler repo to which to attempt to flush the local repo's contents.
+    """
+    try:
+        butler = Butler(repo_dir, writeable=True)
+        with lsst.utils.timer.time_this(_log, msg="flush_local_repo (find datasets)", level=logging.DEBUG):
+            safe_types = MiddlewareInterface._get_safe_dataset_types(butler)
+            # Exclude calibs, templates, and other input datasets
+            datasets = set(butler.registry.queryDatasets(safe_types, collections="*/prompt/*"))
+        with lsst.utils.timer.time_this(_log, msg="flush_local_repo (transfer)", level=logging.DEBUG):
+            MiddlewareInterface._export_exposure_dimensions(butler, central_butler)
+            transferred = central_butler.transfer_from(butler, datasets,
+                                                       transfer="copy", transfer_dimensions=False)
+            if len(transferred) != len(datasets):
+                # Not necessarily a problem -- we might be transferring datasets
+                # that have already been (partially?) transferred.
+                _log.warning("Uploaded only %d datasets out of %d; missing %s.",
+                             len(transferred), len(datasets),
+                             datasets - set(transferred))
+            # Don't try to chain the runs -- only way to get the correct chain
+            # name is to parse the collection name(s), too brittle for the rare
+            # case that the runs aren't already in central repo.
+    except Exception as e:
+        _log.error("Could not sync outputs from %s; they will be lost.", repo_dir)
+        _log.exception(e)
+    finally:
+        # If deletion fails, raise and let the activator handle it.
+        shutil.rmtree(repo_dir)
 
 
 def make_local_repo(local_storage: str, central_butler: Butler, instrument: str):
