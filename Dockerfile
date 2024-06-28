@@ -9,4 +9,4 @@ COPY python/activator activator/
 COPY pipelines pipelines/
 CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
-    && exec gunicorn --bind :$PORT --workers 1 --threads 1 --timeout 60 --graceful-timeout 30 activator.activator:app
+    && exec gunicorn --bind :$PORT --workers 1 --threads 1 --timeout 0 --graceful-timeout 41 activator.activator:app
