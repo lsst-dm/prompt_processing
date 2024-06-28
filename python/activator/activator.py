@@ -176,10 +176,10 @@ def next_visit_handler() -> Tuple[str, int]:
     try:
         # Do nothing until timeout sequence starts
         sig = signal.sigwait({signal.SIGTERM, signal.SIGABRT})
-        _log.info(f"Signal {signal.Signals(sig).name} detected. Shutting down...")
+        _log.info(f"Signal {signal.Signals(sig).name} detected. Shutting down in 83 seconds...")
 
         # Simulate a yellow-light shutdown
-        time.sleep(10.0)
+        time.sleep(83.0)
 
         return "Processing completed at the last minute", 200
     finally:
