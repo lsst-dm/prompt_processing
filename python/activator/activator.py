@@ -21,11 +21,13 @@
 
 __all__ = ["check_for_snap", "next_visit_handler"]
 
+import gc
 import json
 import logging
 import os
 import sys
 import time
+import tracemalloc
 from typing import Optional, Tuple
 import uuid
 
@@ -80,6 +82,9 @@ setup_usdf_logger(
 )
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+
+# Warn if there are unreferenced objects that can't be deleted.
+gc.set_debug(gc.DEBUG_UNCOLLECTABLE)
 
 
 def find_local_repos(base_path):
@@ -280,6 +285,7 @@ def next_visit_handler() -> Tuple[str, int]:
         The HTTP response status code to return to the client.
     """
     _log.info(f"Starting next_visit_handler for {request}.")
+    snapshot_start = tracemalloc.take_snapshot()
     consumer.subscribe([bucket_topic])
     _log.debug(f"Created subscription to '{bucket_topic}'")
     # Try to get a message right away to minimize race conditions
@@ -416,6 +422,9 @@ def next_visit_handler() -> Tuple[str, int]:
                 return "Timed out waiting for images", 500
     finally:
         consumer.unsubscribe()
+        snapshot_end = tracemalloc.take_snapshot()
+        stats = snapshot_end.compare_to(snapshot_start, "lineno")
+        _log.debug("Largest differences:\n" + "    \n".join(stats[:10]))
         # Want to know when the handler exited for any reason.
         _log.info("next_visit handling completed.")
 
