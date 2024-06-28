@@ -425,7 +425,7 @@ def next_visit_handler() -> Tuple[str, int]:
         snapshot_end = tracemalloc.take_snapshot()
         stats = snapshot_end.compare_to(snapshot_start, "lineno")
         _log.debug("Largest differences:\n" + "    \n".join(stats[:10]))
-        # Want to know when the handler exited for any reason.
+        # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
 
 
