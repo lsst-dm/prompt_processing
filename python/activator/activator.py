@@ -22,6 +22,7 @@
 __all__ = ["check_for_snap", "next_visit_handler"]
 
 import gc
+import itertools
 import json
 import logging
 import os
@@ -37,6 +38,8 @@ import cloudevents.http
 import confluent_kafka as kafka
 from flask import Flask, request
 from werkzeug.exceptions import ServiceUnavailable
+
+from lsst.meas.extensions.piff.piffPsf import PiffPsf
 
 from .config import PipelinesConfig
 from .exception import NonRetriableError, RetriableError
@@ -424,7 +427,11 @@ def next_visit_handler() -> Tuple[str, int]:
         consumer.unsubscribe()
         snapshot_end = tracemalloc.take_snapshot()
         stats = snapshot_end.compare_to(snapshot_start, "lineno")
-        _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:10]))
+        _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
+        objs = itertools.islice(filter(lambda o: isinstance(o, PiffPsf), gc.get_objects()), 5)
+        for obj in objs:
+            ref1 = gc.get_referrers(obj)
+            _log.debug("%r is referenced by %r", obj, ref1)
         # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
 
