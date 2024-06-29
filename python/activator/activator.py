@@ -425,10 +425,13 @@ def next_visit_handler() -> Tuple[str, int]:
                 return "Timed out waiting for images", 500
     finally:
         consumer.unsubscribe()
+        _log.debug("Collecting garbage...")
         gc.collect()  # Eliminate slow GC as a suspect
+        _log.debug("Taking snapshot...")
         snapshot_end = tracemalloc.take_snapshot()
         stats = snapshot_end.compare_to(snapshot_start, "lineno")
         _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
+        _log.debug("Tracing PiffPsfs...")
         objs = itertools.islice(filter(lambda o: isinstance(o, PiffPsf), gc.get_objects()), 5)
         for obj in objs:
             ref1 = gc.get_referrers(obj)
