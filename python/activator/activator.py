@@ -435,7 +435,8 @@ def next_visit_handler() -> Tuple[str, int]:
         objs = itertools.islice(filter(lambda o: isinstance(o, PiffPsf), gc.get_objects()), 5)
         for obj in objs:
             ref1 = gc.get_referrers(obj)
-            _log.debug("%r is referenced by %r", obj, ref1)
+            # For at least some objects, repr is infinitely recursive
+            _log.debug("%s is referenced by %s", obj, ref1)
         # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
 
