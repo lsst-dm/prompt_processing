@@ -425,6 +425,7 @@ def next_visit_handler() -> Tuple[str, int]:
                 return "Timed out waiting for images", 500
     finally:
         consumer.unsubscribe()
+        gc.collect()  # Eliminate slow GC as a suspect
         snapshot_end = tracemalloc.take_snapshot()
         stats = snapshot_end.compare_to(snapshot_start, "lineno")
         _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
