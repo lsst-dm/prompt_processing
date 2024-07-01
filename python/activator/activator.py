@@ -434,11 +434,18 @@ def next_visit_handler() -> Tuple[str, int]:
         _log.debug("Tracing PiffPsfs...")
         objs = itertools.islice(filter(lambda o: isinstance(o, PiffPsf), gc.get_objects()), 5)
         for obj in objs:
+            _log.debug("Object %s leaked.", safe_repr(obj))
             ref1 = gc.get_referrers(obj)
-            # For at least some objects, repr is infinitely recursive
-            _log.debug("%s is referenced by %s", obj, ref1)
+            _log.debug("%s is referenced by %s", safe_repr(obj), [safe_repr(r) for r in ref1])
         # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
+
+
+def safe_repr(obj):
+    try:
+        return repr(obj)
+    except RecursionError:
+        return object.__repr__(obj)
 
 
 @app.errorhandler(500)
