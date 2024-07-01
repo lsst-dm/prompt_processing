@@ -40,7 +40,7 @@ import confluent_kafka as kafka
 from flask import Flask, request
 from werkzeug.exceptions import ServiceUnavailable
 
-from lsst.meas.extensions.piff.piffPsf import PiffPsf
+from lsst.afw.detection import Psf
 
 from .config import PipelinesConfig
 from .exception import NonRetriableError, RetriableError
@@ -433,21 +433,24 @@ def next_visit_handler() -> Tuple[str, int]:
         snapshot_end = tracemalloc.take_snapshot()
         stats = snapshot_end.compare_to(snapshot_start, "lineno")
         _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
-        _log.debug("Tracing PiffPsfs...")
-
-        def piff_filter(o):
-            return isinstance(o, PiffPsf)
-
-        _log.debug("%d PiffPsfs tracked by GC", sum(map(piff_filter, gc.get_objects())))
-        objs = list(itertools.islice(filter(piff_filter, gc.get_objects()), 5))
-        _log.debug("%d PiffPsfs collected in %s", len(objs), objs)
-        for obj in objs:
-            _log.debug("Object %s leaked.", safe_repr(obj))
-            ref1 = gc.get_referrers(obj)
-            _log.debug("%s is referenced by %d objects: %s",
-                       safe_repr(obj), len(ref1), [safe_repr(r) for r in ref1])
+        trace_objects(Psf)
         # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
+
+
+def trace_objects(target_class):
+    _log.debug("Tracing %s...", target_class)
+
+    def class_filter(o):
+        return isinstance(o, target_class)
+
+    _log.debug("%d %s tracked by GC", sum(map(class_filter, gc.get_objects())), target_class)
+    objs = list(itertools.islice(filter(class_filter, gc.get_objects()), 5))
+    for obj in objs:
+        _log.debug("Object %s leaked.", safe_repr(obj))
+        ref1 = gc.get_referrers(obj)
+        _log.debug("%s is referenced by %d objects: %s",
+                   safe_repr(obj), len(ref1), [safe_repr(r) for r in ref1])
 
 
 def safe_repr(obj):
