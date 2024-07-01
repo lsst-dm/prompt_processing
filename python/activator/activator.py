@@ -438,7 +438,7 @@ def next_visit_handler() -> Tuple[str, int]:
         def piff_filter(o):
             return isinstance(o, PiffPsf)
 
-        _log.debug("%d PiffPsfs tracked by GC", sum(itertools.map(piff_filter, gc.get_objects())))
+        _log.debug("%d PiffPsfs tracked by GC", sum(map(piff_filter, gc.get_objects())))
         objs = list(itertools.islice(filter(piff_filter, gc.get_objects()), 5))
         _log.debug("%d PiffPsfs collected in %s", len(objs), objs)
         for obj in objs:
