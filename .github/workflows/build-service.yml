@@ -122,7 +122,7 @@ jobs:
             docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
             docker push $IMAGE_ID:$VERSION
             EUPS_TAG=$(< eups.tag)
-            if [ "$EUPS_TAG" != "Unknown" && "$BASE_TAG" != "$EUPS_TAG" ]; then
+            if [ "$EUPS_TAG" != "Unknown" ] && [ "$BASE_TAG" != "$EUPS_TAG" ]; then
               if [ "$BRANCH" == "main" ]; then
                 VERSION="$EUPS_TAG"
               else
