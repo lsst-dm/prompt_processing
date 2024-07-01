@@ -434,8 +434,13 @@ def next_visit_handler() -> Tuple[str, int]:
         stats = snapshot_end.compare_to(snapshot_start, "lineno")
         _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
         _log.debug("Tracing PiffPsfs...")
-        objs = list(itertools.islice(filter(lambda o: isinstance(o, PiffPsf), gc.get_objects()), 5))
-        _log.debug("%d PiffPsfs found in %s", len(objs), objs)
+
+        def piff_filter(o):
+            return isinstance(o, PiffPsf)
+
+        _log.debug("%d PiffPsfs tracked by GC", sum(itertools.map(piff_filter, gc.get_objects())))
+        objs = list(itertools.islice(filter(piff_filter, gc.get_objects()), 5))
+        _log.debug("%d PiffPsfs collected in %s", len(objs), objs)
         for obj in objs:
             _log.debug("Object %s leaked.", safe_repr(obj))
             ref2 = gc.get_referrers(*gc.get_referrers(obj))
