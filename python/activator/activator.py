@@ -21,6 +21,7 @@
 
 __all__ = ["check_for_snap", "next_visit_handler"]
 
+import collections.abc
 import gc
 import itertools
 import json
@@ -446,9 +447,8 @@ def safe_repr(obj):
     try:
         return repr(obj)
     except RecursionError:
-        if isinstance(obj, list):
-            return f"<{object.__repr__(obj)} {len(obj)} elements>[" \
-                + ", ".join(object.__repr__(x) for x in obj) + "]"
+        if isinstance(obj, collections.abc.Collection):
+            return f"{object.__repr__(obj)}<{len(obj)} elements>"
         else:
             return object.__repr__(obj)
 
