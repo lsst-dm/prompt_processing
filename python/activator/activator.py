@@ -447,7 +447,8 @@ def safe_repr(obj):
         return repr(obj)
     except RecursionError:
         if isinstance(obj, list):
-            return f"<{len(obj)} elements>[" + ", ".join(object.__repr__(x) for x in obj) + "]"
+            return f"<{object.__repr__(obj)} {len(obj)} elements>[" \
+                + ", ".join(object.__repr__(x) for x in obj) + "]"
         else:
             return object.__repr__(obj)
 
