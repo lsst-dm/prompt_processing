@@ -21,11 +21,15 @@
 
 __all__ = ["check_for_snap", "next_visit_handler"]
 
+import collections.abc
+import gc
+import itertools
 import json
 import logging
 import os
 import sys
 import time
+import tracemalloc
 from typing import Optional, Tuple
 import uuid
 
@@ -35,6 +39,10 @@ import cloudevents.http
 import confluent_kafka as kafka
 from flask import Flask, request
 from werkzeug.exceptions import ServiceUnavailable
+
+from lsst.afw.detection import Psf
+from lsst.meas.algorithms import CoaddPsf
+from lsst.meas.extensions import psfex
 
 from .config import PipelinesConfig
 from .exception import NonRetriableError, RetriableError
@@ -80,6 +88,9 @@ setup_usdf_logger(
 )
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+
+# Warn if there are unreferenced objects that can't be deleted.
+gc.set_debug(gc.DEBUG_UNCOLLECTABLE)
 
 
 def find_local_repos(base_path):
@@ -280,6 +291,7 @@ def next_visit_handler() -> Tuple[str, int]:
         The HTTP response status code to return to the client.
     """
     _log.info(f"Starting next_visit_handler for {request}.")
+    snapshot_start = tracemalloc.take_snapshot()
     consumer.subscribe([bucket_topic])
     _log.debug(f"Created subscription to '{bucket_topic}'")
     # Try to get a message right away to minimize race conditions
@@ -416,8 +428,47 @@ def next_visit_handler() -> Tuple[str, int]:
                 return "Timed out waiting for images", 500
     finally:
         consumer.unsubscribe()
-        # Want to know when the handler exited for any reason.
+        _log.debug("Collecting garbage...")
+        gc.collect()  # Eliminate slow GC as a suspect
+        _log.debug("%d uncollectable objects found.", len(gc.garbage))
+        _log.debug("Taking snapshot...")
+        snapshot_end = tracemalloc.take_snapshot()
+        stats = snapshot_end.compare_to(snapshot_start, "lineno")
+        _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
+        trace_objects(Psf)
+        trace_objects(CoaddPsf)
+        trace_objects(psfex.Field)
+        # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
+
+
+def trace_objects(target_class):
+    _log.debug("Tracing %s...", target_class)
+
+    def class_filter(o):
+        return isinstance(o, target_class)
+
+    _log.debug("%d %s tracked by GC", sum(map(class_filter, gc.get_objects())), target_class)
+    objs = list(itertools.islice(filter(class_filter, gc.get_objects()), 5))
+    for obj in objs:
+        _log.debug("Object %s leaked.", safe_repr(obj))
+        ref1 = gc.get_referrers(obj)
+        try:
+            ref1.remove(objs)
+        except ValueError:
+            _log.debug("Missing tracer's reference to %s", obj)
+        _log.debug("%s is referenced by %d objects: %s",
+                   safe_repr(obj), len(ref1), [safe_repr(r) for r in ref1])
+
+
+def safe_repr(obj):
+    try:
+        return repr(obj)
+    except RecursionError:
+        if isinstance(obj, collections.abc.Collection):
+            return f"{object.__repr__(obj)}<{len(obj)} elements>"
+        else:
+            return object.__repr__(obj)
 
 
 @app.errorhandler(500)
