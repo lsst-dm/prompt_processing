@@ -41,6 +41,7 @@ from flask import Flask, request
 from werkzeug.exceptions import ServiceUnavailable
 
 from lsst.afw.detection import Psf
+from lsst.meas.algorithms import CoaddPsf
 from lsst.meas.extensions import psfex
 
 from .config import PipelinesConfig
@@ -435,6 +436,7 @@ def next_visit_handler() -> Tuple[str, int]:
         stats = snapshot_end.compare_to(snapshot_start, "lineno")
         _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
         trace_objects(Psf)
+        trace_objects(CoaddPsf)
         trace_objects(psfex.Field)
         # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
