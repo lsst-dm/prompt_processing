@@ -428,6 +428,7 @@ def next_visit_handler() -> Tuple[str, int]:
         consumer.unsubscribe()
         _log.debug("Collecting garbage...")
         gc.collect()  # Eliminate slow GC as a suspect
+        _log.debug("%d uncollectable objects found.", len(gc.garbage))
         _log.debug("Taking snapshot...")
         snapshot_end = tracemalloc.take_snapshot()
         stats = snapshot_end.compare_to(snapshot_start, "lineno")
@@ -437,7 +438,7 @@ def next_visit_handler() -> Tuple[str, int]:
         _log.debug("%d PiffPsfs found in %s", len(objs), objs)
         for obj in objs:
             _log.debug("Object %s leaked.", safe_repr(obj))
-            ref2 = gc.get_referrers(gc.get_referrers(obj))
+            ref2 = gc.get_referrers(*gc.get_referrers(obj))
             ref1 = gc.get_referrers(obj)
             _log.debug("%s is referenced by %d objects: %s",
                        safe_repr(obj), len(ref1), [safe_repr(r) for r in ref1])
