@@ -21,6 +21,7 @@
 
 __all__ = ["check_for_snap", "next_visit_handler"]
 
+import collections
 import collections.abc
 import gc
 import itertools
@@ -29,7 +30,7 @@ import logging
 import os
 import sys
 import time
-import tracemalloc
+# import tracemalloc
 from typing import Optional, Tuple
 import uuid
 
@@ -40,9 +41,9 @@ import confluent_kafka as kafka
 from flask import Flask, request
 from werkzeug.exceptions import ServiceUnavailable
 
-from lsst.afw.detection import Psf
-from lsst.meas.algorithms import CoaddPsf
-from lsst.meas.extensions import psfex
+# from lsst.afw.detection import Psf
+# from lsst.meas.algorithms import CoaddPsf
+# from lsst.meas.extensions import psfex
 
 from .config import PipelinesConfig
 from .exception import NonRetriableError, RetriableError
@@ -129,6 +130,8 @@ try:
     # local_repo is a temporary directory with the same lifetime as this process.
     local_repo = make_local_repo(local_repos, central_butler, instrument_name)
     local_cache = make_local_cache()
+
+    old_counts = collections.Counter()
 except Exception as e:
     _log.critical("Failed to start worker; aborting.")
     _log.exception(e)
@@ -291,7 +294,7 @@ def next_visit_handler() -> Tuple[str, int]:
         The HTTP response status code to return to the client.
     """
     _log.info(f"Starting next_visit_handler for {request}.")
-    snapshot_start = tracemalloc.take_snapshot()
+    # snapshot_start = tracemalloc.take_snapshot()
     consumer.subscribe([bucket_topic])
     _log.debug(f"Created subscription to '{bucket_topic}'")
     # Try to get a message right away to minimize race conditions
@@ -431,15 +434,34 @@ def next_visit_handler() -> Tuple[str, int]:
         _log.debug("Collecting garbage...")
         gc.collect()  # Eliminate slow GC as a suspect
         _log.debug("%d uncollectable objects found.", len(gc.garbage))
-        _log.debug("Taking snapshot...")
-        snapshot_end = tracemalloc.take_snapshot()
-        stats = snapshot_end.compare_to(snapshot_start, "lineno")
-        _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
-        trace_objects(Psf)
-        trace_objects(CoaddPsf)
-        trace_objects(psfex.Field)
+
+        global old_counts
+        new_counts = classify_objects()
+        diff = new_counts.copy()
+        diff.subtract(old_counts)
+        old_counts = new_counts
+        _log.debug("%d types of objects in memory", len(diff))
+        _log.debug("\n".join(f"{diff[t]:10} objects of type {t}") for t in sorted(diff.keys()))
+
+        # _log.debug("Taking snapshot...")
+        # snapshot_end = tracemalloc.take_snapshot()
+        # stats = snapshot_end.compare_to(snapshot_start, "lineno")
+        # _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
+
+        # trace_objects(Psf)
+        # trace_objects(CoaddPsf)
+        # trace_objects(psfex.Field)
+
         # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
+
+
+def classify_objects():
+    _log.debug("Classifying all objects...")
+    counts = collections.Counter()
+    for obj in gc.get_objects():
+        counts[type(obj)] += 1
+    return counts
 
 
 def trace_objects(target_class):
