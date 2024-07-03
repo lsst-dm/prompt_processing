@@ -30,7 +30,6 @@ import logging
 import os
 import sys
 import time
-# import tracemalloc
 from typing import Optional, Tuple
 import uuid
 
@@ -290,7 +289,6 @@ def next_visit_handler() -> Tuple[str, int]:
         The HTTP response status code to return to the client.
     """
     _log.info(f"Starting next_visit_handler for {request}.")
-    # snapshot_start = tracemalloc.take_snapshot()
     consumer.subscribe([bucket_topic])
     _log.debug(f"Created subscription to '{bucket_topic}'")
     # Try to get a message right away to minimize race conditions
@@ -442,17 +440,10 @@ def next_visit_handler() -> Tuple[str, int]:
                              if diff[t] != 0
                              ))
 
-        # _log.debug("Taking snapshot...")
-        # snapshot_end = tracemalloc.take_snapshot()
-        # stats = snapshot_end.compare_to(snapshot_start, "lineno")
-        # _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
-
         import galsim
-        trace_objects(galsim.interpolatedimage.InterpolatedImage, count=3, max_level=5)
+        trace_objects(galsim.interpolatedimage.InterpolatedImage, count=3, max_level=15)
         import piff
-        trace_objects(piff.star.Star, count=3, max_level=5)
-        import lsst.meas.extensions.piff
-        trace_objects(lsst.meas.extensions.piff.piffPsf.PiffPsf, count=3, max_level=5)
+        trace_objects(piff.star.Star, count=3, max_level=10)
 
         # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
