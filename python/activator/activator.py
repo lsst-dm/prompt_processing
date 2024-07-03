@@ -475,12 +475,16 @@ def trace_objects(target_class):
     for obj in objs:
         _log.debug("Object %s leaked.", safe_repr(obj))
         ref1 = gc.get_referrers(obj)
+        ref2 = gc.get_referrers(*ref1)
         try:
             ref1.remove(objs)
+            ref2.remove(ref1)
         except ValueError:
             _log.debug("Missing tracer's reference to %s", obj)
         _log.debug("%s is referenced by %d objects: %s",
                    safe_repr(obj), len(ref1), [safe_repr(r) for r in ref1])
+        _log.debug("%s is grand-referenced by %d objects: %s",
+                   safe_repr(obj), len(ref2), [safe_repr(r) for r in ref2])
 
 
 def safe_repr(obj):
