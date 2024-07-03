@@ -42,7 +42,7 @@ import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan
-from lsst.daf.butler.registry import MissingDatasetTypeError
+from lsst.daf.butler.registry import MissingDatasetTypeError, MissingCollectionError
 import lsst.dax.apdb
 import lsst.geom
 from lsst.meas.algorithms.htmIndexer import HtmIndexer
@@ -634,7 +634,8 @@ class MiddlewareInterface:
             for dataset_type, n_datasets in self._count_by_type(refcats):
                 _log.debug("Found %d new refcat datasets from catalog '%s'.", n_datasets, dataset_type)
         else:
-            _log.debug("Found 0 new refcat datasets.")
+            _log.debug("Found 0 new refcat datasets in collection %s.",
+                       self.instrument.makeRefCatCollectionName())
         return refcats
 
     def _export_skymap_and_templates(self, center, detector, wcs, filter):
@@ -738,7 +739,8 @@ class MiddlewareInterface:
             for dataset_type, n_datasets in self._count_by_type(calibs):
                 _log.debug("Found %d new calib datasets of type '%s'.", n_datasets, dataset_type)
         else:
-            _log.debug("Found 0 new calib datasets.")
+            _log.debug("Found 0 new calib datasets in collection %s.",
+                       self.instrument.makeCalibrationCollectionName())
         return calibs
 
     def _export_ml_models(self):
@@ -1745,6 +1747,12 @@ def _filter_datasets(src_repo: Butler,
     except lsst.daf.butler.registry.DataIdValueError as e:
         _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
         # If dimensions are invalid, then *any* such datasets are missing.
+        known_datasets = set()
+    except MissingDatasetTypeError as e:
+        _log.debug("Failure to get known datasets in %s: %s", dest_repo, e)
+        known_datasets = set()
+    except MissingCollectionError as e:
+        _log.debug("Failure to get known datasets in %s: %s", dest_repo, e)
         known_datasets = set()
 
     # Let exceptions from src_repo query raise: if it fails, that invalidates
