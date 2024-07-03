@@ -448,9 +448,9 @@ def next_visit_handler() -> Tuple[str, int]:
         # _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
 
         import galsim
-        trace_objects(galsim.image.Image)
+        trace_objects(galsim.interpolatedimage.InterpolatedImage, count=1, max_level=2)
         import piff
-        trace_objects(piff.star.Star)
+        trace_objects(piff.star.Star, count=1, max_level=2)
 
         # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
@@ -464,27 +464,43 @@ def classify_objects():
     return counts
 
 
-def trace_objects(target_class):
+def trace_objects(target_class, count=5, max_level=1):
     _log.debug("Tracing %s...", target_class)
 
     def class_filter(o):
         return isinstance(o, target_class)
 
     _log.debug("%d %s tracked by GC", sum(map(class_filter, gc.get_objects())), target_class)
-    objs = list(itertools.islice(filter(class_filter, gc.get_objects()), 5))
-    for obj in objs:
-        _log.debug("Object %s leaked.", safe_repr(obj))
-        ref1 = gc.get_referrers(obj)
-        ref2 = gc.get_referrers(*ref1)
-        try:
-            ref1.remove(objs)
-            ref2.remove(ref1)
-        except ValueError:
-            _log.debug("Missing tracer's reference to %s", obj)
-        _log.debug("%s is referenced by %d objects: %s",
-                   safe_repr(obj), len(ref1), [safe_repr(r) for r in ref1])
-        _log.debug("%s is grand-referenced by %d objects: %s",
-                   safe_repr(obj), len(ref2), [safe_repr(r) for r in ref2])
+    objs = list(itertools.islice(filter(class_filter, gc.get_objects()), count))
+    if objs:
+        _log.debug("Trace for %s follows:", objs)
+        _recurse_trace(objs, level=1, remaining=max_level)
+
+
+def _recurse_trace(objs, level, remaining):
+    refs = gc.get_referrers(*objs)
+    # Filter out our own references to the objects.
+    try:
+        refs.remove(objs)
+    except ValueError:
+        _log.debug("Missing tracer's reference to %s", objs)
+        return
+    try:
+        iterators = [x for x in refs if type(x).__name__.endswith("_iterator")]
+        for i in iterators:
+            refs.remove(i)
+    except ValueError:
+        _log.debug("Missing iterators' references to %s", objs)
+        return
+
+    if refs:
+        _log.debug("Level %d references are: %s", level, [safe_repr(r) for r in refs])
+        if remaining > 1:
+            _recurse_trace(refs, level=level+1, remaining=remaining-1)
+        else:
+            _log.debug("More references exist, stopping at level %d.", level)
+    else:
+        _log.debug("Level %d has no references, terminating.", level)
 
 
 def safe_repr(obj):
