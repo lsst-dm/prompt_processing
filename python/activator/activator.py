@@ -441,8 +441,10 @@ def next_visit_handler() -> Tuple[str, int]:
         diff.subtract(old_counts)
         old_counts = new_counts
         _log.debug("%d types of objects in memory", len(diff))
-        _log.debug("\n".join(f"{diff[t]:10} objects of type {t}"
-                   for t in sorted(diff.keys(), key=lambda t: t.__name__)))
+        _log.debug("\n".join(f"{diff[t]:+10} objects of type {t}"
+                             for t in sorted(diff.keys(), key=lambda t: t.__name__)
+                             if diff[t] != 0
+                             ))
 
         # _log.debug("Taking snapshot...")
         # snapshot_end = tracemalloc.take_snapshot()
