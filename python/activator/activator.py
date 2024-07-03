@@ -451,6 +451,8 @@ def next_visit_handler() -> Tuple[str, int]:
         trace_objects(galsim.interpolatedimage.InterpolatedImage, count=1, max_level=2)
         import piff
         trace_objects(piff.star.Star, count=1, max_level=2)
+        import lsst.meas.extensions.piff
+        trace_objects(lsst.meas.extensions.piff.piffPsf.PiffPsf, count=1, max_level=2)
 
         # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
