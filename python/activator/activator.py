@@ -448,11 +448,11 @@ def next_visit_handler() -> Tuple[str, int]:
         # _log.debug("Largest differences:\n" + "    \n".join(str(diff) for diff in stats[:3]))
 
         import galsim
-        trace_objects(galsim.interpolatedimage.InterpolatedImage, count=1, max_level=2)
+        trace_objects(galsim.interpolatedimage.InterpolatedImage, count=3, max_level=5)
         import piff
-        trace_objects(piff.star.Star, count=1, max_level=2)
+        trace_objects(piff.star.Star, count=3, max_level=5)
         import lsst.meas.extensions.piff
-        trace_objects(lsst.meas.extensions.piff.piffPsf.PiffPsf, count=1, max_level=2)
+        trace_objects(lsst.meas.extensions.piff.piffPsf.PiffPsf, count=3, max_level=5)
 
         # Want to know when the handler exited for any reason
         _log.info("next_visit handling completed.")
@@ -496,7 +496,7 @@ def _recurse_trace(objs, level, remaining):
         return
 
     if refs:
-        _log.debug("Level %d references are: %s", level, [safe_repr(r) for r in refs])
+        _log.debug("Level %d has %d references: %s", level, len(refs), [safe_repr(r) for r in refs])
         if remaining > 1:
             _recurse_trace(refs, level=level+1, remaining=remaining-1)
         else:
