@@ -20,7 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-__all__ = ["NonRetriableError", "RetriableError"]
+__all__ = ["NonRetriableError", "RetriableError", "GracefulShutdownInterrupt"]
 
 
 class NonRetriableError(Exception):
@@ -72,3 +72,14 @@ class RetriableError(Exception):
             return self.__context__
         else:
             return None
+
+
+# See https://docs.python.org/3.11/library/exceptions.html#KeyboardInterrupt
+# for why interrupts should not subclass Exception.
+class GracefulShutdownInterrupt(BaseException):
+    """An interrupt indicating that the service should shut down gracefully.
+
+    Like all interrupts, ``GracefulShutdownInterrupt`` can be raised between
+    *any* two bytecode instructions, and handling it requires special care. See
+    `the Python docs <https://docs.python.org/3.11/library/signal.html#handlers-and-exceptions>`__.
+    """

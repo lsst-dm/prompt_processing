@@ -22,7 +22,7 @@
 
 import unittest
 
-from activator.exception import NonRetriableError, RetriableError
+from activator.exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError
 
 
 class NonRetriableErrorTest(unittest.TestCase):
@@ -105,3 +105,20 @@ class RetriableErrorTest(unittest.TestCase):
                 raise RetriableError("Cannot compute!") from None
         except RetriableError as e:
             self.assertIs(e.nested, None)
+
+
+class GracefulShutdownInterruptTest(unittest.TestCase):
+    def test_catchable(self):
+        try:
+            raise GracefulShutdownInterrupt("Last call!")
+        except GracefulShutdownInterrupt:
+            pass
+        else:
+            self.fail("Did not catch GracefulShutdownInterrupt.")
+
+    def test_uncatchable(self):
+        with self.assertRaises(GracefulShutdownInterrupt):
+            try:
+                raise GracefulShutdownInterrupt("Last call!")
+            except Exception:
+                pass  # assertRaises should fail
