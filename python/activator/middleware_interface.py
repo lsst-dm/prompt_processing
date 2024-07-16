@@ -1341,6 +1341,11 @@ class MiddlewareInterface:
             may have been left in a state that makes it unsafe to retry
             failures. This exception is always chained to another exception
             representing the original error.
+        RetriableError
+            Raised if the conditions for NonRetriableError are not met, *and*
+            the pipeline fails in a way that is expected to be transient. This
+            exception is always chained to another exception representing the
+            original error.
         """
         # TODO: we want to define visits earlier, but we have to ingest a
         # faked raw file and appropriate SSO data during prep (and then
