@@ -1318,6 +1318,31 @@ class MiddlewareInterface:
                             label="preprocessing",
                             )
 
+    def _check_permanent_changes(self, where: str) -> bool:
+        """Test whether the APDB, alert stream, or other external state has
+        changed in a way that makes retries unsafe.
+
+        Parameters
+        ----------
+        where : `str`
+            A :ref:`Butler query string <daf_butler_queries>` identifying the
+            current visit. The query should return exactly one visit.
+
+        Returns
+        ----------
+        changes : `bool`
+            `True` if changes have been made, `False` if retries are safe.
+        """
+        data_ids = set(self.butler.registry.queryDataIds(["instrument", "visit", "detector"], where=where))
+        if len(data_ids) == 1:
+            data_id = data_ids.pop()
+            apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
+            return apdb.containsVisitDetector(data_id["visit"], self.visit.detector)
+        else:
+            # Don't know how this could happen, so won't try to handle it gracefully.
+            _log.warning("Unexpected visit ids: %s. Assuming APDB modified.", data_ids)
+            return True
+
     def run_pipeline(self, exposure_ids: set[int]) -> None:
         """Process the received image(s).
 
@@ -1374,18 +1399,8 @@ class MiddlewareInterface:
                                 label="main",
                                 )
         except Exception as e:
-            state_changed = True  # better safe than sorry
             try:
-                data_ids = set(self.butler.registry.queryDataIds(
-                    ["instrument", "visit", "detector"], where=where))
-                if len(data_ids) == 1:
-                    data_id = list(data_ids)[0]
-                    apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
-                    if not apdb.containsVisitDetector(data_id["visit"], self.visit.detector):
-                        state_changed = False
-                else:
-                    # Don't know how this could happen, so won't try to handle it gracefully.
-                    _log.warning("Unexpected visit ids: %s. Assuming APDB modified.", data_ids)
+                state_changed = self._check_permanent_changes(where)
             except Exception:
                 # Failure in registry or APDB queries
                 _log.exception("Could not determine APDB state, assuming modified.")
