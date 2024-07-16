@@ -53,7 +53,7 @@ from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can'
 
 from .caching import DatasetCache
 from .config import PipelinesConfig
-from .exception import NonRetriableError
+from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError
 from .visit import FannedOutVisit
 from .timer import enforce_schema, time_this_to_bundle
 
@@ -1398,10 +1398,22 @@ class MiddlewareInterface:
                                 data_ids=where,
                                 label="main",
                                 )
-        except Exception as e:
+        except GracefulShutdownInterrupt as e:
             try:
                 state_changed = self._check_permanent_changes(where)
             except Exception:
+                # Failure in registry or APDB queries
+                _log.exception("Could not determine APDB state, assuming modified.")
+                raise NonRetriableError("APDB potentially modified") from e
+            else:
+                if state_changed:
+                    raise NonRetriableError("APDB modified") from e
+                else:
+                    raise RetriableError("External interrupt") from e
+        except Exception as e:
+            try:
+                state_changed = self._check_permanent_changes(where)
+            except (Exception, GracefulShutdownInterrupt):
                 # Failure in registry or APDB queries
                 _log.exception("Could not determine APDB state, assuming modified.")
                 raise NonRetriableError("APDB potentially modified") from e

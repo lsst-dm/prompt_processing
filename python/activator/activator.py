@@ -21,11 +21,13 @@
 
 __all__ = ["check_for_snap", "next_visit_handler"]
 
+import collections.abc
 import json
 import logging
 import os
 import sys
 import time
+import signal
 import uuid
 
 import boto3
@@ -36,7 +38,7 @@ from flask import Flask, request
 from werkzeug.exceptions import ServiceUnavailable
 
 from .config import PipelinesConfig
-from .exception import NonRetriableError, RetriableError
+from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
 from .middleware_interface import get_central_butler, flush_local_repo, \
     make_local_repo, make_local_cache, MiddlewareInterface
@@ -122,6 +124,55 @@ except Exception as e:
     _log.exception(e)
     # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
     sys.exit(3)
+
+
+def _graceful_shutdown(signum: int, stack_frame):
+    """Signal handler for cases where the service should gracefully shut down.
+
+    Parameters
+    ----------
+    signum : `int`
+        The signal received.
+    stack_frame : `frame` or `None`
+        The "current" stack frame.
+
+    Raises
+    ------
+    GracefulShutdownInterrupt
+        Raised unconditionally.
+    """
+    signame = signal.Signals(signum).name
+    _log.info("Signal %s detected, cleaning up and shutting down.", signame)
+    # TODO DM-45339: raising in signal handlers is dangerous; can we get a way
+    # for pipeline processing to check for interrupts?
+    raise GracefulShutdownInterrupt(f"Received signal {signame}.")
+
+
+def with_signal(signum: int,
+                handler: collections.abc.Callable | signal.Handlers,
+                ) -> collections.abc.Callable:
+    """A decorator that registers a signal handler for the duration of a
+    function call.
+
+    Parameters
+    ----------
+    signum : `int`
+        The signal for which to register a handler; see `signal.signal`.
+    handler : callable or `signal.Handlers`
+        The handler to register.
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            old_handler = signal.signal(signum, handler)
+            try:
+                return func(*args, **kwargs)
+            finally:
+                if old_handler is not None:
+                    signal.signal(signum, old_handler)
+                else:
+                    signal.signal(signum, signal.SIG_DFL)
+        return wrapper
+    return decorator
 
 
 def check_for_snap(
@@ -265,6 +316,8 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
 
 
 @app.route("/next-visit", methods=["POST"])
+@with_signal(signal.SIGHUP, _graceful_shutdown)
+@with_signal(signal.SIGTERM, _graceful_shutdown)
 def next_visit_handler() -> tuple[str, int]:
     """A Flask view function for handling next-visit events.
 
@@ -413,6 +466,12 @@ def next_visit_handler() -> tuple[str, int]:
             else:
                 _log.error("Timed out waiting for images.")
                 return "Timed out waiting for images", 500
+    except GracefulShutdownInterrupt:
+        # Safety net to minimize chance of interrupt propagating out of the worker.
+        # Ideally, this would be a Flask.errorhandler, but Flask ignores BaseExceptions.
+        _log.error("Service interrupted. Shutting down *without* syncing to the central repo.")
+        return "The worker was interrupted before it could complete the request. " \
+               "Retrying the request may not be safe.", 500
     finally:
         consumer.unsubscribe()
         # Want to know when the handler exited for any reason.
