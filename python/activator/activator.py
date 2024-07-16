@@ -26,7 +26,6 @@ import logging
 import os
 import sys
 import time
-from typing import Optional, Tuple
 import uuid
 
 import boto3
@@ -127,7 +126,7 @@ except Exception as e:
 
 def check_for_snap(
     instrument: str, group: int, snap: int, detector: int
-) -> Optional[str]:
+) -> str | None:
     """Search for new raw files matching a particular data ID.
 
     The search is performed in the active image bucket.
@@ -266,7 +265,7 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
 
 
 @app.route("/next-visit", methods=["POST"])
-def next_visit_handler() -> Tuple[str, int]:
+def next_visit_handler() -> tuple[str, int]:
     """A Flask view function for handling next-visit events.
 
     Like all Flask handlers, this function accepts input through the
@@ -421,7 +420,7 @@ def next_visit_handler() -> Tuple[str, int]:
 
 
 @app.errorhandler(500)
-def server_error(e) -> Tuple[str, int]:
+def server_error(e) -> tuple[str, int]:
     _log.exception("An error occurred during a request.")
     return (
         f"""
