@@ -391,7 +391,7 @@ def next_visit_handler() -> tuple[str, int]:
                                 from e
                     except RetriableError as e:
                         error = e.nested if e.nested else e
-                        _log.error("Processing failed: ", exc_info=error)
+                        _log.error("Processing failed but can be retried: ", exc_info=error)
                         # Do not export, to leave room for the next attempt
                         # Service unavailable is not quite right, but no better standard response
                         raise ServiceUnavailable(f"A temporary error occurred during processing: {error}",
