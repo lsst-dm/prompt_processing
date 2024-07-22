@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       stackTag:
-        description: 'Science Pipelines tag (default: d_latest)'
+        description: 'Science Pipelines tag'
         required: true
         default: 'd_latest'
         type: string
