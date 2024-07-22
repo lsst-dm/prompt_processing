@@ -57,7 +57,7 @@ jobs:
             echo "d_latest" > lsst.docker.tag
             echo "d_latest" > stack.tag
           fi
-          docker run lsstsqre/centos:"$(< lsst.docker.tag)" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag
+          docker run lsstsqre/centos:"$(< lsst.docker.tag)" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag || echo "Unknown" > eups.tag
           echo "Eups tag = $(< eups.tag)"
       - name: Build image
         # Context-free build
@@ -92,7 +92,7 @@ jobs:
             docker push $IMAGE_ID:$VERSION
 
             EUPS_TAG=$(< eups.tag)
-            if [ "$STACK_TAG" != "$EUPS_TAG" ]; then
+            if [ "$EUPS_TAG" != "Unknown" ] && [ "$STACK_TAG" != "$EUPS_TAG" ]; then
               # Also push actual eups tag if not the same (e.g. d_latest)
               if [ "$BRANCH" == "main" ]; then
                 VERSION="$EUPS_TAG"
