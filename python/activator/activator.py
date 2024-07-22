@@ -21,12 +21,13 @@
 
 __all__ = ["check_for_snap", "next_visit_handler"]
 
+import collections.abc
 import json
 import logging
 import os
 import sys
 import time
-from typing import Optional, Tuple
+import signal
 import uuid
 
 import boto3
@@ -37,7 +38,7 @@ from flask import Flask, request
 from werkzeug.exceptions import ServiceUnavailable
 
 from .config import PipelinesConfig
-from .exception import NonRetriableError, RetriableError
+from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
 from .middleware_interface import get_central_butler, flush_local_repo, \
     make_local_repo, make_local_cache, MiddlewareInterface
@@ -125,9 +126,58 @@ except Exception as e:
     sys.exit(3)
 
 
+def _graceful_shutdown(signum: int, stack_frame):
+    """Signal handler for cases where the service should gracefully shut down.
+
+    Parameters
+    ----------
+    signum : `int`
+        The signal received.
+    stack_frame : `frame` or `None`
+        The "current" stack frame.
+
+    Raises
+    ------
+    GracefulShutdownInterrupt
+        Raised unconditionally.
+    """
+    signame = signal.Signals(signum).name
+    _log.info("Signal %s detected, cleaning up and shutting down.", signame)
+    # TODO DM-45339: raising in signal handlers is dangerous; can we get a way
+    # for pipeline processing to check for interrupts?
+    raise GracefulShutdownInterrupt(f"Received signal {signame}.")
+
+
+def with_signal(signum: int,
+                handler: collections.abc.Callable | signal.Handlers,
+                ) -> collections.abc.Callable:
+    """A decorator that registers a signal handler for the duration of a
+    function call.
+
+    Parameters
+    ----------
+    signum : `int`
+        The signal for which to register a handler; see `signal.signal`.
+    handler : callable or `signal.Handlers`
+        The handler to register.
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            old_handler = signal.signal(signum, handler)
+            try:
+                return func(*args, **kwargs)
+            finally:
+                if old_handler is not None:
+                    signal.signal(signum, old_handler)
+                else:
+                    signal.signal(signum, signal.SIG_DFL)
+        return wrapper
+    return decorator
+
+
 def check_for_snap(
     instrument: str, group: int, snap: int, detector: int
-) -> Optional[str]:
+) -> str | None:
     """Search for new raw files matching a particular data ID.
 
     The search is performed in the active image bucket.
@@ -266,7 +316,9 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
 
 
 @app.route("/next-visit", methods=["POST"])
-def next_visit_handler() -> Tuple[str, int]:
+@with_signal(signal.SIGHUP, _graceful_shutdown)
+@with_signal(signal.SIGTERM, _graceful_shutdown)
+def next_visit_handler() -> tuple[str, int]:
     """A Flask view function for handling next-visit events.
 
     Like all Flask handlers, this function accepts input through the
@@ -302,76 +354,83 @@ def next_visit_handler() -> Tuple[str, int]:
                                      survey=expected_visit.survey,
                                      detector=expected_visit.detector,
                                      ):
-            expid_set = set()
+            try:
+                expid_set = set()
 
-            # Create a fresh MiddlewareInterface object to avoid accidental
-            # "cross-talk" between different visits.
-            mwi = MiddlewareInterface(central_butler,
-                                      image_bucket,
-                                      expected_visit,
-                                      pre_pipelines,
-                                      main_pipelines,
-                                      skymap,
-                                      local_repo.name,
-                                      local_cache)
-            # Copy calibrations for this detector/visit
-            mwi.prep_butler()
+                # Create a fresh MiddlewareInterface object to avoid accidental
+                # "cross-talk" between different visits.
+                mwi = MiddlewareInterface(central_butler,
+                                          image_bucket,
+                                          expected_visit,
+                                          pre_pipelines,
+                                          main_pipelines,
+                                          skymap,
+                                          local_repo.name,
+                                          local_cache)
+                # Copy calibrations for this detector/visit
+                mwi.prep_butler()
 
-            # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
-            expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
-            # Heuristic: take the upcoming script's duration and multiply by 2 to
-            # include the currently executing script, then add time to transfer
-            # the last image.
-            timeout = expected_visit.duration * 2 + image_timeout
-            # Check to see if any snaps have already arrived
-            for snap in range(expected_snaps):
-                oid = check_for_snap(
-                    expected_visit.instrument,
-                    expected_visit.groupId,
-                    snap,
-                    expected_visit.detector,
-                )
-                if oid:
-                    _log.debug("Found object %s already present", oid)
-                    exp_id = mwi.ingest_image(oid)
-                    expid_set.add(exp_id)
+                # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
+                expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
+                # Heuristic: take the upcoming script's duration and multiply by 2 to
+                # include the currently executing script, then add time to transfer
+                # the last image.
+                timeout = expected_visit.duration * 2 + image_timeout
+                # Check to see if any snaps have already arrived
+                for snap in range(expected_snaps):
+                    oid = check_for_snap(
+                        expected_visit.instrument,
+                        expected_visit.groupId,
+                        snap,
+                        expected_visit.detector,
+                    )
+                    if oid:
+                        _log.debug("Found object %s already present", oid)
+                        exp_id = mwi.ingest_image(oid)
+                        expid_set.add(exp_id)
 
-            _log.debug("Waiting for snaps...")
-            start = time.time()
-            while len(expid_set) < expected_snaps and time.time() - start < timeout:
-                if startup_response:
-                    response = startup_response
-                else:
-                    time_remaining = max(0.0, timeout - (time.time() - start))
-                    response = consumer.consume(num_messages=1, timeout=time_remaining + 1.0)
-                end = time.time()
-                messages = _filter_messages(response)
-                response = []
-                if len(messages) == 0 and end - start < timeout and not startup_response:
-                    _log.debug(f"Empty consume after {end - start}s.")
-                    continue
-                startup_response = []
+                _log.debug("Waiting for snaps...")
+                start = time.time()
+                while len(expid_set) < expected_snaps and time.time() - start < timeout:
+                    if startup_response:
+                        response = startup_response
+                    else:
+                        time_remaining = max(0.0, timeout - (time.time() - start))
+                        response = consumer.consume(num_messages=1, timeout=time_remaining + 1.0)
+                    end = time.time()
+                    messages = _filter_messages(response)
+                    response = []
+                    if len(messages) == 0 and end - start < timeout and not startup_response:
+                        _log.debug(f"Empty consume after {end - start}s.")
+                        continue
+                    startup_response = []
 
-                # Not all notifications are for this group/detector
-                for received in messages:
-                    for oid in _parse_bucket_notifications(received.value()):
-                        try:
-                            if is_path_consistent(oid, expected_visit):
-                                _log.debug("Received %r", oid)
-                                group_id = get_group_id_from_oid(oid)
-                                if group_id == expected_visit.groupId:
-                                    # Ingest the snap
-                                    exp_id = mwi.ingest_image(oid)
-                                    expid_set.add(exp_id)
-                        except ValueError:
-                            _log.error(f"Failed to match object id '{oid}'")
-                    # Commits are per-group, so this can't interfere with other
-                    # workers. This may wipe messages associated with a next_visit
-                    # that will later be assigned to this worker, but those cases
-                    # should be caught by the "already arrived" check.
-                    consumer.commit(message=received)
-            if len(expid_set) < expected_snaps:
-                _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
+                    # Not all notifications are for this group/detector
+                    for received in messages:
+                        for oid in _parse_bucket_notifications(received.value()):
+                            try:
+                                if is_path_consistent(oid, expected_visit):
+                                    _log.debug("Received %r", oid)
+                                    group_id = get_group_id_from_oid(oid)
+                                    if group_id == expected_visit.groupId:
+                                        # Ingest the snap
+                                        exp_id = mwi.ingest_image(oid)
+                                        expid_set.add(exp_id)
+                            except ValueError:
+                                _log.error(f"Failed to match object id '{oid}'")
+                        # Commits are per-group, so this can't interfere with other
+                        # workers. This may wipe messages associated with a next_visit
+                        # that will later be assigned to this worker, but those cases
+                        # should be caught by the "already arrived" check.
+                        consumer.commit(message=received)
+                if len(expid_set) < expected_snaps:
+                    _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
+            except GracefulShutdownInterrupt as e:
+                _log.exception("Processing interrupted before pipeline execution")
+                # Do not export, to leave room for the next attempt
+                # Service unavailable is not quite right, but no better standard response
+                raise ServiceUnavailable(f"The server aborted processing, but it can be retried: {e}",
+                                         retry_after=10) from None
 
             if expid_set:
                 with log_factory.add_context(exposures=expid_set):
@@ -392,7 +451,7 @@ def next_visit_handler() -> Tuple[str, int]:
                                 from e
                     except RetriableError as e:
                         error = e.nested if e.nested else e
-                        _log.error("Processing failed: ", exc_info=error)
+                        _log.error("Processing failed but can be retried: ", exc_info=error)
                         # Do not export, to leave room for the next attempt
                         # Service unavailable is not quite right, but no better standard response
                         raise ServiceUnavailable(f"A temporary error occurred during processing: {error}",
@@ -414,6 +473,12 @@ def next_visit_handler() -> Tuple[str, int]:
             else:
                 _log.error("Timed out waiting for images.")
                 return "Timed out waiting for images", 500
+    except GracefulShutdownInterrupt:
+        # Safety net to minimize chance of interrupt propagating out of the worker.
+        # Ideally, this would be a Flask.errorhandler, but Flask ignores BaseExceptions.
+        _log.error("Service interrupted. Shutting down *without* syncing to the central repo.")
+        return "The worker was interrupted before it could complete the request. " \
+               "Retrying the request may not be safe.", 500
     finally:
         consumer.unsubscribe()
         # Want to know when the handler exited for any reason.
@@ -421,7 +486,7 @@ def next_visit_handler() -> Tuple[str, int]:
 
 
 @app.errorhandler(500)
-def server_error(e) -> Tuple[str, int]:
+def server_error(e) -> tuple[str, int]:
     _log.exception("An error occurred during a request.")
     return (
         f"""
