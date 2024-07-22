@@ -1,5 +1,6 @@
+ARG PIPE_CONTAINER=lsstsqre/centos
 ARG STACK_TAG=d_latest
-FROM lsstsqre/centos:${STACK_TAG}
+FROM ${PIPE_CONTAINER}:${STACK_TAG}
 ENV PYTHONUNBUFFERED True
 ARG KAFKA=python-confluent-kafka
 RUN <<EOT

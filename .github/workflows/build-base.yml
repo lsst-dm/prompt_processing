@@ -13,6 +13,11 @@ on:
       - 'base/Dockerfile'
   workflow_dispatch:
     inputs:
+      pipeContainer:
+        description: 'Science Pipelines container'
+        required: true
+        default: 'lsstsqre/centos'
+        type: string
       stackTag:
         description: 'Science Pipelines tag'
         required: true
@@ -33,6 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IMAGE_NAME: prompt-base
+      PIPE_CONTAINER: ${{ inputs.pipeContainer }}
       STACK_TAG: ${{ inputs.stackTag }}
     steps:
       - name: Checkout code
@@ -48,22 +54,30 @@ jobs:
         run: |
           if [[ -n "$STACK_TAG" ]]; then
             if [[ "$STACK_TAG" == *_latest ]]; then
+              # d_latest and w_latest are literal Docker tags
               echo "$STACK_TAG" > lsst.docker.tag
-            else
+            elif [[ "$PIPE_CONTAINER" == "lsstsqre/centos" ]]; then
+              # Official dailies and weeklies use a more complex tag
               echo "7-stack-lsst_distrib-$STACK_TAG" > lsst.docker.tag
+            else
+              # For special containers, anything goes
+              echo "$STACK_TAG" > lsst.docker.tag
             fi
             echo "$STACK_TAG" > stack.tag
           else
             echo "d_latest" > lsst.docker.tag
             echo "d_latest" > stack.tag
           fi
-          docker run lsstsqre/centos:"$(< lsst.docker.tag)" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag || echo "Unknown" > eups.tag
+          echo "Docker tag = $(< lsst.docker.tag)"
+          echo "Stack tag = $(< stack.tag)"
+          docker run "$PIPE_CONTAINER":"$(< lsst.docker.tag)" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag || echo "Unknown" > eups.tag
           echo "Eups tag = $(< eups.tag)"
       - name: Build image
         # Context-free build
         working-directory: base
         run: |
           docker build - \
+            --build-arg "PIPE_CONTAINER=${PIPE_CONTAINER}" \
             --build-arg "STACK_TAG=$(< lsst.docker.tag)" \
             --tag $IMAGE_NAME \
             --label "runnumber=${GITHUB_RUN_ID}" \
