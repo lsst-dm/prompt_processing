@@ -47,7 +47,7 @@ jobs:
         working-directory: base
         run: |
           if [[ -n "$STACK_TAG" ]]; then
-            if [[ "$STACK_TAG" == "*_latest" ]]; then
+            if [[ "$STACK_TAG" == *_latest ]]; then
               echo "$STACK_TAG" > lsst.docker.tag
             else
               echo "7-stack-lsst_distrib-$STACK_TAG" > lsst.docker.tag
