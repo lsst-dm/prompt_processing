@@ -22,6 +22,7 @@
 __all__ = ["check_for_snap", "next_visit_handler"]
 
 import collections.abc
+import functools
 import json
 import logging
 import os
@@ -162,6 +163,7 @@ def with_signal(signum: int,
         The handler to register.
     """
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             old_handler = signal.signal(signum, handler)
             try:
