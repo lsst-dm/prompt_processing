@@ -146,22 +146,27 @@ def _get_local_cache():
     return make_local_cache()
 
 
-try:
-    app = Flask(__name__)
+def create_app():
+    try:
+        # Check initialization and abort early
+        _get_consumer()
+        _get_storage_client()
+        _get_central_butler()
 
-    # Check initialization and abort early
-    _get_consumer()
-    _get_storage_client()
-    _get_central_butler()
+        for old_repo in find_local_repos(local_repos):
+            _log.warning("Orphaned repo found at %s, attempting to remove.", old_repo)
+            flush_local_repo(old_repo, _get_central_butler())
 
-    for old_repo in find_local_repos(local_repos):
-        _log.warning("Orphaned repo found at %s, attempting to remove.", old_repo)
-        flush_local_repo(old_repo, _get_central_butler())
-except Exception as e:
-    _log.critical("Failed to start worker; aborting.")
-    _log.exception(e)
-    # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
-    sys.exit(3)
+        app = Flask(__name__)
+        return app
+    except Exception as e:
+        _log.critical("Failed to start worker; aborting.")
+        _log.exception(e)
+        # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
+        sys.exit(3)
+
+
+app = create_app()
 
 
 def _graceful_shutdown(signum: int, stack_frame):
