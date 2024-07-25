@@ -103,25 +103,60 @@ def find_local_repos(base_path):
     return {d for d in subdirs if os.path.exists(os.path.join(d, "butler.yaml"))}
 
 
-try:
-    app = Flask(__name__)
-
-    consumer = kafka.Consumer({
+@functools.cache
+def _get_consumer():
+    """Lazy initialization of shared Kafka Consumer."""
+    return kafka.Consumer({
         "bootstrap.servers": kafka_cluster,
         "group.id": kafka_group_id,
         "auto.offset.reset": "latest",  # default, but make explicit
     })
 
+
+@functools.cache
+def _get_storage_client():
+    """Lazy initialization of cloud storage reader."""
     storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
     storage_client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
+    return storage_client
 
-    central_butler = get_central_butler(calib_repo, instrument_name)
+
+@functools.cache
+def _get_central_butler():
+    """Lazy initialization of central Butler."""
+    return get_central_butler(calib_repo, instrument_name)
+
+
+@functools.cache
+def _get_local_repo():
+    """Lazy initialization of local repo.
+
+    Returns
+    -------
+    repo : `tempfile.TemporaryDirectory`
+        The directory containing the repo, to be removed when the
+        process exits.
+    """
+    return make_local_repo(local_repos, _get_central_butler(), instrument_name)
+
+
+@functools.cache
+def _get_local_cache():
+    """Lazy initialization of local repo dataset cache."""
+    return make_local_cache()
+
+
+try:
+    app = Flask(__name__)
+
+    # Check initialization and abort early
+    _get_consumer()
+    _get_storage_client()
+    _get_central_butler()
+
     for old_repo in find_local_repos(local_repos):
         _log.warning("Orphaned repo found at %s, attempting to remove.", old_repo)
-        flush_local_repo(old_repo, central_butler)
-    # local_repo is a temporary directory with the same lifetime as this process.
-    local_repo = make_local_repo(local_repos, central_butler, instrument_name)
-    local_cache = make_local_cache()
+        flush_local_repo(old_repo, _get_central_butler())
 except Exception as e:
     _log.critical("Failed to start worker; aborting.")
     _log.exception(e)
@@ -305,6 +340,7 @@ def next_visit_handler() -> tuple[str, int]:
     with contextlib.ExitStack() as cleanups:
         # Want to know when the handler exited for any reason.
         cleanups.callback(_log.info, "next_visit handling completed.")
+        consumer = _get_consumer()
         consumer.subscribe([bucket_topic])
         cleanups.callback(consumer.unsubscribe)
         _log.debug(f"Created subscription to '{bucket_topic}'")
@@ -333,14 +369,14 @@ def next_visit_handler() -> tuple[str, int]:
 
                     # Create a fresh MiddlewareInterface object to avoid accidental
                     # "cross-talk" between different visits.
-                    mwi = MiddlewareInterface(central_butler,
+                    mwi = MiddlewareInterface(_get_central_butler(),
                                               image_bucket,
                                               expected_visit,
                                               pre_pipelines,
                                               main_pipelines,
                                               skymap,
-                                              local_repo.name,
-                                              local_cache)
+                                              _get_local_repo().name,
+                                              _get_local_cache())
                     # TODO: pipeline execution requires a clean run until DM-38041.
                     cleanups.callback(mwi.clean_local_repo, expid_set)
                     # Copy calibrations for this detector/visit
@@ -355,7 +391,7 @@ def next_visit_handler() -> tuple[str, int]:
                     # Check to see if any snaps have already arrived
                     for snap in range(expected_snaps):
                         oid = check_for_snap(
-                            storage_client,
+                            _get_storage_client(),
                             image_bucket,
                             raw_microservice,
                             expected_visit.instrument,
