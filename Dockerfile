@@ -15,4 +15,4 @@ CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
     && exec gunicorn --workers 1 --threads 1 --timeout $WORKER_TIMEOUT --max-requests $WORKER_RESTART_FREQ \
         --graceful-timeout $WORKER_GRACE_PERIOD \
-        --bind :$PORT activator.activator:app
+        --bind :$PORT 'activator.activator:create_app()'

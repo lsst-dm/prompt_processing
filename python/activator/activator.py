@@ -79,9 +79,6 @@ pre_pipelines = PipelinesConfig(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
 # The main pipelines to execute and the conditions in which to choose them.
 main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
 
-setup_usdf_logger(
-    labels={"instrument": instrument_name},
-)
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
@@ -148,6 +145,10 @@ def _get_local_cache():
 
 def create_app():
     try:
+        setup_usdf_logger(
+            labels={"instrument": instrument_name},
+        )
+
         # Check initialization and abort early
         _get_consumer()
         _get_storage_client()
@@ -158,15 +159,15 @@ def create_app():
             flush_local_repo(old_repo, _get_central_butler())
 
         app = Flask(__name__)
+        app.add_url_rule("/next-visit", view_func=next_visit_handler, methods=["POST"])
+        app.register_error_handler(500, server_error)
+        _log.info("Worker ready to handle requests.")
         return app
     except Exception as e:
         _log.critical("Failed to start worker; aborting.")
         _log.exception(e)
         # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
         sys.exit(3)
-
-
-app = create_app()
 
 
 def _graceful_shutdown(signum: int, stack_frame):
@@ -325,7 +326,6 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
         return False
 
 
-@app.route("/next-visit", methods=["POST"])
 @with_signal(signal.SIGHUP, _graceful_shutdown)
 @with_signal(signal.SIGTERM, _graceful_shutdown)
 def next_visit_handler() -> tuple[str, int]:
@@ -499,7 +499,6 @@ def next_visit_handler() -> tuple[str, int]:
                    "Retrying the request may not be safe.", 500
 
 
-@app.errorhandler(500)
 def server_error(e) -> tuple[str, int]:
     _log.exception("An error occurred during a request.")
     return (
@@ -513,11 +512,10 @@ def server_error(e) -> tuple[str, int]:
 
 def main():
     # This function is only called in test environments. Container
-    # deployments call `app()` through Gunicorn.
+    # deployments call `create_app()()` through Gunicorn.
+    app = create_app()
     app.run(host="127.0.0.1", port=8080, debug=True)
 
 
 if __name__ == "__main__":
     main()
-else:
-    _log.info("Worker ready to handle requests.")
