@@ -100,25 +100,60 @@ def find_local_repos(base_path):
     return {d for d in subdirs if os.path.exists(os.path.join(d, "butler.yaml"))}
 
 
-try:
-    app = Flask(__name__)
-
-    consumer = kafka.Consumer({
+@functools.cache
+def _get_consumer():
+    """Lazy initialization of shared Kafka Consumer."""
+    return kafka.Consumer({
         "bootstrap.servers": kafka_cluster,
         "group.id": kafka_group_id,
         "auto.offset.reset": "latest",  # default, but make explicit
     })
 
+
+@functools.cache
+def _get_storage_client():
+    """Lazy initialization of cloud storage reader."""
     storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
     storage_client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
+    return storage_client
 
-    central_butler = get_central_butler(calib_repo, instrument_name)
+
+@functools.cache
+def _get_central_butler():
+    """Lazy initialization of central Butler."""
+    return get_central_butler(calib_repo, instrument_name)
+
+
+@functools.cache
+def _get_local_repo():
+    """Lazy initialization of local repo.
+
+    Returns
+    -------
+    repo : `tempfile.TemporaryDirectory`
+        The directory containing the repo, to be removed when the
+        process exits.
+    """
+    return make_local_repo(local_repos, _get_central_butler(), instrument_name)
+
+
+@functools.cache
+def _get_local_cache():
+    """Lazy initialization of local repo dataset cache."""
+    return make_local_cache()
+
+
+try:
+    app = Flask(__name__)
+
+    # Check initialization and abort early
+    _get_consumer()
+    _get_storage_client()
+    _get_central_butler()
+
     for old_repo in find_local_repos(local_repos):
         _log.warning("Orphaned repo found at %s, attempting to remove.", old_repo)
-        flush_local_repo(old_repo, central_butler)
-    # local_repo is a temporary directory with the same lifetime as this process.
-    local_repo = make_local_repo(local_repos, central_butler, instrument_name)
-    local_cache = make_local_cache()
+        flush_local_repo(old_repo, _get_central_butler())
 except Exception as e:
     _log.critical("Failed to start worker; aborting.")
     _log.exception(e)
@@ -199,7 +234,7 @@ def check_for_snap(
     if not prefix:
         return None
     _log.debug(f"Checking for '{prefix}'")
-    response = storage_client.list_objects_v2(Bucket=image_bucket, Prefix=prefix)
+    response = _get_storage_client().list_objects_v2(Bucket=image_bucket, Prefix=prefix)
     if response["KeyCount"] == 0:
         return None
     elif response["KeyCount"] > 1:
@@ -333,6 +368,7 @@ def next_visit_handler() -> tuple[str, int]:
         The HTTP response status code to return to the client.
     """
     _log.info(f"Starting next_visit_handler for {request}.")
+    consumer = _get_consumer()
     consumer.subscribe([bucket_topic])
     _log.debug(f"Created subscription to '{bucket_topic}'")
     # Try to get a message right away to minimize race conditions
@@ -360,14 +396,14 @@ def next_visit_handler() -> tuple[str, int]:
 
                 # Create a fresh MiddlewareInterface object to avoid accidental
                 # "cross-talk" between different visits.
-                mwi = MiddlewareInterface(central_butler,
+                mwi = MiddlewareInterface(_get_central_butler(),
                                           image_bucket,
                                           expected_visit,
                                           pre_pipelines,
                                           main_pipelines,
                                           skymap,
-                                          local_repo.name,
-                                          local_cache)
+                                          _get_local_repo().name,
+                                          _get_local_cache())
                 # Copy calibrations for this detector/visit
                 mwi.prep_butler()
 
