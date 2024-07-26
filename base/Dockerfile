@@ -1,7 +1,7 @@
 ARG PIPE_CONTAINER=lsstsqre/centos
 ARG STACK_TAG=d_latest
 FROM ${PIPE_CONTAINER}:${STACK_TAG}
-ENV PYTHONUNBUFFERED True
+ENV PYTHONUNBUFFERED=True
 ARG KAFKA=python-confluent-kafka
 RUN <<EOT
   set -ex
