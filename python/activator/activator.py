@@ -35,7 +35,7 @@ import boto3
 from botocore.handlers import validate_bucket_name
 import cloudevents.http
 import confluent_kafka as kafka
-from flask import Flask, request
+import flask
 from werkzeug.exceptions import ServiceUnavailable
 
 from .config import PipelinesConfig
@@ -155,7 +155,7 @@ def create_app():
             _log.warning("Orphaned repo found at %s, attempting to remove.", old_repo)
             flush_local_repo(old_repo, _get_central_butler())
 
-        app = Flask(__name__)
+        app = flask.Flask(__name__)
         app.add_url_rule("/next-visit", view_func=next_visit_handler, methods=["POST"])
         app.register_error_handler(500, server_error)
         _log.info("Worker ready to handle requests.")
@@ -357,13 +357,11 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
         return False
 
 
-@with_signal(signal.SIGHUP, _graceful_shutdown)
-@with_signal(signal.SIGTERM, _graceful_shutdown)
 def next_visit_handler() -> tuple[str, int]:
     """A Flask view function for handling next-visit events.
 
     Like all Flask handlers, this function accepts input through the
-    ``request`` global rather than parameters.
+    ``flask.request`` global rather than parameters.
 
     Returns
     -------
@@ -372,7 +370,43 @@ def next_visit_handler() -> tuple[str, int]:
     status : `int`
         The HTTP response status code to return to the client.
     """
-    _log.info(f"Starting next_visit_handler for {request}.")
+    _log.info(f"Starting next_visit_handler for {flask.request}.")
+
+    try:
+        try:
+            expected_visit = parse_next_visit(flask.request)
+        except ValueError as msg:
+            _log.warn(f"error: '{msg}'")
+            return f"Bad Request: {msg}", 400
+        return process_visit(expected_visit)
+    except GracefulShutdownInterrupt:
+        # Safety net to minimize chance of interrupt propagating out of the worker.
+        # Ideally, this would be a Flask.errorhandler, but Flask ignores BaseExceptions.
+        _log.error("Service interrupted. Shutting down *without* syncing to the central repo.")
+        return "The worker was interrupted before it could complete the request. " \
+               "Retrying the request may not be safe.", 500
+    finally:
+        # Want to know when the handler exited for any reason.
+        _log.info("next_visit handling completed.")
+
+
+@with_signal(signal.SIGHUP, _graceful_shutdown)
+@with_signal(signal.SIGTERM, _graceful_shutdown)
+def process_visit(expected_visit: FannedOutVisit) -> tuple[str, int]:
+    """Prepare and run a pipeline on a nextVisit message.
+
+    Parameters
+    ----------
+    expected_visit : `activator.visit.FannedOutVisit`
+        The visit to process.
+
+    Returns
+    -------
+    message : `str`
+        The HTTP response reason to return to the client.
+    status : `int`
+        The HTTP response status code to return to the client.
+    """
     consumer = _get_consumer()
     consumer.subscribe([bucket_topic])
     _log.debug(f"Created subscription to '{bucket_topic}'")
@@ -380,11 +414,6 @@ def next_visit_handler() -> tuple[str, int]:
     startup_response = consumer.consume(num_messages=1, timeout=0.001)
 
     try:
-        try:
-            expected_visit = parse_next_visit(request)
-        except ValueError as msg:
-            _log.warn(f"error: '{msg}'")
-            return f"Bad Request: {msg}", 400
         assert expected_visit.instrument == instrument_name, \
             f"Expected {instrument_name}, received {expected_visit.instrument}."
         if not main_pipelines.get_pipeline_files(expected_visit):
@@ -515,16 +544,8 @@ def next_visit_handler() -> tuple[str, int]:
             else:
                 _log.error("Timed out waiting for images.")
                 return "Timed out waiting for images", 500
-    except GracefulShutdownInterrupt:
-        # Safety net to minimize chance of interrupt propagating out of the worker.
-        # Ideally, this would be a Flask.errorhandler, but Flask ignores BaseExceptions.
-        _log.error("Service interrupted. Shutting down *without* syncing to the central repo.")
-        return "The worker was interrupted before it could complete the request. " \
-               "Retrying the request may not be safe.", 500
     finally:
         consumer.unsubscribe()
-        # Want to know when the handler exited for any reason.
-        _log.info("next_visit handling completed.")
 
 
 def server_error(e) -> tuple[str, int]:
