@@ -347,7 +347,7 @@ def next_visit_handler() -> tuple[str, int]:
         try:
             expected_visit = parse_next_visit(flask.request)
         except ValueError as msg:
-            _log.warn(f"error: '{msg}'")
+            _log.exception()
             return f"Bad Request: {msg}", 400
         process_visit(expected_visit)
         return "Pipeline executed", 200
