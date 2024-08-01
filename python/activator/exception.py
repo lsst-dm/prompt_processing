@@ -20,7 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-__all__ = ["NonRetriableError", "RetriableError", "GracefulShutdownInterrupt"]
+__all__ = ["NonRetriableError", "RetriableError", "GracefulShutdownInterrupt", "InvalidVisitError"]
 
 
 class NonRetriableError(Exception):
@@ -82,4 +82,15 @@ class GracefulShutdownInterrupt(BaseException):
     Like all interrupts, ``GracefulShutdownInterrupt`` can be raised between
     *any* two bytecode instructions, and handling it requires special care. See
     `the Python docs <https://docs.python.org/3.11/library/signal.html#handlers-and-exceptions>`__.
+    """
+
+
+class InvalidVisitError(ValueError):
+    """An exception raised if a visit object has invalid or inappropriate
+    fields.
+
+    See Also
+    --------
+    activator.visit.SummitVisit
+    activator.visit.FannedOutVisit
     """
