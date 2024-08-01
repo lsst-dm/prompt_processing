@@ -37,10 +37,9 @@ from botocore.handlers import validate_bucket_name
 import cloudevents.http
 import confluent_kafka as kafka
 import flask
-from werkzeug.exceptions import ServiceUnavailable
 
 from .config import PipelinesConfig
-from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError
+from .exception import GracefulShutdownInterrupt, InvalidVisitError, NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
 from .middleware_interface import get_central_butler, flush_local_repo, \
     make_local_repo, make_local_cache, MiddlewareInterface
@@ -160,6 +159,9 @@ def create_app():
 
         app = flask.Flask(__name__)
         app.add_url_rule("/next-visit", view_func=next_visit_handler, methods=["POST"])
+        app.register_error_handler(InvalidVisitError, invalid_visit)
+        app.register_error_handler(RetriableError, request_retry)
+        app.register_error_handler(NonRetriableError, forbid_retry)
         app.register_error_handler(500, server_error)
         _log.info("Worker ready to handle requests.")
         return app
@@ -182,7 +184,7 @@ def _graceful_shutdown(signum: int, stack_frame):
 
     Raises
     ------
-    GracefulShutdownInterrupt
+    activator.exception.GracefulShutdownInterrupt
         Raised unconditionally.
     """
     signame = signal.Signals(signum).name
@@ -347,7 +349,8 @@ def next_visit_handler() -> tuple[str, int]:
         except ValueError as msg:
             _log.warn(f"error: '{msg}'")
             return f"Bad Request: {msg}", 400
-        return process_visit(expected_visit)
+        process_visit(expected_visit)
+        return "Pipeline executed", 200
     except GracefulShutdownInterrupt:
         # Safety net to minimize chance of interrupt propagating out of the worker.
         # Ideally, this would be a Flask.errorhandler, but Flask ignores BaseExceptions.
@@ -361,20 +364,38 @@ def next_visit_handler() -> tuple[str, int]:
 
 @with_signal(signal.SIGHUP, _graceful_shutdown)
 @with_signal(signal.SIGTERM, _graceful_shutdown)
-def process_visit(expected_visit: FannedOutVisit) -> tuple[str, int]:
+def process_visit(expected_visit: FannedOutVisit):
     """Prepare and run a pipeline on a nextVisit message.
+
+    This function should not make any assumptions about the execution framework
+    for the Prompt Processing system; in particular, it should not assume it is
+    running on a web server.
 
     Parameters
     ----------
     expected_visit : `activator.visit.FannedOutVisit`
         The visit to process.
 
-    Returns
-    -------
-    message : `str`
-        The HTTP response reason to return to the client.
-    status : `int`
-        The HTTP response status code to return to the client.
+    Raises
+    ------
+    activator.exception.GracefulShutdownInterrupt
+        Raised if the process was terminated at an unexpected point.
+        Terminations during preprocessing or processing are chained by
+        `~activator.exception.NonRetriableError` or
+        `~activator.exception.RetriableError`, depending on the program state
+        at the time.
+    activator.exception.InvalidVisitError
+        Raised if ``expected_visit`` is not processable.
+    activator.exception.NonRetriableError
+        Raised if external resources (such as the APDB or alert stream) may
+        have been left in a state that makes it unsafe to retry failures. This
+        exception is always chained to another exception representing the
+        original error.
+    activator.exception.RetriableError
+        Raised if the conditions for NonRetriableError are not met, *and*
+        processing failed in a way that is expected to be transient. This
+        exception is always chained to another exception representing the
+        original error.
     """
     with contextlib.ExitStack() as cleanups:
         consumer = _get_consumer()
@@ -387,8 +408,7 @@ def process_visit(expected_visit: FannedOutVisit) -> tuple[str, int]:
         assert expected_visit.instrument == instrument_name, \
             f"Expected {instrument_name}, received {expected_visit.instrument}."
         if not main_pipelines.get_pipeline_files(expected_visit):
-            _log.info(f"No pipeline configured for {expected_visit}, skipping.")
-            return "No pipeline configured for the received visit.", 422
+            raise InvalidVisitError(f"No pipeline configured for {expected_visit}.")
 
         log_factory = logging.getLogRecordFactory()
         with log_factory.add_context(group=expected_visit.groupId,
@@ -472,11 +492,7 @@ def process_visit(expected_visit: FannedOutVisit) -> tuple[str, int]:
                 if len(expid_set) < expected_snaps:
                     _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
             except GracefulShutdownInterrupt as e:
-                _log.exception("Processing interrupted before pipeline execution")
-                # Do not export, to leave room for the next attempt
-                # Service unavailable is not quite right, but no better standard response
-                raise ServiceUnavailable(f"The server aborted processing, but it can be retried: {e}",
-                                         retry_after=10) from None
+                raise RetriableError("Processing interrupted before pipeline execution") from e
 
             if expid_set:
                 with log_factory.add_context(exposures=expid_set):
@@ -496,30 +512,40 @@ def process_visit(expected_visit: FannedOutVisit) -> tuple[str, int]:
                         except Exception as e:
                             raise NonRetriableError("APDB and possibly alerts or central repo modified") \
                                 from e
-                    except RetriableError as e:
-                        error = e.nested if e.nested else e
-                        _log.error("Processing failed but can be retried: ", exc_info=error)
+                    except RetriableError:
                         # Do not export, to leave room for the next attempt
-                        # Service unavailable is not quite right, but no better standard response
-                        raise ServiceUnavailable(f"A temporary error occurred during processing: {error}",
-                                                 retry_after=10) from None
-                    except NonRetriableError as e:
-                        error = e.nested if e.nested else e
-                        _log.error("Processing failed: ", exc_info=error)
+                        raise
+                    except Exception:
                         _try_export(mwi, expid_set, _log)
-                        return f"An error occurred during processing: {error}.\nThe system's state has " \
-                               "permanently changed, so this request should **NOT** be retried.", 500
-                    except Exception as e:
-                        _log.error("Processing failed: ", exc_info=e)
-                        _try_export(mwi, expid_set, _log)
-                        return f"An error occurred during processing: {e}.", 500
-                    return "Pipeline executed", 200
+                        raise
             else:
-                _log.error("Timed out waiting for images.")
-                return "Timed out waiting for images", 500
+                raise RuntimeError("Timed out waiting for images.")
 
 
-def server_error(e) -> tuple[str, int]:
+def invalid_visit(e: InvalidVisitError) -> tuple[str, int]:
+    _log.exception()
+    return f"Cannot process visit: {e}.", 422
+
+
+def request_retry(e: RetriableError):
+    error = e.nested if e.nested else e
+    _log.error("Processing failed but can be retried: ", exc_info=error)
+    # Service unavailable is not quite right, but no better standard response
+    response = flask.make_response(
+        f"The server could not process the request, but it can be retried: {error}",
+        503,
+        {"Retry-After": 10})
+    return response
+
+
+def forbid_retry(e: NonRetriableError) -> tuple[str, int]:
+    error = e.nested if e.nested else e
+    _log.error("Processing failed: ", exc_info=error)
+    return f"An error occurred during processing: {error}.\nThe system's state has " \
+           "permanently changed, so this request should **NOT** be retried.", 500
+
+
+def server_error(e: Exception) -> tuple[str, int]:
     _log.exception("An error occurred during a request.")
     return (
         f"""
