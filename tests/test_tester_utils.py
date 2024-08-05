@@ -38,7 +38,10 @@ from tester.utils import (
 try:
     import boto3
     import botocore
-    from moto import mock_s3
+    try:
+        from moto import mock_aws
+    except ImportError:
+        from moto import mock_s3 as mock_aws  # Backwards-compatible with moto 4
 except ImportError:
     boto3 = None
 
@@ -52,10 +55,10 @@ class TesterUtilsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         super().setUpClass()
-        cls.mock_s3 = mock_s3()
+        cls.mock_aws = mock_aws()
 
     def setUp(self):
-        self.mock_s3.start()
+        self.mock_aws.start()
         s3 = boto3.resource("s3")
         s3.create_bucket(Bucket=self.bucket_name)
 
@@ -92,7 +95,7 @@ class TesterUtilsTest(unittest.TestCase):
                 bucket.delete()
         finally:
             # Stop the S3 mock.
-            self.mock_s3.stop()
+            self.mock_aws.stop()
 
     def test_get_last_group(self):
         s3 = boto3.resource("s3")
