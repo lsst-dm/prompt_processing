@@ -22,10 +22,6 @@
 import tempfile
 import unittest
 
-import boto3
-import botocore
-from moto import mock_s3
-
 import lsst.daf.butler.tests as butler_tests
 import lsst.meas.base
 from lsst.obs.subaru import HyperSuprimeCam
@@ -39,15 +35,30 @@ from tester.utils import (
     increment_group,
 )
 
+try:
+    import boto3
+    import botocore
+    try:
+        from moto import mock_aws
+    except ImportError:
+        from moto import mock_s3 as mock_aws  # Backwards-compatible with moto 4
+except ImportError:
+    boto3 = None
 
+
+@unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
 class TesterUtilsTest(unittest.TestCase):
     """Test components in tester.
     """
-    mock_s3 = mock_s3()
     bucket_name = "testBucketName"
 
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.mock_aws = mock_aws()
+
     def setUp(self):
-        self.mock_s3.start()
+        self.mock_aws.start()
         s3 = boto3.resource("s3")
         s3.create_bucket(Bucket=self.bucket_name)
 
@@ -84,7 +95,7 @@ class TesterUtilsTest(unittest.TestCase):
                 bucket.delete()
         finally:
             # Stop the S3 mock.
-            self.mock_s3.stop()
+            self.mock_aws.stop()
 
     def test_get_last_group(self):
         s3 = boto3.resource("s3")

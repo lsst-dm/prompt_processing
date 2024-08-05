@@ -40,7 +40,10 @@ from activator.visit import FannedOutVisit
 
 try:
     import boto3
-    from moto import mock_s3
+    try:
+        from moto import mock_aws
+    except ImportError:
+        from moto import mock_s3 as mock_aws  # Backwards-compatible with moto 4
 except ImportError:
     boto3 = None
 
@@ -82,10 +85,13 @@ class RawBase:
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
 class LsstBase(RawBase):
-    mock_s3 = mock_s3()
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.mock_aws = mock_aws()
 
     def setUp(self):
-        self.mock_s3.start()
+        self.mock_aws.start()
         s3 = boto3.resource("s3")
         self.bucket = "test-bucket-test"
         s3.create_bucket(Bucket=self.bucket)
@@ -97,7 +103,7 @@ class LsstBase(RawBase):
         super().setUp()
 
     def tearDown(self):
-        self.mock_s3.stop()
+        self.mock_aws.stop()
         super().tearDown()
 
     def test_snap_matching(self):
