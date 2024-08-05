@@ -82,7 +82,10 @@ class RawBase:
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
 class LsstBase(RawBase):
-    mock_s3 = mock_s3()
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.mock_s3 = mock_s3()
 
     def setUp(self):
         self.mock_s3.start()

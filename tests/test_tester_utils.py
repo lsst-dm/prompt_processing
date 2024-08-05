@@ -22,10 +22,6 @@
 import tempfile
 import unittest
 
-import boto3
-import botocore
-from moto import mock_s3
-
 import lsst.daf.butler.tests as butler_tests
 import lsst.meas.base
 from lsst.obs.subaru import HyperSuprimeCam
@@ -39,12 +35,24 @@ from tester.utils import (
     increment_group,
 )
 
+try:
+    import boto3
+    import botocore
+    from moto import mock_s3
+except ImportError:
+    boto3 = None
 
+
+@unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
 class TesterUtilsTest(unittest.TestCase):
     """Test components in tester.
     """
-    mock_s3 = mock_s3()
     bucket_name = "testBucketName"
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.mock_s3 = mock_s3()
 
     def setUp(self):
         self.mock_s3.start()
