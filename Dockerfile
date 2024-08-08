@@ -11,8 +11,9 @@ ARG PORT
 WORKDIR $APP_HOME
 COPY python/activator activator/
 COPY pipelines pipelines/
+COPY config/gunicorn.conf.py ./
 CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
     && exec gunicorn --workers 1 --threads 1 --timeout $WORKER_TIMEOUT --max-requests $WORKER_RESTART_FREQ \
         --graceful-timeout $WORKER_GRACE_PERIOD \
-        --bind :$PORT 'activator.activator:create_app()'
+        --bind :$PORT --config gunicorn.conf.py 'activator.activator:create_app()'

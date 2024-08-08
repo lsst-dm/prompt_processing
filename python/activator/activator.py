@@ -40,13 +40,14 @@ import flask
 from .config import PipelinesConfig
 from .exception import GracefulShutdownInterrupt, InvalidVisitError, NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
-from .middleware_interface import get_central_butler, flush_local_repo, \
+from .middleware_interface import get_central_butler, \
     make_local_repo, make_local_cache, MiddlewareInterface
 from .raw import (
     get_prefix_from_snap,
     is_path_consistent,
     get_group_id_from_oid,
 )
+from .repo_registry import LocalRepoRegistry
 from .visit import FannedOutVisit
 
 
@@ -130,7 +131,10 @@ def _get_local_repo():
         The directory containing the repo, to be removed when the
         process exits.
     """
-    return make_local_repo(local_repos, _get_central_butler(), instrument_name)
+    repo = make_local_repo(local_repos, _get_central_butler(), instrument_name)
+    registry = LocalRepoRegistry.get()
+    registry.register(os.getpid(), repo.name)
+    return repo
 
 
 @functools.cache
@@ -149,10 +153,7 @@ def create_app():
         _get_consumer()
         _get_storage_client()
         _get_central_butler()
-
-        for old_repo in find_local_repos(local_repos):
-            _log.warning("Orphaned repo found at %s, attempting to remove.", old_repo)
-            flush_local_repo(old_repo, _get_central_butler())
+        _get_local_repo()
 
         app = flask.Flask(__name__)
         app.add_url_rule("/next-visit", view_func=next_visit_handler, methods=["POST"])
