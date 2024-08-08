@@ -133,7 +133,7 @@ def _get_local_repo():
     """
     repo = make_local_repo(local_repos, _get_central_butler(), instrument_name)
     registry = LocalRepoRegistry.get()
-    registry.register(os.getpid(), repo)
+    registry.register(os.getpid(), repo.name)
     return repo
 
 
@@ -153,6 +153,7 @@ def create_app():
         _get_consumer()
         _get_storage_client()
         _get_central_butler()
+        _get_local_repo()
 
         app = flask.Flask(__name__)
         app.add_url_rule("/next-visit", view_func=next_visit_handler, methods=["POST"])
