@@ -3,3 +3,4 @@
 # Include these paths.
 !python/activator/*.py
 !pipelines
+!config/gunicorn.conf.py
