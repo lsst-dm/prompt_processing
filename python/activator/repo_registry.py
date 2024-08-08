@@ -231,7 +231,7 @@ class LocalRepoRegistry:
                 repo = registry.pop(pid)
                 self._write_registry(f, registry)
             except KeyError:
-                raise ValueError(f"No known repository for {pid}.")
+                raise ValueError(f"No known repository for process {pid}.")
         _log.info("Unregistered %s from process %d.", repo, pid)
         return repo
 
