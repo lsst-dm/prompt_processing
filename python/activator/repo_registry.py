@@ -72,7 +72,7 @@ class LocalRepoRegistry:
         """
         with open(self._REGISTRY_FILE, mode="x", opener=self._open_blocking) as f:
             self._write_registry(f, {})
-        _log.info("Local repo registry is ready for use.")
+        _log.warning("Local repo registry is ready for use.")
 
     def cleanup_registry(self):
         """Remove the registry and delete all state.
@@ -81,7 +81,7 @@ class LocalRepoRegistry:
             os.remove(self._REGISTRY_FILE)
         except FileNotFoundError:
             pass
-        _log.info("Local repo registry has been cleaned up.")
+        _log.warning("Local repo registry has been cleaned up.")
 
     @staticmethod
     def _open_blocking(path: str, flags: int, *args, **kwargs) -> int:
@@ -232,7 +232,7 @@ class LocalRepoRegistry:
                 self._write_registry(f, registry)
             except KeyError:
                 raise ValueError(f"No known repository for process {pid}.")
-        _log.info("Unregistered %s from process %d.", repo, pid)
+        _log.warning("Unregistered %s from process %d.", repo, pid)
         return repo
 
     def get_owner(self, repo: str) -> int:
