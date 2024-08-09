@@ -7,12 +7,11 @@ import activator.repo_tracker
 # Config options
 # --------------
 
-workers = 1
-
 threads = 1
 worker_class = "sync"
 
 # Normally defined in the Kubernetes config
+workers = int(os.environ.get("WORKER_COUNT", 1))
 graceful_timeout = int(os.environ.get("WORKER_GRACE_PERIOD", 30))
 timeout = int(os.environ.get("WORKER_TIMEOUT", 0))
 max_requests = int(os.environ.get("WORKER_RESTART_FREQ", 0))
