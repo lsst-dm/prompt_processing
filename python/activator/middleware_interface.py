@@ -283,12 +283,6 @@ class MiddlewareInterface:
         constructing URIs to retrieve incoming files. The default is
         appropriate for use in the USDF environment; typically only
         change this when running local tests.
-
-    Raises
-    ------
-    ValueError
-        Raised if ``visit`` does not have equatorial coordinates and sky
-        rotation angles.
     """
     DATASET_IDENTIFIER = "Live"
     """The dataset ID used for Sasquatch uploads.
@@ -327,12 +321,22 @@ class MiddlewareInterface:
                  skymap: str, local_repo: str, local_cache: DatasetCache,
                  prefix: str = "s3://"):
         self.visit = visit
+        # Usually prompt processing only cares about on-sky images and expects all of
+        # them to have equatorial coordinates and sky rotation angles. In some cases,
+        # ISR can be done but sensible results from further pipelines cannot be expected.
+        # Use self._skip_spatial_preload to indicate dubious coordinates and to skip
+        # preloading spatial datasets, but continue the processing.
+        self._skip_spatial_preload = False
         if self.visit.coordinateSystem != FannedOutVisit.CoordSys.ICRS:
-            raise ValueError("Only ICRS coordinates are supported in Visit, "
-                             f"got {self.visit.coordinateSystem!r} instead.")
+            self._skip_spatial_preload = True
+            _log.error("Only ICRS coordinates are fully supported. "
+                       f"Got {self.visit.coordinateSystem!r} instead in {self.visit}. "
+                       "Spatial datasets won't be loaded.")
         if self.visit.rotationSystem != FannedOutVisit.RotSys.SKY:
-            raise ValueError("Only sky camera rotations are supported in Visit, "
-                             f"got {self.visit.rotationSystem!r} instead.")
+            self._skip_spatial_preload = True
+            _log.error("Only sky camera rotations are fully supported. "
+                       f"Got {self.visit.rotationSystem!r} instead in {self.visit}. "
+                       "Spatial datasets won't be loaded.")
 
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
@@ -535,7 +539,8 @@ class MiddlewareInterface:
             with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
                 _log.info(f"Preparing Butler for visit {self.visit!r}")
 
-                self._write_region_time()  # Must be done before preprocessing pipeline
+                if not self._skip_spatial_preload:
+                    self._write_region_time()  # Must be done before preprocessing pipeline
 
                 # repos may have been modified by other MWI instances.
                 # TODO: get a proper synchronization API for Butler
@@ -583,6 +588,11 @@ class MiddlewareInterface:
         calibs : set [`~lsst.daf.butler.DatasetRef`]
             The subset of ``datasets`` representing calibs.
         """
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)", level=logging.DEBUG):
+            calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
+        if self._skip_spatial_preload:
+            return (calib_datasets, calib_datasets)
+
         detector = self.camera[self.visit.detector]
         wcs = self._predict_wcs(detector)
         center, radius = self._detector_bounding_circle(detector, wcs)
@@ -592,8 +602,6 @@ class MiddlewareInterface:
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)", level=logging.DEBUG):
             template_datasets = set(self._export_skymap_and_templates(
                 center, detector, wcs, self.visit.filters))
-        with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)", level=logging.DEBUG):
-            calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)", level=logging.DEBUG):
             model_datasets = set(self._export_ml_models())
         return (refcat_datasets | template_datasets | calib_datasets | model_datasets,
