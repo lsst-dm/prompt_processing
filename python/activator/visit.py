@@ -34,7 +34,7 @@ class BareVisit:
     # Inherited from SAL next_visit schema; keep in sync with
     # https://ts-xml.lsst.io/sal_interfaces/ScriptQueue.html#nextvisit
     class CoordSys(enum.IntEnum):
-        # This is a redeclaration of lsst.ts.idl.enums.Script.MetadataCoordSys,
+        # This is a redeclaration of lsst.ts.xml.enums.Script.MetadataCoordSys,
         # but we need BareVisit to work in code that can't import lsst.ts.
         NONE = 1
         ICRS = 2
@@ -42,14 +42,14 @@ class BareVisit:
         MOUNT = 4
 
     class RotSys(enum.IntEnum):
-        # Redeclaration of lsst.ts.idl.enums.Script.MetadataRotSys.
+        # Redeclaration of lsst.ts.xml.enums.Script.MetadataRotSys.
         NONE = 1
         SKY = 2
         HORIZON = 3
         MOUNT = 4
 
     class Dome(enum.IntEnum):
-        # Redeclaration of lsst.ts.idl.enums.Script.MetadataDome.
+        # Redeclaration of lsst.ts.xml.enums.Script.MetadataDome.
         CLOSED = 1
         OPEN = 2
         EITHER = 3
