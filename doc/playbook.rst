@@ -257,6 +257,38 @@ In our case, we want to migrate to the versions that ``/repo/embargo`` is using,
    However, when using ``butler migrate`` to update ``dimensions-config``, you should delete all existing pods to ensure that their replacements have the correct version.
    This can be done using ``kubectl delete pod`` or from Argo CD (see `Development Service`_).
 
+Updating Table Permissions
+--------------------------
+
+Some ``dimensions-config`` migrations add new tables to the Butler registry schema.
+When this happens, our service accounts need to be explicitly given permission to work with those new tables.
+
+To update permissions, use ``psql`` to log in to the registry database as the owner (``pp`` for our dev repo).
+See `Databases`_ for more information on using ``psql`` in general.
+See ``butler.yaml`` for the address and namespace of the registry.
+
+To inspect table permissions:
+
+.. code-block:: psql
+
+   set search_path to <namespace>;
+   \dq
+
+Most tables should grant the INSERT (a), SELECT (r), UPDATE (w), and DELETE (d) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcomcamsim_prompt``).
+Sequences should have SELECT (r) and USAGE (U) instead.
+
+If any tables are missing permissions, run:
+
+.. code-block:: psql
+
+   GRANT insert,select,update,delete ON TABLE "<table1>", "<table2>" TO hsc_prompt,latiss_prompt,lsstcomcamsim_prompt;
+
+See the `GRANT command`_ for other options.
+
+.. _PostgreSQL privileges: https://www.postgresql.org/docs/current/ddl-priv.html
+
+.. _GRANT command: https://www.postgresql.org/docs/current/sql-grant.html
+
 Adding New Dataset Types
 ------------------------
 
