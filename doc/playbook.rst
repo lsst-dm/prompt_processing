@@ -231,11 +231,17 @@ The central repo for development use is located at ``s3://rubin-pp-dev-users/cen
 You need developer credentials to access it, as described under `Buckets`_.
 To run ``butler`` commands, which access the registry, you also need to set ``PGUSER=pp``.
 
+Butler Dimensions Schema Versions
+---------------------------------
+
+In general, Prompt Processing can support a range of schema versions: the lower limit is set by assumptions in Prompt Processing code, while the upper limit is set by the underlying Science Pipelines version.
+To confirm that we're compatible with the full range, the unit test repo in ``tests/data/central_repo`` should be set to the *lowest* version we offer support for, while the dev central repo should be set to the *highest*.
+
+We should try to support the most recent version that we can, to avoid holding up upgrades of shared repos.
+In particular, we should migrate the dev repo to a version, and confirm that we support it, before the Middleware team migrates the production repo (currently ``/repo/embargo``) to that version.
+
 Migrating the Repo
 ------------------
-
-``/repo/embargo`` is occasionally migrated to newer schema versions.
-We should keep the development repo in sync so that it's representative of the production system.
 
 To perform a schema migration, download the ``migrate`` extension to ``butler``:
 
