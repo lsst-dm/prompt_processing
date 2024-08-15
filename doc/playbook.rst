@@ -199,7 +199,7 @@ One way to set up this profile is with the AWS CLI:
 and follow the prompts.
 To use the new credentials with the Butler, set the environment variable ``AWS_PROFILE=prompt-processing-dev``.
 
-The AWS CLI can be used to inspect non-tenenat buckets:
+The AWS CLI can be used to inspect non-tenant buckets:
 
 .. code-block:: sh
 
