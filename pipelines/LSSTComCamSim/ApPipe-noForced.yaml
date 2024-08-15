@@ -8,8 +8,11 @@ description: >-
 imports:
   - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
 tasks:
+  loadDiaCatalogs:
+    class: lsst.ap.association.LoadDiaCatalogsTask
+    config:
+      doLoadForcedSources: false  # see DM-43394
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:
-      doLoadForcedSources: false  # see DM-43389
       doRunForcedMeasurement: false  # see DM-43402
