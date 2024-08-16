@@ -21,8 +21,9 @@ name: Release CI
 
 env:
   IMAGE_NAME: lsst-dm/prompt-service
-  # Base tag to run tests against.
+  # Base image and tag to run tests against. NOT used in the container build.
   BASE_TAG: "latest"
+  BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/prompt-base
 
 jobs:
   # Do testing and building in separate jobs to keep total disk usage down
@@ -51,7 +52,7 @@ jobs:
         run: |
           docker run \
               -v $GITHUB_WORKSPACE:/home/lsst/prompt_processing \
-              ghcr.io/${{ github.repository_owner }}/prompt-base:$BASE_TAG \
+              "$BASE_IMAGE":"$BASE_TAG" \
               bash -c '
                   cd /home/lsst/prompt_processing
                   source /opt/lsst/software/stack/loadLSST.bash
