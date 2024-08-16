@@ -42,6 +42,7 @@ jobs:
       - id: set-matrix
         run: echo "matrix=${BASE_TAG_LIST}" >> $GITHUB_OUTPUT
 
+  # Do testing and building in separate jobs to keep total disk usage down
   test-service:
     needs: matrix-gen
     strategy:

@@ -25,7 +25,9 @@ env:
   BASE_TAG: "latest"
 
 jobs:
-  build:
+  # Do testing and building in separate jobs to keep total disk usage down
+  test:
+    name: Test service
     runs-on: ubuntu-latest
 
     if: >
@@ -57,6 +59,14 @@ jobs:
                   # Fix permissions; arg must be absolute path.
                   git config --global --add safe.directory /home/lsst/prompt_processing
                   scons'
+
+  build:
+    name: Build release image
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: lsst-sqre/build-and-push-to-ghcr@v1
         id: build
