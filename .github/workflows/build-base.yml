@@ -32,15 +32,17 @@ on:
 permissions:
   packages: write
 
+env:
+  IMAGE_NAME: prompt-base
+  # All inputs are null for PR/push builds
+  PIPE_CONTAINER: ${{ inputs.pipeContainer || 'lsstsqre/centos' }}
+  STACK_TAG: ${{ inputs.stackTag || 'd_latest' }}
+  MAKE_LATEST: ${{ inputs.makeLatest && 'true' || 'false' }}
+
 jobs:
   update-base-image:
     name: Update base image
     runs-on: ubuntu-latest
-    env:
-      IMAGE_NAME: prompt-base
-      # All inputs are null for PR/push builds
-      PIPE_CONTAINER: ${{ inputs.pipeContainer || 'lsstsqre/centos' }}
-      STACK_TAG: ${{ inputs.stackTag || 'd_latest' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -88,7 +90,6 @@ jobs:
       - name: Push image to registries
         working-directory: base
         run: |
-          MAKE_LATEST="${{ inputs.makeLatest && 'true' || 'false' }}"
           BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
           [ "$BRANCH" == "merge" ] && BRANCH=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
 

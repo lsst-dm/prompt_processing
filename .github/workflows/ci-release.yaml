@@ -21,11 +21,14 @@ name: Release CI
 
 env:
   IMAGE_NAME: lsst-dm/prompt-service
-  # Base tag to run tests against.
+  # Base image and tag to run tests against. NOT used in the container build.
   BASE_TAG: "latest"
+  BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/prompt-base
 
 jobs:
-  build:
+  # Do testing and building in separate jobs to keep total disk usage down
+  test:
+    name: Test service
     runs-on: ubuntu-latest
 
     if: >
@@ -49,7 +52,7 @@ jobs:
         run: |
           docker run \
               -v $GITHUB_WORKSPACE:/home/lsst/prompt_processing \
-              ghcr.io/${{ github.repository_owner }}/prompt-base:$BASE_TAG \
+              "$BASE_IMAGE":"$BASE_TAG" \
               bash -c '
                   cd /home/lsst/prompt_processing
                   source /opt/lsst/software/stack/loadLSST.bash
@@ -57,6 +60,14 @@ jobs:
                   # Fix permissions; arg must be absolute path.
                   git config --global --add safe.directory /home/lsst/prompt_processing
                   scons'
+
+  build:
+    name: Build release image
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: lsst-sqre/build-and-push-to-ghcr@v1
         id: build

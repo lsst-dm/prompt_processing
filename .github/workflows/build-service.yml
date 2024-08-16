@@ -23,6 +23,9 @@ permissions:
   packages: write
 
 env:
+  IMAGE_NAME: prompt-service
+  BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/prompt-base
+
   # This is a bracketed, comma-separated list of double-quoted base container
   # tags that will be used to build service containers on each branch
   # (including "main").  Typically, any tags listed beyond "latest" would be
@@ -42,6 +45,7 @@ jobs:
       - id: set-matrix
         run: echo "matrix=${BASE_TAG_LIST}" >> $GITHUB_OUTPUT
 
+  # Do testing and building in separate jobs to keep total disk usage down
   test-service:
     needs: matrix-gen
     strategy:
@@ -49,6 +53,8 @@ jobs:
         baseTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
     name: Test service
     runs-on: ubuntu-latest
+    env:
+      BASE_TAG: ${{ matrix.baseTag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -64,7 +70,7 @@ jobs:
         run: |
           docker run \
               -v $GITHUB_WORKSPACE:/home/lsst/prompt_processing \
-              ghcr.io/${{ github.repository_owner }}/prompt-base:${{ matrix.baseTag }} \
+              "$BASE_IMAGE":"$BASE_TAG" \
               bash -c '
                   cd /home/lsst/prompt_processing
                   source /opt/lsst/software/stack/loadLSST.bash
@@ -83,7 +89,6 @@ jobs:
       matrix:
         baseTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
     env:
-      IMAGE_NAME: prompt-service
       BASE_TAG: ${{ matrix.baseTag }}
     steps:
       - name: Checkout code
@@ -96,7 +101,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Determine eups tag
         run: |
-          docker run ghcr.io/${{ github.repository_owner }}/prompt-base:"$BASE_TAG" bash -c "cat conda/envs/lsst-scipipe-*/share/eups/ups_db/global.tags" > eups.tag || docker run ghcr.io/${{ github.repository_owner }}/prompt-base:"$BASE_TAG" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag || echo "Unknown" > eups.tag
+          docker run "$BASE_IMAGE":"$BASE_TAG" bash -c "cat conda/envs/lsst-scipipe-*/share/eups/ups_db/global.tags" > eups.tag || docker run "$BASE_IMAGE":"$BASE_TAG" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag || echo "Unknown" > eups.tag
           echo "Eups tag = $(< eups.tag)"
       - name: Build image
         run: |
