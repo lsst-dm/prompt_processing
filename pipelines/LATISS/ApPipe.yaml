@@ -6,6 +6,8 @@ description: Alert Production pipeline specialized for LATISS
 # release schedule.
 imports:
   - location: $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml
+    include:
+      - prompt
 tasks:
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
