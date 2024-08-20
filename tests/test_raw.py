@@ -28,6 +28,7 @@ import warnings
 from lsst.resources import ResourcePath, s3utils
 
 from activator.raw import (
+    check_for_snap,
     is_path_consistent,
     get_prefix_from_snap,
     get_exp_id_from_oid,
@@ -223,3 +224,30 @@ class HscTest(RawBase, unittest.TestCase):
         """Test that get_prefix_from_snap returns proper prefix."""
         prefix = get_prefix_from_snap(self.instrument, self.group, self.detector, self.snap)
         self.assertEqual(prefix, "HSC/42/2022032100001/0/")
+
+    def test_check_for_snap_present(self):
+        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
+        fits_path = ResourcePath(f"s3://{self.bucket}").join(path)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "S3 does not support flushing objects", UserWarning)
+            with fits_path.open("wb"):
+                pass  # Empty file is just fine
+
+        oid = check_for_snap(boto3.client("s3"),
+                             self.bucket,
+                             instrument=self.instrument,
+                             group=self.group,
+                             snap=self.snap,
+                             detector=self.detector,
+                             )
+        self.assertEqual(oid, "HSC/42/2022032100001/0/404/k2022/HSC-2022032100001-0-404-k2022-42.fz")
+
+    def test_check_for_snap_absent(self):
+        oid = check_for_snap(boto3.client("s3"),
+                             self.bucket,
+                             instrument=self.instrument,
+                             group=self.group,
+                             snap=self.snap,
+                             detector=self.detector,
+                             )
+        self.assertEqual(oid, None)

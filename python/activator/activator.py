@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["check_for_snap", "next_visit_handler"]
+__all__ = ["next_visit_handler"]
 
 import collections.abc
 import json
@@ -43,7 +43,7 @@ from .logger import setup_usdf_logger
 from .middleware_interface import get_central_butler, flush_local_repo, \
     make_local_repo, make_local_cache, MiddlewareInterface
 from .raw import (
-    get_prefix_from_snap,
+    check_for_snap,
     is_path_consistent,
     get_group_id_from_oid,
 )
@@ -173,49 +173,6 @@ def with_signal(signum: int,
                     signal.signal(signum, signal.SIG_DFL)
         return wrapper
     return decorator
-
-
-def check_for_snap(
-    client,
-    bucket: str,
-    instrument: str,
-    group: int,
-    snap: int,
-    detector: int,
-) -> str | None:
-    """Search for new raw files matching a particular data ID.
-
-    The search is performed in the active image bucket.
-
-    Parameters
-    ----------
-    client : `S3.Client`
-        The client object with which to do the search.
-    bucket : `str`
-        The name of the bucket in which to search.
-    instrument, group, snap, detector
-        The data ID to search for.
-
-    Returns
-    -------
-    name : `str` or `None`
-        The raw's object key within ``bucket``, or `None` if no file
-        was found. If multiple files match, this function logs an error
-        but returns one of the files anyway.
-    """
-    prefix = get_prefix_from_snap(instrument, group, detector, snap)
-    if not prefix:
-        return None
-    _log.debug(f"Checking for '{prefix}'")
-    response = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-    if response["KeyCount"] == 0:
-        return None
-    elif response["KeyCount"] > 1:
-        _log.error(
-            f"Multiple files detected for a single detector/group/snap: '{prefix}'"
-        )
-    # Contents only exists if >0 objects found.
-    return response["Contents"][0]['Key']
 
 
 def parse_next_visit(http_request):

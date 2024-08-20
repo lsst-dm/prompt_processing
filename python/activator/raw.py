@@ -27,6 +27,7 @@ vice versa.
 
 __all__ = [
     "is_path_consistent",
+    "check_for_snap",
     "get_prefix_from_snap",
     "get_exp_id_from_oid",
     "get_group_id_from_oid",
@@ -36,6 +37,7 @@ __all__ = [
 ]
 
 import json
+import logging
 import os
 import re
 import time
@@ -45,6 +47,9 @@ from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 from lsst.resources import ResourcePath
 
 from .visit import FannedOutVisit
+
+_log = logging.getLogger("lsst." + __name__)
+_log.setLevel(logging.DEBUG)
 
 # Format for filenames of LSST camera raws uploaded to image bucket:
 # instrument/dayobs/obsid/obsid_Rraft_Ssensor.(fits, fz, fits.gz)
@@ -147,6 +152,49 @@ def is_path_consistent(oid: str, visit: FannedOutVisit) -> bool:
             return instrument == visit.instrument and detector == visit.detector
 
     return False
+
+
+def check_for_snap(
+    client,
+    bucket: str,
+    instrument: str,
+    group: int,
+    snap: int,
+    detector: int,
+) -> str | None:
+    """Search for new raw files matching a particular data ID.
+
+    The search is performed in the active image bucket.
+
+    Parameters
+    ----------
+    client : `S3.Client`
+        The client object with which to do the search.
+    bucket : `str`
+        The name of the bucket in which to search.
+    instrument, group, snap, detector
+        The data ID to search for.
+
+    Returns
+    -------
+    name : `str` or `None`
+        The raw's object key within ``bucket``, or `None` if no file
+        was found. If multiple files match, this function logs an error
+        but returns one of the files anyway.
+    """
+    prefix = get_prefix_from_snap(instrument, group, detector, snap)
+    if not prefix:
+        return None
+    _log.debug(f"Checking for '{prefix}'")
+    response = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    if response["KeyCount"] == 0:
+        return None
+    elif response["KeyCount"] > 1:
+        _log.error(
+            f"Multiple files detected for a single detector/group/snap: '{prefix}'"
+        )
+    # Contents only exists if >0 objects found.
+    return response["Contents"][0]['Key']
 
 
 def get_prefix_from_snap(
