@@ -386,7 +386,7 @@ class MiddlewareInterface:
         self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
                                               collections=self._collection_skymap)
 
-        # How much to pad the refcat region we will copy over.
+        # How much to pad the spatial region we will copy over.
         self.padding = 30*lsst.geom.arcseconds
 
     def _get_deployment(self):
@@ -687,7 +687,11 @@ class MiddlewareInterface:
         tract = self.skymap.findTract(center)
         points = [center]
         for corner in detector.getCorners(lsst.afw.cameraGeom.PIXELS):
-            points.append(wcs.pixelToSky(corner))
+            point = wcs.pixelToSky(corner)
+            padded = point.offset(center.bearingTo(point), self.padding)
+            if not tract.contains(padded):
+                _log.warning("The padding goes beyond the tract region and is ignored")
+            points.append(padded)
         patches = tract.findPatchList(points)
         patches_str = ','.join(str(p.sequential_index) for p in patches)
         template_where = f"patch in ({patches_str})"
