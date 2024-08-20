@@ -176,7 +176,12 @@ def with_signal(signum: int,
 
 
 def check_for_snap(
-    instrument: str, group: int, snap: int, detector: int
+    client,
+    bucket: str,
+    instrument: str,
+    group: int,
+    snap: int,
+    detector: int,
 ) -> str | None:
     """Search for new raw files matching a particular data ID.
 
@@ -184,13 +189,17 @@ def check_for_snap(
 
     Parameters
     ----------
+    client : `S3.Client`
+        The client object with which to do the search.
+    bucket : `str`
+        The name of the bucket in which to search.
     instrument, group, snap, detector
         The data ID to search for.
 
     Returns
     -------
     name : `str` or `None`
-        The raw's location in the active bucket, or `None` if no file
+        The raw's object key within ``bucket``, or `None` if no file
         was found. If multiple files match, this function logs an error
         but returns one of the files anyway.
     """
@@ -198,7 +207,7 @@ def check_for_snap(
     if not prefix:
         return None
     _log.debug(f"Checking for '{prefix}'")
-    response = storage_client.list_objects_v2(Bucket=image_bucket, Prefix=prefix)
+    response = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
     if response["KeyCount"] == 0:
         return None
     elif response["KeyCount"] > 1:
@@ -379,6 +388,8 @@ def next_visit_handler() -> tuple[str, int]:
                 # Check to see if any snaps have already arrived
                 for snap in range(expected_snaps):
                     oid = check_for_snap(
+                        storage_client,
+                        image_bucket,
                         expected_visit.instrument,
                         expected_visit.groupId,
                         snap,
