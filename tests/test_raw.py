@@ -25,7 +25,7 @@ import re
 import unittest
 import warnings
 
-from lsst.resources import ResourcePath
+from lsst.resources import ResourcePath, s3utils
 
 from activator.raw import (
     is_path_consistent,
@@ -91,6 +91,7 @@ class LsstBase(RawBase):
         cls.mock_aws = mock_aws()
 
     def setUp(self):
+        self.enterContext(s3utils.clean_test_environment_for_s3())
         self.mock_aws.start()
         s3 = boto3.resource("s3")
         self.bucket = "test-bucket-test"
