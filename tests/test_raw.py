@@ -49,10 +49,24 @@ except ImportError:
 
 
 class RawBase:
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.mock_aws = mock_aws()
+
     """Base class for raw path handling.
     """
     def setUp(self):
         super().setUp()
+
+        self.enterContext(s3utils.clean_test_environment_for_s3())
+        self.mock_aws.start()
+        self.addCleanup(self.mock_aws.stop)
+        s3 = boto3.resource("s3")
+        self.bucket = "test-bucket-test"
+        s3.create_bucket(Bucket=self.bucket)
+        os.environ["IMAGE_BUCKET"] = self.bucket
+
         self.ra = 134.5454
         self.dec = -65.3261
         self.rot = 135.0
@@ -85,27 +99,11 @@ class RawBase:
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
 class LsstBase(RawBase):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.mock_aws = mock_aws()
-
     def setUp(self):
-        self.enterContext(s3utils.clean_test_environment_for_s3())
-        self.mock_aws.start()
-        s3 = boto3.resource("s3")
-        self.bucket = "test-bucket-test"
-        s3.create_bucket(Bucket=self.bucket)
-        os.environ["IMAGE_BUCKET"] = self.bucket
-
         self.group = "2022-03-21T00:01:00"
         self.snaps = 2
         self.filter = "k2022"
         super().setUp()
-
-    def tearDown(self):
-        self.mock_aws.stop()
-        super().tearDown()
 
     def test_snap_matching(self):
         """Test that a JSON file can be used to match an image path with a
@@ -188,6 +186,7 @@ class LsstCamTest(LsstBase, unittest.TestCase):
         )
 
 
+@unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
 class HscTest(RawBase, unittest.TestCase):
     def setUp(self):
         self.instrument = "HSC"
