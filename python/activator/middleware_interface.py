@@ -498,11 +498,9 @@ class MiddlewareInterface:
             self.visit.position[0], self.visit.position[1], lsst.geom.degrees)
         orientation = self.visit.cameraAngle * lsst.geom.degrees
 
-        flip_x = True if self.instrument.getName() == "DECam" else False
-        return lsst.obs.base.createInitialSkyWcsFromBoresight(boresight_center,
-                                                              orientation,
-                                                              detector,
-                                                              flipX=flip_x)
+        formatter = self.instrument.getRawFormatter({"detector": detector.getId()})
+        return formatter.makeRawSkyWcsFromBoresight(boresight_center, orientation, detector)
+
 
     def _detector_bounding_circle(self, detector: lsst.afw.cameraGeom.Detector,
                                   wcs: lsst.afw.geom.SkyWcs
