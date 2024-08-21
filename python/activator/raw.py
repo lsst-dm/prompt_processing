@@ -157,6 +157,7 @@ def is_path_consistent(oid: str, visit: FannedOutVisit) -> bool:
 def check_for_snap(
     client,
     bucket: str,
+    microservice: str,
     instrument: str,
     group: int,
     snap: int,
@@ -164,7 +165,8 @@ def check_for_snap(
 ) -> str | None:
     """Search for new raw files matching a particular data ID.
 
-    The search is performed in the active image bucket.
+    The search is performed in the active image bucket or in a raw
+    image microservice, if one is available.
 
     Parameters
     ----------
@@ -172,6 +174,8 @@ def check_for_snap(
         The client object with which to do the search.
     bucket : `str`
         The name of the bucket in which to search.
+    microservice : `str`
+        The URI of an optional microservice to assist the search.
     instrument, group, snap, detector
         The data ID to search for.
 

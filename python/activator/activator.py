@@ -59,6 +59,8 @@ skymap = os.environ["SKYMAP"]
 calib_repo = os.environ["CALIB_REPO"]
 # S3 Endpoint for Buckets; needed for direct Boto access but not Butler
 s3_endpoint = os.environ["S3_ENDPOINT_URL"]
+# URI of raw image microservice
+raw_microservice = os.environ.get("RAW_MICROSERVICE", "")
 # Bucket name (not URI) containing raw images
 image_bucket = os.environ["IMAGE_BUCKET"]
 # Time to wait after expected script completion for image arrival, in seconds
@@ -347,6 +349,7 @@ def next_visit_handler() -> tuple[str, int]:
                     oid = check_for_snap(
                         storage_client,
                         image_bucket,
+                        raw_microservice,
                         expected_visit.instrument,
                         expected_visit.groupId,
                         snap,
