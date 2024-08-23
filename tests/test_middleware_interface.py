@@ -47,6 +47,7 @@ import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
+import lsst.sphgeom
 
 from activator.caching import DatasetCache
 from activator.config import PipelinesConfig
@@ -223,6 +224,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
         self.assertEqual(self.interface.rawIngestTask.config.transfer, "copy")
+
+    def test_compute_region(self):
+        """Test preload region computation."""
+        region = self.interface._compute_region()
+        self.assertTrue(isinstance(region, lsst.sphgeom.Region))
 
     def _check_imports(self, butler, group, detector, expected_shards):
         """Test that the butler has the expected supporting data.
