@@ -517,33 +517,6 @@ class MiddlewareInterface:
         padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
         return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
 
-    def _detector_bounding_circle(self, detector: lsst.afw.cameraGeom.Detector,
-                                  wcs: lsst.afw.geom.SkyWcs
-                                  ) -> (lsst.geom.SpherePoint, lsst.geom.Angle):
-        # Could return a sphgeom.Circle, but that would require a lot of
-        # sphgeom->geom conversions downstream. Even their Angles are different!
-        """Compute a small sky circle that contains the detector.
-
-        Parameters
-        ----------
-        detector : `lsst.afw.cameraGeom.Detector`
-            The detector for which to compute an on-sky bounding circle.
-        wcs : `lsst.afw.geom.SkyWcs`
-            The conversion from detector to sky coordinates.
-
-        Returns
-        -------
-        center : `lsst.geom.SpherePoint`
-            The center of the bounding circle.
-        radius : `lsst.geom.Angle`
-            The opening angle of the bounding circle.
-        """
-        radii = []
-        center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
-        for corner in detector.getCorners(lsst.afw.cameraGeom.PIXELS):
-            radii.append(wcs.pixelToSky(corner).separation(center))
-        return center, max(radii)
-
     def prep_butler(self) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
 
@@ -573,7 +546,7 @@ class MiddlewareInterface:
                 self.butler.registry.refresh()
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
-                    all_datasets, calib_datasets = self._find_data_to_preload()
+                    all_datasets, calib_datasets = self._find_data_to_preload(region)
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
                     self._transfer_data(all_datasets, calib_datasets)
@@ -600,11 +573,16 @@ class MiddlewareInterface:
                         detector=self.visit.detector,
                         group=self.visit.groupId)
 
-    def _find_data_to_preload(self):
+    def _find_data_to_preload(self, region):
         """Identify the datasets to export from the central repo.
 
         The returned datasets are a superset of those needed by any pipeline,
         but exclude any datasets that are already present in the local repo.
+
+        Parameters
+        ----------
+        region : `lsst.sphgeom.Region` or None
+            The region to find data to preload.
 
         Returns
         -------
@@ -612,46 +590,49 @@ class MiddlewareInterface:
             The datasets to be exported, after any filtering.
         calibs : set [`~lsst.daf.butler.DatasetRef`]
             The subset of ``datasets`` representing calibs.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if attempting the spatial preload with the input region being None.
         """
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)", level=logging.DEBUG):
             calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
         if self._skip_spatial_preload:
             return (calib_datasets, calib_datasets)
-
-        detector = self.camera[self.visit.detector]
-        wcs = self._predict_wcs(detector)
-        center, radius = self._detector_bounding_circle(detector, wcs)
+        elif region is None:
+            raise RuntimeError("Cannot do spatial preload without a region.")
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)", level=logging.DEBUG):
-            refcat_datasets = set(self._export_refcats(center, radius))
+            refcat_datasets = set(self._export_refcats(region))
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)", level=logging.DEBUG):
             template_datasets = set(self._export_skymap_and_templates(
-                center, detector, wcs, self.visit.filters))
+                region, self.visit.filters))
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)", level=logging.DEBUG):
             model_datasets = set(self._export_ml_models())
         return (refcat_datasets | template_datasets | calib_datasets | model_datasets,
                 calib_datasets,
                 )
 
-    def _export_refcats(self, center, radius):
+    def _export_refcats(self, region):
         """Identify the refcats to export from the central butler.
 
         Parameters
         ----------
-        center : `lsst.geom.SpherePoint`
-            Center of the region to find refcat shards in.
-        radius : `lst.geom.Angle`
-            Radius to search for refcat shards in.
+        region : `lsst.sphgeom.Region`
+            The region to find refcat shards in.
 
         Returns
         -------
         refcats : iterable [`DatasetRef`]
             The refcats to be exported, after any filtering.
         """
+        center = lsst.geom.SpherePoint(region.getCentroid())
+        radius = max([center.separation(lsst.geom.SpherePoint(vertex)) for vertex in region.getVertices()])
         indexer = HtmIndexer(depth=7)
-        shard_ids, _ = indexer.getShardIds(center, radius+self.padding)
+        shard_ids, _ = indexer.getShardIds(center, radius)
         htm_where = f"htm7 in ({','.join(str(x) for x in shard_ids)})"
-        # Get shards from all refcats that overlap this detector.
+        # Get shards from all refcats that overlap this region.
         possible_refcats = _get_refcat_types(self.central_butler)
         _log.debug("Searching for refcats of types %s in %s...",
                    {t.name for t in possible_refcats}, shard_ids)
@@ -670,17 +651,13 @@ class MiddlewareInterface:
             _log.debug("Found 0 new refcat datasets.")
         return refcats
 
-    def _export_skymap_and_templates(self, center, detector, wcs, filter):
+    def _export_skymap_and_templates(self, region, filter):
         """Identify the skymap and templates to export from the central butler.
 
         Parameters
         ----------
-        center : `lsst.geom.SpherePoint`
-            Center of the region to load the skyamp tract/patches for.
-        detector : `lsst.afw.cameraGeom.Detector`
-            Detector we are loading data for.
-        wcs : `lsst.afw.geom.SkyWcs`
-            Rough WCS for the upcoming visit, to help finding patches.
+        region : `lsst.sphgeom.Region`
+            The region to load the skyamp and templates tract/patches for.
         filter : `str`
             Physical filter for which to export templates. May be empty to
             indicate no specific filter.
@@ -699,28 +676,19 @@ class MiddlewareInterface:
             all_callback=self._mark_dataset_usage,
         ))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
-        # Getting only one tract should be safe: we're getting the
-        # tract closest to this detector, so we should be well within
-        # the tract bbox.
-        tract = self.skymap.findTract(center)
-        points = [center]
-        for corner in detector.getCorners(lsst.afw.cameraGeom.PIXELS):
-            point = wcs.pixelToSky(corner)
-            padded = point.offset(center.bearingTo(point), self.padding)
-            if not tract.contains(padded):
-                _log.warning("The padding goes beyond the tract region and is ignored")
-            points.append(padded)
-        patches = tract.findPatchList(points)
-        patches_str = ','.join(str(p.sequential_index) for p in patches)
-        template_where = f"patch in ({patches_str})"
         data_id = {"instrument": self.instrument.getName(),
                    "skymap": self.skymap_name,
-                   "tract": tract.tract_id,
                    }
         if filter:
             data_id["physical_filter"] = filter
+
+        # htm7 is too coarse and many more patches than necessary would be selected.
+        # But searching Butler with htm higher level does not work.
+        # TODO: This will be replaced by the new spatial query feature in Butler.
+        template_where = " OR ".join([f"htm7 in ({range[0]}..{range[1]})"
+                                      for range in lsst.sphgeom.HtmPixelization(7).interior(region).ranges()])
         try:
-            _log.debug("Searching for templates in tract %d, patches %s...", tract.tract_id, patches_str)
+            _log.debug("Searching for templates.")
             templates = set(_filter_datasets(
                 self.central_butler, self.butler,
                 self._get_template_types(),
