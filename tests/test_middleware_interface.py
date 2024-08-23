@@ -47,6 +47,7 @@ import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
+import lsst.sphgeom
 
 from activator.caching import DatasetCache
 from activator.config import PipelinesConfig
@@ -1334,3 +1335,14 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.assertEqual(
             self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
             0)
+
+    def test_compute_region(self):
+        """Test preload region computation."""
+        region = self.interface._compute_region()
+        self.assertTrue(isinstance(region, lsst.sphgeom.Region))
+        results = self.interface.butler.query_dimension_records(
+            "visit_detector_region", instrument=instname, group="1"
+        )
+        visit_detector_region = list(results)[0].region
+        # TODO: DM-47460 for a better test.
+        self.assertTrue(visit_detector_region.intersects(region))

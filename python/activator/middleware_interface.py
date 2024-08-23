@@ -501,6 +501,21 @@ class MiddlewareInterface:
         formatter = self.instrument.getRawFormatter({"detector": detector.getId()})
         return formatter.makeRawSkyWcsFromBoresight(boresight_center, orientation, detector)
 
+    def _compute_region(self) -> lsst.sphgeom.Region:
+        """Compute the sky region of this visit for preload
+
+        Returns
+        -------
+        region : `lsst.sphgeom.Region`
+            Region for preload.
+        """
+        detector = self.camera[self.visit.detector]
+        wcs = self._predict_wcs(detector)
+
+        center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
+        corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
+        padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
+        return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
 
     def _detector_bounding_circle(self, detector: lsst.afw.cameraGeom.Detector,
                                   wcs: lsst.afw.geom.SkyWcs
@@ -546,8 +561,11 @@ class MiddlewareInterface:
             with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
                 _log.info(f"Preparing Butler for visit {self.visit!r}")
 
-                if not self._skip_spatial_preload:
-                    self._write_region_time()  # Must be done before preprocessing pipeline
+                if self._skip_spatial_preload:
+                    region = None
+                else:
+                    region = self._compute_region()
+                    self._write_region_time(region)  # Must be done before preprocessing pipeline
 
                 # repos may have been modified by other MWI instances.
                 # TODO: get a proper synchronization API for Butler
@@ -943,19 +961,15 @@ class MiddlewareInterface:
         for k, g in itertools.groupby(ordered, key=get_key):
             yield k, len(list(g))
 
-    def _write_region_time(self):
-        """Store the approximate sky region and timespan for this
+    def _write_region_time(self, region):
+        """Store the preload sky region and timespan for this
         object's visit.
+
+        Parameters
+        ----------
+        region : `lsst.sphgeom.Region`
+            Region for preload.
         """
-        detector = self.camera[self.visit.detector]
-        wcs = self._predict_wcs(detector)
-
-        # TODO: unify with other region estimates on DM-43712
-        center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
-        corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
-        padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
-        region = lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
-
         # Assume a padded interval that's centered on the most probable time
         # TODO: replace with self.visit.startTime after DM-38635
         start = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
