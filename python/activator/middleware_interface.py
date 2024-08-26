@@ -689,14 +689,11 @@ class MiddlewareInterface:
         patches = tract.findPatchList(points)
         patches_str = ','.join(str(p.sequential_index) for p in patches)
         template_where = f"patch in ({patches_str})"
-        # TODO: do we need to have the coadd name used in the pipeline
-        # specified as a class kwarg, so that we only load one here?
-        # TODO: alternately, we need to extract it from the pipeline? (best?)
         try:
             _log.debug("Searching for templates in tract %d, patches %s...", tract.tract_id, patches_str)
             templates = set(_filter_datasets(
                 self.central_butler, self.butler,
-                "*Coadd",
+                self._get_template_types(),
                 collections=self._collection_template,
                 instrument=self.instrument.getName(),
                 skymap=self.skymap_name,
@@ -1666,6 +1663,26 @@ class MiddlewareInterface:
             instrument=self.instrument.getName(),
             detector=self.visit.detector,
         )
+
+    def _get_template_types(self) -> collections.abc.Set[str]:
+        """Identify the dataset types of possible templates in the main pipelines.
+
+        Returns
+        -------
+        template_types : set [`str`]
+            A set of template dataset types in the main pipelines.
+        """
+        template_types = set()
+        for pipeline_file in self._get_main_pipeline_files():
+            try:
+                pipeline = self._prep_pipeline(pipeline_file)
+            except FileNotFoundError as e:
+                raise RuntimeError from e
+            graph = pipeline.to_graph()
+            for dataset_type in graph.iter_overall_inputs():
+                if dataset_type[0].endswith("Coadd"):
+                    template_types.add(dataset_type[0])
+        return template_types
 
     def clean_local_repo(self, exposure_ids: set[int]) -> None:
         """Remove local repo content that is only needed for a single visit.
