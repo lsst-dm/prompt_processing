@@ -199,7 +199,7 @@ One way to set up this profile is with the AWS CLI:
 and follow the prompts.
 To use the new credentials with the Butler, set the environment variable ``AWS_PROFILE=prompt-processing-dev``.
 
-The AWS CLI can be used to inspect non-tenenat buckets:
+The AWS CLI can be used to inspect non-tenant buckets:
 
 .. code-block:: sh
 
@@ -231,11 +231,17 @@ The central repo for development use is located at ``s3://rubin-pp-dev-users/cen
 You need developer credentials to access it, as described under `Buckets`_.
 To run ``butler`` commands, which access the registry, you also need to set ``PGUSER=pp``.
 
+Butler Dimensions Schema Versions
+---------------------------------
+
+In general, Prompt Processing can support a range of schema versions: the lower limit is set by assumptions in Prompt Processing code, while the upper limit is set by the underlying Science Pipelines version.
+To confirm that we're compatible with the full range, the unit test repo in ``tests/data/central_repo`` should be set to the *lowest* version we offer support for, while the dev central repo should be set to the *highest*.
+
+We should try to support the most recent version that we can, to avoid holding up upgrades of shared repos.
+In particular, we should migrate the dev repo to a version, and confirm that we support it, before the Middleware team migrates the production repo (currently ``/repo/embargo``) to that version.
+
 Migrating the Repo
 ------------------
-
-``/repo/embargo`` is occasionally migrated to newer schema versions.
-We should keep the development repo in sync so that it's representative of the production system.
 
 To perform a schema migration, download the ``migrate`` extension to ``butler``:
 
@@ -257,6 +263,38 @@ In our case, we want to migrate to the versions that ``/repo/embargo`` is using,
    However, when using ``butler migrate`` to update ``dimensions-config``, you should delete all existing pods to ensure that their replacements have the correct version.
    This can be done using ``kubectl delete pod`` or from Argo CD (see `Development Service`_).
 
+Updating Table Permissions
+--------------------------
+
+Some ``dimensions-config`` migrations add new tables to the Butler registry schema.
+When this happens, our service accounts need to be explicitly given permission to work with those new tables.
+
+To update permissions, use ``psql`` to log in to the registry database as the owner (``pp`` for our dev repo).
+See `Databases`_ for more information on using ``psql`` in general.
+See ``butler.yaml`` for the address and namespace of the registry.
+
+To inspect table permissions:
+
+.. code-block:: psql
+
+   set search_path to <namespace>;
+   \dq
+
+Most tables should grant the INSERT (a), SELECT (r), UPDATE (w), and DELETE (d) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcomcamsim_prompt``).
+Sequences should have SELECT (r) and USAGE (U) instead.
+
+If any tables are missing permissions, run:
+
+.. code-block:: psql
+
+   GRANT insert,select,update,delete ON TABLE "<table1>", "<table2>" TO hsc_prompt,latiss_prompt,lsstcomcamsim_prompt;
+
+See the `GRANT command`_ for other options.
+
+.. _PostgreSQL privileges: https://www.postgresql.org/docs/current/ddl-priv.html
+
+.. _GRANT command: https://www.postgresql.org/docs/current/sql-grant.html
+
 Adding New Dataset Types
 ------------------------
 
@@ -268,7 +306,6 @@ One raw was ingested, visit-defined, and kept in the development central repo, s
    apdb-cli create-sql "sqlite:///apdb.db" apdb_config.py
    pipetask run -b s3://rubin-pp-dev-users/central_repo -i LATISS/raw/all,LATISS/defaults,LATISS/templates -o u/username/collection  -d "detector=0 and instrument='LATISS' and exposure=2023082900500 and visit_system=0" -p $PROMPT_PROCESSING_DIR/pipelines/LATISS/ApPipe.yaml -c parameters:apdb_config=apdb_config.py -c diaPipe:doPackageAlerts=False --register-dataset-types --init-only
 
-.. TODO: update pipetask call after DM-43416
 
 Development Service
 ===================
