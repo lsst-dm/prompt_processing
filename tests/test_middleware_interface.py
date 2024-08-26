@@ -814,6 +814,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         init_run = self.interface._get_init_output_run(filename, date)
         self.assertEqual(init_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
 
+    def test_get_template_types(self):
+        template_types = self.interface._get_template_types()
+        self.assertEqual(template_types, {"goodSeeingCoadd"})
+
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
         # Pass iff any dataset matches the query, no need to check them all.
         for dataset in butler.registry.queryDatasets(dataset_type, collections=collection, dataId=data_id):
