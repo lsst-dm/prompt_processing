@@ -76,6 +76,8 @@ filter_floor = int(os.environ.get("FILTERS_WITH_CALIBS", 20))
 # VALIDITY-HACK: local-only calib collections break if calibs are not requested
 # in chronological order. Turn off for large development runs.
 cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
+# The number of arcseconds to pad the region in preloading spatial datasets.
+padding = float(os.environ.get("PRELOAD_PADDING", 30))
 
 
 def get_central_butler(central_repo: str, instrument_class: str):
@@ -387,7 +389,7 @@ class MiddlewareInterface:
                                               collections=self._collection_skymap)
 
         # How much to pad the spatial region we will copy over.
-        self.padding = 30*lsst.geom.arcseconds
+        self.padding = padding*lsst.geom.arcseconds
 
     def _get_deployment(self):
         """Get a unique version ID of the active stack and pipeline configuration(s).
