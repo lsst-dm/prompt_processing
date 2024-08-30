@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["check_for_snap", "next_visit_handler"]
+__all__ = ["next_visit_handler"]
 
 import collections.abc
 import json
@@ -43,7 +43,7 @@ from .logger import setup_usdf_logger
 from .middleware_interface import get_central_butler, flush_local_repo, \
     make_local_repo, make_local_cache, MiddlewareInterface
 from .raw import (
-    get_prefix_from_snap,
+    check_for_snap,
     is_path_consistent,
     get_group_id_from_oid,
 )
@@ -59,6 +59,8 @@ skymap = os.environ["SKYMAP"]
 calib_repo = os.environ["CALIB_REPO"]
 # S3 Endpoint for Buckets; needed for direct Boto access but not Butler
 s3_endpoint = os.environ["S3_ENDPOINT_URL"]
+# URI of raw image microservice
+raw_microservice = os.environ.get("RAW_MICROSERVICE", "")
 # Bucket name (not URI) containing raw images
 image_bucket = os.environ["IMAGE_BUCKET"]
 # Time to wait after expected script completion for image arrival, in seconds
@@ -173,40 +175,6 @@ def with_signal(signum: int,
                     signal.signal(signum, signal.SIG_DFL)
         return wrapper
     return decorator
-
-
-def check_for_snap(
-    instrument: str, group: int, snap: int, detector: int
-) -> str | None:
-    """Search for new raw files matching a particular data ID.
-
-    The search is performed in the active image bucket.
-
-    Parameters
-    ----------
-    instrument, group, snap, detector
-        The data ID to search for.
-
-    Returns
-    -------
-    name : `str` or `None`
-        The raw's location in the active bucket, or `None` if no file
-        was found. If multiple files match, this function logs an error
-        but returns one of the files anyway.
-    """
-    prefix = get_prefix_from_snap(instrument, group, detector, snap)
-    if not prefix:
-        return None
-    _log.debug(f"Checking for '{prefix}'")
-    response = storage_client.list_objects_v2(Bucket=image_bucket, Prefix=prefix)
-    if response["KeyCount"] == 0:
-        return None
-    elif response["KeyCount"] > 1:
-        _log.error(
-            f"Multiple files detected for a single detector/group/snap: '{prefix}'"
-        )
-    # Contents only exists if >0 objects found.
-    return response["Contents"][0]['Key']
 
 
 def parse_next_visit(http_request):
@@ -379,6 +347,9 @@ def next_visit_handler() -> tuple[str, int]:
                 # Check to see if any snaps have already arrived
                 for snap in range(expected_snaps):
                     oid = check_for_snap(
+                        storage_client,
+                        image_bucket,
+                        raw_microservice,
                         expected_visit.instrument,
                         expected_visit.groupId,
                         snap,

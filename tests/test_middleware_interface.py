@@ -34,6 +34,7 @@ import astropy.coordinates
 import astropy.table
 import astropy.time
 import astropy.units as u
+import erfa
 import psycopg2
 
 import astro_metadata_translator
@@ -360,7 +361,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         with warnings.catch_warnings():
             # Avoid "dubious year" warnings from using a 2050 date
-            warnings.simplefilter("ignore", category=astropy.utils.exceptions.ErfaWarning)
+            warnings.simplefilter("ignore", category=erfa.ErfaWarning)
             with self.assertRaises(_MissingDatasetError), \
                 unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
                     as mock_pre:
@@ -1020,7 +1021,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         all_calibs = list(self.central_butler.registry.queryDatasets("cpBias"))
         with warnings.catch_warnings():
             # Avoid "dubious year" warnings from using a 2050 date
-            warnings.simplefilter("ignore", category=astropy.utils.exceptions.ErfaWarning)
+            warnings.simplefilter("ignore", category=erfa.ErfaWarning)
             future_calibs = list(_filter_calibs_by_date(
                 self.central_butler, "DECam/calib", all_calibs,
                 astropy.time.Time("2050-01-01 00:00:00", scale="utc")

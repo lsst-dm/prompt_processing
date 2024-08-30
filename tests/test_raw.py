@@ -25,9 +25,10 @@ import re
 import unittest
 import warnings
 
-from lsst.resources import ResourcePath
+from lsst.resources import ResourcePath, s3utils
 
 from activator.raw import (
+    check_for_snap,
     is_path_consistent,
     get_prefix_from_snap,
     get_exp_id_from_oid,
@@ -49,10 +50,24 @@ except ImportError:
 
 
 class RawBase:
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.mock_aws = mock_aws()
+
     """Base class for raw path handling.
     """
     def setUp(self):
         super().setUp()
+
+        self.enterContext(s3utils.clean_test_environment_for_s3())
+        self.mock_aws.start()
+        self.addCleanup(self.mock_aws.stop)
+        s3 = boto3.resource("s3")
+        self.bucket = "test-bucket-test"
+        s3.create_bucket(Bucket=self.bucket)
+        os.environ["IMAGE_BUCKET"] = self.bucket
+
         self.ra = 134.5454
         self.dec = -65.3261
         self.rot = 135.0
@@ -85,26 +100,11 @@ class RawBase:
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
 class LsstBase(RawBase):
-    @classmethod
-    def setUpClass(cls):
-        super().setUpClass()
-        cls.mock_aws = mock_aws()
-
     def setUp(self):
-        self.mock_aws.start()
-        s3 = boto3.resource("s3")
-        self.bucket = "test-bucket-test"
-        s3.create_bucket(Bucket=self.bucket)
-        os.environ["IMAGE_BUCKET"] = self.bucket
-
         self.group = "2022-03-21T00:01:00"
         self.snaps = 2
         self.filter = "k2022"
         super().setUp()
-
-    def tearDown(self):
-        self.mock_aws.stop()
-        super().tearDown()
 
     def test_snap_matching(self):
         """Test that a JSON file can be used to match an image path with a
@@ -131,15 +131,89 @@ class LsstBase(RawBase):
         self.assertEqual(get_exp_id_from_oid(path), self.exposure)
 
     def test_get_prefix(self):
-        """Test that get_prefix_from_snap returns None for now."""
+        """Test that get_prefix_from_snap returns None for LSST cameras."""
         prefix = get_prefix_from_snap(self.instrument, self.group, self.detector, self.snap)
         self.assertIsNone(prefix)
+
+    def test_check_for_snap_present(self):
+        microservice = "http://fake_host/fake_app"
+        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
+        message = {"error": False, "present": True, "uri": f"s3://{self.bucket}/{path}"}
+
+        fits_path = ResourcePath(f"s3://{self.bucket}").join(path)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "S3 does not support flushing objects", UserWarning)
+            with fits_path.open("wb"):
+                pass  # Empty file is just fine
+
+        with unittest.mock.patch("requests.get", **{"return_value.json.return_value": message}):
+            oid = check_for_snap(boto3.client("s3"),
+                                 self.bucket,
+                                 instrument=self.instrument,
+                                 microservice=microservice,
+                                 group=self.group,
+                                 snap=self.snap,
+                                 detector=self.detector,
+                                 )
+        self.assertEqual(oid, path)
+
+    def test_check_for_snap_noservice(self):
+        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
+        fits_path = ResourcePath(f"s3://{self.bucket}").join(path)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "S3 does not support flushing objects", UserWarning)
+            with fits_path.open("wb"):
+                pass  # Empty file is just fine
+
+        oid = check_for_snap(boto3.client("s3"),
+                             self.bucket,
+                             instrument=self.instrument,
+                             microservice="",
+                             group=self.group,
+                             snap=self.snap,
+                             detector=self.detector,
+                             )
+        self.assertEqual(oid, None)
+
+    def test_check_for_snap_absent(self):
+        microservice = "http://fake_host/fake_app"
+        message = {"error": False, "present": False}
+
+        with unittest.mock.patch("requests.get", **{"return_value.json.return_value": message}):
+            oid = check_for_snap(boto3.client("s3"),
+                                 self.bucket,
+                                 instrument=self.instrument,
+                                 microservice=microservice,
+                                 group=self.group,
+                                 snap=self.snap,
+                                 detector=self.detector,
+                                 )
+        self.assertEqual(oid, None)
+
+    def test_check_for_snap_error(self):
+        microservice = "http://fake_host/fake_app"
+        error_msg = "Microservice on strike"
+        message = {"error": True, "message": error_msg}
+
+        with unittest.mock.patch("requests.get", **{"return_value.json.return_value": message}), \
+                self.assertLogs(level="WARNING") as recorder:
+            oid = check_for_snap(boto3.client("s3"),
+                                 self.bucket,
+                                 instrument=self.instrument,
+                                 microservice=microservice,
+                                 group=self.group,
+                                 snap=self.snap,
+                                 detector=self.detector,
+                                 )
+        self.assertEqual(oid, None)
+        self.assertTrue(any(error_msg in line for line in recorder.output))
 
 
 class LatissTest(LsstBase, unittest.TestCase):
     def setUp(self):
         self.instrument = "LATISS"
         self.detector = 0
+        self.detector_name = "R00_S00"
         self.snap = 0
         self.exposure = 2022032100002
         super().setUp()
@@ -157,6 +231,7 @@ class LsstComCamTest(LsstBase, unittest.TestCase):
     def setUp(self):
         self.instrument = "LSSTComCam"
         self.detector = 4
+        self.detector_name = "R22_S11"
         self.snap = 1
         self.exposure = 2022032100003
         super().setUp()
@@ -174,6 +249,7 @@ class LsstCamTest(LsstBase, unittest.TestCase):
     def setUp(self):
         self.instrument = "LSSTCam"
         self.detector = 42
+        self.detector_name = "R11_S20"
         self.snap = 0
         self.exposure = 2022032100004
         super().setUp()
@@ -187,6 +263,7 @@ class LsstCamTest(LsstBase, unittest.TestCase):
         )
 
 
+@unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
 class HscTest(RawBase, unittest.TestCase):
     def setUp(self):
         self.instrument = "HSC"
@@ -223,3 +300,32 @@ class HscTest(RawBase, unittest.TestCase):
         """Test that get_prefix_from_snap returns proper prefix."""
         prefix = get_prefix_from_snap(self.instrument, self.group, self.detector, self.snap)
         self.assertEqual(prefix, "HSC/42/2022032100001/0/")
+
+    def test_check_for_snap_present(self):
+        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
+        fits_path = ResourcePath(f"s3://{self.bucket}").join(path)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "S3 does not support flushing objects", UserWarning)
+            with fits_path.open("wb"):
+                pass  # Empty file is just fine
+
+        oid = check_for_snap(boto3.client("s3"),
+                             self.bucket,
+                             instrument=self.instrument,
+                             microservice="",
+                             group=self.group,
+                             snap=self.snap,
+                             detector=self.detector,
+                             )
+        self.assertEqual(oid, "HSC/42/2022032100001/0/404/k2022/HSC-2022032100001-0-404-k2022-42.fz")
+
+    def test_check_for_snap_absent(self):
+        oid = check_for_snap(boto3.client("s3"),
+                             self.bucket,
+                             instrument=self.instrument,
+                             microservice="",
+                             group=self.group,
+                             snap=self.snap,
+                             detector=self.detector,
+                             )
+        self.assertEqual(oid, None)

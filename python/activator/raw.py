@@ -27,6 +27,7 @@ vice versa.
 
 __all__ = [
     "is_path_consistent",
+    "check_for_snap",
     "get_prefix_from_snap",
     "get_exp_id_from_oid",
     "get_group_id_from_oid",
@@ -36,15 +37,22 @@ __all__ = [
 ]
 
 import json
+import logging
 import os
 import re
 import time
+import urllib.parse
+
+import requests
 
 from lsst.obs.lsst import LsstCam, LsstComCam, LsstComCamSim
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 from lsst.resources import ResourcePath
 
 from .visit import FannedOutVisit
+
+_log = logging.getLogger("lsst." + __name__)
+_log.setLevel(logging.DEBUG)
 
 # Format for filenames of LSST camera raws uploaded to image bucket:
 # instrument/dayobs/obsid/obsid_Rraft_Ssensor.(fits, fz, fits.gz)
@@ -149,6 +157,64 @@ def is_path_consistent(oid: str, visit: FannedOutVisit) -> bool:
     return False
 
 
+def check_for_snap(
+    client,
+    bucket: str,
+    microservice: str,
+    instrument: str,
+    group: int,
+    snap: int,
+    detector: int,
+) -> str | None:
+    """Search for new raw files matching a particular data ID.
+
+    The search is performed in the active image bucket or in a raw
+    image microservice, if one is available.
+
+    Parameters
+    ----------
+    client : `S3.Client`
+        The client object with which to do the search.
+    bucket : `str`
+        The name of the bucket in which to search.
+    microservice : `str`
+        The URI of an optional microservice to assist the search.
+    instrument, group, snap, detector
+        The data ID to search for.
+
+    Returns
+    -------
+    name : `str` or `None`
+        The raw's object key within ``bucket``, or `None` if no file
+        was found. If multiple files match, this function logs an error
+        but returns one of the files anyway.
+    """
+    if microservice:
+        try:
+            return _query_microservice(microservice=microservice,
+                                       instrument=instrument,
+                                       group=group,
+                                       detector=detector,
+                                       snap=snap,
+                                       )
+        except RuntimeError:
+            _log.exception("Could not query microservice, falling back to prefix algorithm.")
+
+    prefix = get_prefix_from_snap(instrument, group, detector, snap)
+    if not prefix:
+        return None
+    _log.debug(f"Checking for '{prefix}'")
+    response = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    if response["KeyCount"] == 0:
+        return None
+    elif response["KeyCount"] > 1:
+        _log.error(
+            f"Multiple files detected for a single detector/group/snap: '{prefix}'"
+        )
+    # Contents only exists if >0 objects found.
+    return response["Contents"][0]['Key']
+
+
 def get_prefix_from_snap(
     instrument: str, group: str, detector: int, snap: int
 ) -> str | None:
@@ -156,27 +222,76 @@ def get_prefix_from_snap(
 
     Parameters
     ----------
-    instrument: `str`
+    instrument : `str`
         The name of the instrument taking the image.
-    group: `str`
+    group : `str`
         The group id from the visit, associating the snaps making up the visit.
-    detector: `int`
+    detector : `int`
         The integer detector id for the image being sought.
-    snap: `int`
+    snap : `int`
         The snap number within the group for the visit.
 
     Returns
     -------
-    prefix: `str` or None
+    prefix : `str` or `None`
         The prefix to a path to the corresponding raw image object.  If it
         can be calculated, then the prefix may be the entire path.  If no
-        prefix can be calculated, None is returned.
+        prefix can be calculated, `None` is returned.
     """
-
     if instrument not in _LSST_CAMERA_LIST:
         return f"{instrument}/{detector}/{group}/{snap}/"
-    # TODO DM-39022: use a microservice to determine paths for LSST cameras.
     return None
+
+
+def _query_microservice(
+    microservice: str, instrument: str, group: str, detector: int, snap: int
+) -> str | None:
+    """Look up a raw image's location from the raw image microservice.
+
+    Parameters
+    ----------
+    microservice : `str`
+        The URI of the microservice to query.
+    instrument : `str`
+        The name of the instrument taking the image.
+    group : `str`
+        The group id from the visit, associating the snaps making up the visit.
+    detector : `int`
+        The integer detector id for the image being sought.
+    snap : `int`
+        The snap number within the group for the visit.
+
+    Returns
+    -------
+    key : `str` or `None`
+        The raw's object key within its bucket, or `None` if no image was found.
+
+    Raises
+    ------
+    RuntimeError
+        Raised if this function could not connect to the microservice, or if the
+        microservice encountered an error.
+    """
+    detector_name = _DETECTOR_FROM_INT[instrument][detector]
+    uri = f"{microservice}/{instrument}/{group}/{snap}/{detector_name}"
+    try:
+        response = requests.get(uri, timeout=1.0)
+        response.raise_for_status()
+        unpacked = response.json()
+    except requests.Timeout as e:
+        raise RuntimeError("Timed out connecting to raw microservice.") from e
+    except requests.RequestException as e:
+        raise RuntimeError("Could not query raw microservice.") from e
+
+    if unpacked["error"]:
+        raise RuntimeError(f"Raw microservice had an internal error: {unpacked['message']}")
+    if unpacked["present"]:
+        # Need to return just the key, without the bucket
+        path = urllib.parse.urlparse(unpacked["uri"], allow_fragments=False).path
+        # Valid key does not start with a /
+        return path.lstrip("/")
+    else:
+        return None
 
 
 def get_exp_id_from_oid(oid: str) -> int:

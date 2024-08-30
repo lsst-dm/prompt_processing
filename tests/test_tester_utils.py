@@ -25,6 +25,7 @@ import unittest
 import lsst.daf.butler.tests as butler_tests
 import lsst.meas.base
 from lsst.obs.subaru import HyperSuprimeCam
+import lsst.resources.s3utils
 
 from activator.raw import get_raw_path
 from tester.utils import (
@@ -58,6 +59,7 @@ class TesterUtilsTest(unittest.TestCase):
         cls.mock_aws = mock_aws()
 
     def setUp(self):
+        self.enterContext(lsst.resources.s3utils.clean_test_environment_for_s3())
         self.mock_aws.start()
         s3 = boto3.resource("s3")
         s3.create_bucket(Bucket=self.bucket_name)
