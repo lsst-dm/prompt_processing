@@ -301,8 +301,11 @@ def next_visit_handler() -> tuple[str, int]:
         The HTTP response status code to return to the client.
     """
     _log.info(f"Starting next_visit_handler for {request}.")
-    with contextlib.ExitStack():
+    with contextlib.ExitStack() as cleanups:
+        # Want to know when the handler exited for any reason.
+        cleanups.callback(_log.info, "next_visit handling completed.")
         consumer.subscribe([bucket_topic])
+        cleanups.callback(consumer.unsubscribe)
         _log.debug(f"Created subscription to '{bucket_topic}'")
         # Try to get a message right away to minimize race conditions
         startup_response = consumer.consume(num_messages=1, timeout=0.001)
@@ -337,6 +340,8 @@ def next_visit_handler() -> tuple[str, int]:
                                               skymap,
                                               local_repo.name,
                                               local_cache)
+                    # TODO: pipeline execution requires a clean run until DM-38041.
+                    cleanups.callback(mwi.clean_local_repo, expid_set)
                     # Copy calibrations for this detector/visit
                     mwi.prep_butler()
 
@@ -440,9 +445,6 @@ def next_visit_handler() -> tuple[str, int]:
                             _log.error("Processing failed: ", exc_info=e)
                             _try_export(mwi, expid_set, _log)
                             return f"An error occurred during processing: {e}.", 500
-                        finally:
-                            # TODO: run_pipeline requires a clean run until DM-38041.
-                            mwi.clean_local_repo(expid_set)
                         return "Pipeline executed", 200
                 else:
                     _log.error("Timed out waiting for images.")
@@ -453,10 +455,6 @@ def next_visit_handler() -> tuple[str, int]:
             _log.error("Service interrupted. Shutting down *without* syncing to the central repo.")
             return "The worker was interrupted before it could complete the request. " \
                    "Retrying the request may not be safe.", 500
-        finally:
-            consumer.unsubscribe()
-            # Want to know when the handler exited for any reason.
-            _log.info("next_visit handling completed.")
 
 
 @app.errorhandler(500)
