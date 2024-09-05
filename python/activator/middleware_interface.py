@@ -816,7 +816,7 @@ class MiddlewareInterface:
         # Temporary workarounds until we have a prompt-processing default top-level collection
         # in shared repos, and raw collection in dev repo, and then we can organize collections
         # without worrying about DRP use cases.
-        self.butler.collection_chains.prepend_chain(
+        self.butler.collections.prepend_chain(
             self.instrument.makeUmbrellaCollectionName(),
             [self._collection_template,
              self.instrument.makeDefaultRawIngestRunName(),
@@ -904,7 +904,7 @@ class MiddlewareInterface:
             calib_latest = self._get_local_calib_collection(calib_collection)
             new = self.butler.registry.registerCollection(calib_latest, CollectionType.CALIBRATION)
             if new:
-                self.butler.collection_chains.prepend_chain(calib_collection, [calib_latest])
+                self.butler.collections.prepend_chain(calib_collection, [calib_latest])
 
             # VALIDITY-HACK: real associations are expensive to query. Just apply
             # arbitrary ones and assume that the first collection in the chain is
@@ -1617,7 +1617,7 @@ class MiddlewareInterface:
             self.central_butler.registry.registerCollection(output_chain, CollectionType.CHAINED)
 
             try:
-                self.central_butler.collection_chains.prepend_chain(output_chain, output_runs)
+                self.central_butler.collections.prepend_chain(output_chain, output_runs)
             except sqlalchemy.exc.IntegrityError as e:
                 # HACK: I don't know of a better way to distinguish exceptions
                 # blended by SQLAlchemy. To be removed on DM-43316.
@@ -1707,7 +1707,7 @@ class MiddlewareInterface:
                     calib_chain,
                     flattenChains=True,
                     collectionTypes=CollectionType.RUN)
-                self.butler.collection_chains.redefine_chain(calib_chain, [])
+                self.butler.collections.redefine_chain(calib_chain, [])
                 self.butler.pruneDatasets(calib_refs, disassociate=True, unstore=True, purge=True)
                 for member in calib_taggeds:
                     self.butler.registry.removeCollection(member)
@@ -1888,5 +1888,5 @@ def _remove_run_completely(butler, run):
         The run to remove.
     """
     for chain in butler.registry.getCollectionParentChains(run):
-        butler.collection_chains.remove_from_chain(chain, [run])
+        butler.collections.remove_from_chain(chain, [run])
     butler.removeRuns([run], unstore=True)
