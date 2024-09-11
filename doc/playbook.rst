@@ -278,7 +278,7 @@ To inspect table permissions:
 .. code-block:: psql
 
    set search_path to <namespace>;
-   \dq
+   \dp
 
 Most tables should grant the INSERT (a), SELECT (r), UPDATE (w), and DELETE (d) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcomcamsim_prompt``).
 Sequences should have SELECT (r) and USAGE (U) instead.
