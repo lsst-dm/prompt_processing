@@ -4,9 +4,7 @@ description: Preprocessing pipeline specialized for LSSTComCamSim with forced so
 # processing task. It is not intended for general use, and unlike ApPipe proper
 # will not be synced to the ap_pipe package.
 imports:
-  - location: $AP_PIPE_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
-    include:
-      - preload
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTComCamSim/Preprocessing.yaml
 tasks:
   loadDiaCatalogs:
     class: lsst.ap.association.LoadDiaCatalogsTask

@@ -7,8 +7,6 @@ description: >-
 # will not be synced to the ap_pipe package.
 imports:
   - location: $PROMPT_PROCESSING_DIR/pipelines/LATISS/ApPipe.yaml
-    include:
-      - prompt
 tasks:
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
