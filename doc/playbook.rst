@@ -280,14 +280,17 @@ To inspect table permissions:
    set search_path to <namespace>;
    \dp
 
-Most tables should grant the INSERT (a), SELECT (r), UPDATE (w), and DELETE (d) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcomcamsim_prompt``).
-Sequences should have SELECT (r) and USAGE (U) instead.
+Most tables should grant the INSERT (a), SELECT (r), and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcomcamsim_prompt``).
+Some tables also need DELETE (d), but we are still confirming which ones.
+
+We need SELECT (r) and USAGE (U) permissions for the sequence ``collection_seq_collection_id``, but *not* for ``dataset_calibs_*_seq_id``, ``dataset_type_seq_id``, or ``dimension_graph_key_seq_id``.
+We expect that most future sequences will only be touched by repository maintenance and not by pipeline runs or data transfers.
 
 If any tables are missing permissions, run:
 
 .. code-block:: psql
 
-   GRANT insert,select,update,delete ON TABLE "<table1>", "<table2>" TO hsc_prompt,latiss_prompt,lsstcomcamsim_prompt;
+   GRANT insert, select, update ON TABLE "<table1>", "<table2>" TO hsc_prompt, latiss_prompt, lsstcomcamsim_prompt;
 
 See the `GRANT command`_ for other options.
 
