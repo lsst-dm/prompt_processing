@@ -4,9 +4,7 @@ description: Preprocessing pipeline specialized for LATISS, with forced source l
 # processing task. It is not intended for general use, and unlike ApPipe proper
 # will not be synced to the ap_pipe package.
 imports:
-  - location: $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml
-    include:
-      - preload
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LATISS/Preprocessing.yaml
 tasks:
   loadDiaCatalogs:
     class: lsst.ap.association.LoadDiaCatalogsTask
