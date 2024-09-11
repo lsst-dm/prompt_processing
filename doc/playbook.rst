@@ -290,7 +290,7 @@ If any tables are missing permissions, run:
 
 .. code-block:: psql
 
-   GRANT insert,select,update ON TABLE "<table1>", "<table2>" TO hsc_prompt,latiss_prompt,lsstcomcamsim_prompt;
+   GRANT insert, select, update ON TABLE "<table1>", "<table2>" TO hsc_prompt, latiss_prompt, lsstcomcamsim_prompt;
 
 See the `GRANT command`_ for other options.
 
