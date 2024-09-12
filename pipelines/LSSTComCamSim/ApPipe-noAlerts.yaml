@@ -1,0 +1,11 @@
+description: >-
+  Alert Production pipeline specialized for LSSTComCamSim,
+  with alert distribution turned off.
+
+imports:
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
+tasks:
+  diaPipe:
+    class: lsst.ap.association.DiaPipelineTask
+    config:
+      alertPackager.doProduceAlerts: False
