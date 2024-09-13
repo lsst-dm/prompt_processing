@@ -275,18 +275,20 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Need to refresh the butler to get all the dimensions/collections.
         butler.registry.refresh()
         for patch in (7, 8):
-            self.assertTrue(
-                butler.exists('goodSeeingCoadd', tract=8604, patch=patch, band="g",
+            with self.subTest(tract=8604, patch=patch):
+                self.assertTrue(
+                    butler.exists('goodSeeingCoadd', tract=8604, patch=patch, band="g",
+                                  skymap=skymap_name,
+                                  full_check=True,
+                                  collections=self.umbrella)
+                )
+        with self.subTest(tract=8604, patch=0):
+            self.assertFalse(
+                butler.exists('goodSeeingCoadd', tract=8604, patch=0, band="g",
                               skymap=skymap_name,
                               full_check=True,
                               collections=self.umbrella)
             )
-        self.assertFalse(
-            butler.exists('goodSeeingCoadd', tract=8604, patch=0, band="g",
-                          skymap=skymap_name,
-                          full_check=True,
-                          collections=self.umbrella)
-        )
 
         # Check that preloaded datasets have been generated
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
