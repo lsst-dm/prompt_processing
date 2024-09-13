@@ -307,7 +307,12 @@ One raw was ingested, visit-defined, and kept in the development central repo, s
 .. code-block:: sh
 
    apdb-cli create-sql "sqlite:///apdb.db" apdb_config.py
-   pipetask run -b s3://rubin-pp-dev-users/central_repo -i LATISS/raw/all,LATISS/defaults,LATISS/templates -o u/username/collection  -d "detector=0 and instrument='LATISS' and exposure=2023082900500 and visit_system=0" -p $PROMPT_PROCESSING_DIR/pipelines/LATISS/ApPipe.yaml -c parameters:apdb_config=apdb_config.py -c diaPipe:doPackageAlerts=False --register-dataset-types --init-only
+   pipetask run -b s3://rubin-pp-dev-users/central_repo -i LATISS/raw/all,LATISS/defaults,LATISS/templates -o u/username/collection  -d "detector=0 and instrument='LATISS' and exposure=2023082900500 and visit_system=0" -p $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml -c parameters:apdb_config=apdb_config.py -c diaPipe:doPackageAlerts=False --register-dataset-types --init-only
+
+.. note::
+
+   The use of ``$AP_PIPE_DIR`` is not a typo.
+   The Prompt Processing pipelines run subsets that only work in the context of Prompt Processing; running the baseline version of the pipeline ensures that *all* dataset types are registered.
 
 
 Development Service
