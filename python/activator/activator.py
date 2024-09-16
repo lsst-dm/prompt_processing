@@ -604,12 +604,12 @@ def server_error(e: Exception) -> tuple[str, int]:
 def main():
     # This function is only called in test environments. Container
     # deployments call `create_app()()` through Gunicorn.
-    if platform == "knative"
+    if platform == "knative":
        log.info("starting knative instance")
        app = create_app()
        app.run(host="127.0.0.1", port=8080, debug=True)
     # starts keda instance of the application
-    elif platform == "keda"
+    elif platform == "keda":
         log.info("starting keda instance")
         keda_start()
     else:
