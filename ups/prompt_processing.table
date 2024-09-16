@@ -21,7 +21,6 @@ setupRequired(pipe_base)
 setupRequired(verify)
 
 # used by tests
-setupRequired(obs_decam)
 setupRequired(obs_subaru)
 
 envPrepend(PYTHONPATH, ${PRODUCT_DIR}/python)

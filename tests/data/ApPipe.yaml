@@ -1,27 +1,11 @@
-description: End to end Alert Production pipeline specialized for HiTS-2015
-#
-# This file was copied from ap_verify_ci_hits2015/pipelines/ApPipe.yaml
-# with two modifications: (1) doSolarSystemAssociation is disabled, and
-# (2) the calibrateImage.py file from this package is used. The
-# calibrateImage.py file was copied from ap_verify_ci_hits2015 too.
+description: Test version of the main AP pipeline
 
 imports:
-  - location: $AP_PIPE_DIR/pipelines/DECam/ApPipe.yaml
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
 parameters:
   # Use dataset's specific templates
   coaddName: goodSeeing
 tasks:
-  isr:
-    class: lsst.ip.isr.IsrTask
-    config:
-      # This dataset contains CP calibs, not regular ones
-      connections.bias: cpBias
-      connections.flat: cpFlat
-  calibrateImage:
-    class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
-    config:
-      # Use dataset's reference catalogs
-      file: $PROMPT_PROCESSING_DIR/tests/data/calibrateImage.py
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:

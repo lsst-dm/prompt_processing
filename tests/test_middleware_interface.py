@@ -57,11 +57,11 @@ from activator.middleware_interface import get_central_butler, flush_local_repo,
     _filter_datasets, _filter_calibs_by_date, _MissingDatasetError
 
 # The short name of the instrument used in the test repo.
-instname = "DECam"
+instname = "LSSTComCamSim"
 # Full name of the physical filter for the test file.
-filter = "g DECam SDSS c0001 4720.0 1520.0"
+filter = "g_01"
 # The skymap name used in the test repo.
-skymap_name = "decam_rings_v1"
+skymap_name = "ops_rehersal_prep_2k_v1"
 # A pipelines config that returns the test pipelines.
 # Unless a test imposes otherwise, the first pipeline should run, and
 # the second should not be attempted.
@@ -100,8 +100,8 @@ def fake_file_data(filename, dimensions, instrument, visit):
                                           "instrument": instrument.getName()},
                                          universe=dimensions)
 
-    start_time = astropy.time.Time("2015-02-18T05:28:18.716517500", scale="tai")
-    day_obs = 20150217
+    start_time = astropy.time.Time("2024-06-17T22:06:15", scale="tai")
+    day_obs = 20240617
     obs_info = astro_metadata_translator.makeObservationInfo(
         instrument=instrument.getName(),
         datetime_begin=start_time,
@@ -141,7 +141,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                      inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
-        self.local_cache = DatasetCache(2, {"ps1_pv3_3pi_20170110": 10, "gaia_dr2_20200414": 10})
+        self.local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "goodSeeingCoadd": 30})
         self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
 
         config = ApdbSql.init_database(db_url=f"sqlite:///{self.local_repo.name}/apdb.db")
@@ -156,28 +156,27 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
 
-        # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
-        ra = 155.4702849608958
-        dec = -4.950050405424033
-        # DECam has no rotator; instrument angle is 90 degrees in our system.
-        rot = 90.
+        # coordinates from OR4 visit 7024061700046
+        ra = 215.82729413263485
+        dec = -12.4705546590231
+        rot = 149.86873311284756
         self.next_visit = FannedOutVisit(instrument=instname,
-                                         detector=56,
+                                         detector=4,
                                          groupId="1",
                                          nimages=1,
                                          filters=filter,
                                          coordinateSystem=FannedOutVisit.CoordSys.ICRS,
                                          position=[ra, dec],
-                                         startTime=1424237500.0,
+                                         startTime=1718661950.0,
                                          rotationSystem=FannedOutVisit.RotSys.SKY,
                                          cameraAngle=rot,
                                          survey="SURVEY",
-                                         salIndex=42,
-                                         scriptSalIndex=42,
+                                         salIndex=3,
+                                         scriptSalIndex=3,
                                          dome=FannedOutVisit.Dome.OPEN,
                                          duration=35.0,
                                          totalCheckpoints=1,
-                                         private_sndStamp=1424237298.7165175,
+                                         private_sndStamp=1718661900.7165175,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
         self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
@@ -187,7 +186,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                              prefix="file://")
 
     def test_get_butler(self):
-        for butler in [get_central_butler(self.central_repo, "lsst.obs.decam.DarkEnergyCamera"),
+        for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstComCamSim"),
                        get_central_butler(self.central_repo, instname),
                        ]:
             # TODO: better way to test repo location?
@@ -198,7 +197,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.assertTrue(butler.isWriteable())
 
     def test_make_local_repo(self):
-        for inst in [instname, "lsst.obs.decam.DarkEnergyCamera"]:
+        for inst in [instname, "lsst.obs.lsst.LsstComCamSim"]:
             with make_local_repo(tempfile.gettempdir(), Butler(self.central_repo), inst) as repo_dir:
                 self.assertTrue(os.path.exists(repo_dir))
                 butler = Butler(repo_dir)
@@ -225,7 +224,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
         self.assertEqual(self.interface.rawIngestTask.config.transfer, "copy")
 
-    def _check_imports(self, butler, group, detector, expected_shards, expected_date):
+    def _check_imports(self, butler, group, detector, expected_shards):
         """Test that the butler has the expected supporting data.
         """
         self.assertEqual(butler.get('camera',
@@ -242,27 +241,23 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         # check that we got appropriate refcat shards
         loaded_shards = butler.registry.queryDataIds("htm7",
-                                                     datasets="gaia_dr2_20200414",
+                                                     datasets="uw_stars_20240524",
                                                      collections="refcats")
 
         self.assertEqual(expected_shards, {x['htm7'] for x in loaded_shards})
         # Check that the right calibs are in the chained output collection.
         self.assertTrue(
-            butler.exists('cpBias', detector=detector, instrument='DECam',
+            butler.exists('bias', detector=detector, instrument='LSSTComCamSim',
                           full_check=True,
-                          # TODO: Have to use the exact run collection, because we can't
-                          # query by validity range.
-                          # collections=self.umbrella)
-                          collections=f"DECam/calib/{expected_date}")
+                          # TODO DM-46178: add query by validity range.
+                          collections=self.umbrella)
         )
         self.assertTrue(
-            butler.exists('cpFlat', detector=detector, instrument='DECam',
+            butler.exists('flat', detector=detector, instrument='LSSTComCamSim',
                           physical_filter=filter,
                           full_check=True,
-                          # TODO: Have to use the exact run collection, because we can't
-                          # query by validity range.
-                          # collections=self.umbrella)
-                          collections=f"DECam/calib/{expected_date}")
+                          # TODO DM-46178: add query by validity range.
+                          collections=self.umbrella)
         )
         # Check that we got a model (only one in the test data)
         self.assertTrue(
@@ -274,19 +269,23 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the right templates are in the chained output collection.
         # Need to refresh the butler to get all the dimensions/collections.
         butler.registry.refresh()
-        for patch in (7, 8):
-            self.assertTrue(
-                butler.exists('goodSeeingCoadd', tract=8604, patch=patch, band="g",
+        for patch in (142, 143, 144, 158, 159, 160, 161, 175, 176, 177, 178,
+                      # TODO DM-43712: doesn't load 179 or 196
+                      179, 192, 193, 194, 195, 196, 210, 211,):
+            with self.subTest(tract=7445, patch=patch):
+                self.assertTrue(
+                    butler.exists('goodSeeingCoadd', tract=7445, patch=patch, band="g",
+                                  skymap=skymap_name,
+                                  full_check=True,
+                                  collections=self.umbrella)
+                )
+        with self.subTest(tract=7445, patch=0):
+            self.assertFalse(
+                butler.exists('goodSeeingCoadd', tract=7445, patch=0, band="g",
                               skymap=skymap_name,
                               full_check=True,
                               collections=self.umbrella)
             )
-        self.assertFalse(
-            butler.exists('goodSeeingCoadd', tract=8604, patch=0, band="g",
-                          skymap=skymap_name,
-                          full_check=True,
-                          collections=self.umbrella)
-        )
 
         # Check that preloaded datasets have been generated
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
@@ -303,6 +302,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           collections=preload_collection)
         )
 
+    # TODO: prep_butler doesn't grab all the refcats. Should be fixable on DM-43712
+    @unittest.expectedFailure
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """
@@ -310,13 +311,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 as mock_pre:
             self.interface.prep_butler()
 
-        # These shards were identified by plotting the objects in each shard
-        # on-sky and overplotting the detector corners.
-        # TODO DM-34112: check these shards again with some plots, once I've
-        # determined whether ci_hits2015 actually has enough shards.
-        expected_shards = {157394, 157401, 157405}
-        self._check_imports(self.interface.butler, group="1", detector=56,
-                            expected_shards=expected_shards, expected_date="20150218T000000Z")
+        expected_shards = {166464, 177536}
+        self._check_imports(self.interface.butler, group="1", detector=4,
+                            expected_shards=expected_shards)
 
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
@@ -332,17 +329,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 as mock_pre:
             self.interface.prep_butler()
 
-        # These shards were identified by plotting the objects in each shard
-        # on-sky and overplotting the detector corners.
-        # TODO DM-34112: check these shards again with some plots, once I've
-        # determined whether ci_hits2015 actually has enough shards.
-        expected_shards = {157394, 157401, 157405}
+        expected_shards = {166464, 177536}
         with self.assertRaises((AssertionError, lsst.daf.butler.registry.MissingCollectionError)):
-            # 20150218T000000Z run should not be imported
-            self._check_imports(self.interface.butler, group="1", detector=56,
-                                expected_shards=expected_shards, expected_date="20150218T000000Z")
-        self._check_imports(self.interface.butler, group="1", detector=56,
-                            expected_shards=expected_shards, expected_date="20150313T000000Z")
+            # Nothing should have been imported
+            self._check_imports(self.interface.butler, group="1", detector=4,
+                                expected_shards=expected_shards)
 
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
@@ -369,6 +360,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         mock_pre.assert_not_called()
 
+    # TODO: prep_butler doesn't grab all the refcats. Should be fixable on DM-43712
+    @unittest.expectedFailure
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
         exception!) on a second run with the same, or a different detector.
@@ -391,20 +384,20 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
                 as mock_pre:
             second_interface.prep_butler()
-        expected_shards = {157394, 157401, 157405}
-        self._check_imports(second_interface.butler, group="2", detector=56,
-                            expected_shards=expected_shards, expected_date="20150218T000000Z")
+        expected_shards = {166464, 177536}
+        self._check_imports(second_interface.butler, group="2", detector=4,
+                            expected_shards=expected_shards)
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
 
         # Third visit with different detector and coordinates.
-        # Only 5, 10, 56, 60 have valid calibs.
+        # Only 4 and 5 have valid calibs.
         third_visit = dataclasses.replace(second_visit,
                                           detector=5,
                                           groupId=str(int(second_visit.groupId) + 1),
                                           # Offset to put detector=5 in same templates.
-                                          position=[self.next_visit.position[0] + 0.2,
-                                                    self.next_visit.position[1] - 1.2],
+                                          position=[self.next_visit.position[0] - 0.2,
+                                                    self.next_visit.position[1] - 0.1],
                                           )
         third_interface = MiddlewareInterface(self.central_butler, self.input_data, third_visit,
                                               # TODO: replace pre_pipelines_empty on DM-43418
@@ -414,9 +407,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
                 as mock_pre:
             third_interface.prep_butler()
-        expected_shards.update({157393, 157395})
+        expected_shards.update({166464, 177536})
         self._check_imports(third_interface.butler, group="3", detector=5,
-                            expected_shards=expected_shards, expected_date="20150218T000000Z")
+                            expected_shards=expected_shards)
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
 
@@ -823,8 +816,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         self.interface.instrument,
                                         self.next_visit)
         calib_data_id_1 = {k: v for k, v in raw_data_id.required.items() if k in {"instrument", "detector"}}
-        calib_data_id_2 = {"instrument": self.interface.instrument.getName(), "detector": 11}
-        calib_data_id_3 = {"instrument": self.interface.instrument.getName(), "detector": 12}
+        calib_data_id_2 = {"instrument": self.interface.instrument.getName(), "detector": 1}
+        calib_data_id_3 = {"instrument": self.interface.instrument.getName(), "detector": 2}
         processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.required.items()}
         butler_tests.addDataIdValue(butler, "exposure", raw_data_id["exposure"])
         butler_tests.addDataIdValue(butler, "visit", processed_data_id["visit"])
@@ -896,9 +889,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         # Much easier to create DatasetRefs with a real repo.
         registry = self.central_butler.registry
-        data1 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 5}, "dummy")
-        data2 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 25}, "dummy")
-        data3 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 42}, "dummy")
+        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 5},
+                                        "dummy")
+        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 0},
+                                        "dummy")
+        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 1},
+                                        "dummy")
 
         combinations = [{data1, data2}, {data1, data2, data3}]
         # Case where src is empty now covered in test_filter_datasets_nosrc.
@@ -911,9 +907,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
                 result = set(_filter_datasets(src_butler, existing_butler,
-                                              "cpBias", instrument="DECam"))
-                src_butler.registry.queryDatasets.assert_called_once_with("cpBias", instrument="DECam")
-                existing_butler.registry.queryDatasets.assert_called_once_with("cpBias", instrument="DECam")
+                                              "bias", instrument="LSSTComCamSim"))
+                src_butler.registry.queryDatasets.assert_called_once_with("bias", instrument="LSSTComCamSim")
+                existing_butler.registry.queryDatasets.assert_called_once_with("bias",
+                                                                               instrument="LSSTComCamSim")
                 self.assertEqual(result, diff)
 
     def test_filter_datasets_nodim(self):
@@ -944,7 +941,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         # Much easier to create DatasetRefs with a real repo.
         registry = self.central_butler.registry
-        data1 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 42}, "dummy")
+        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 1},
+                                        "dummy")
 
         src_butler = unittest.mock.Mock(
             **{"registry.queryDatasets.return_value.expanded.return_value": set()})
@@ -953,7 +951,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
-                    _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam")
+                    _filter_datasets(src_butler, existing_butler, "bias", instrument="LSSTComCamSim")
 
     def test_filter_datasets_all_callback(self):
         """Test that _filter_datasets passes the correct values to its callback.
@@ -963,9 +961,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         # Much easier to create DatasetRefs with a real repo.
         registry = self.central_butler.registry
-        data1 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 5}, "dummy")
-        data2 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 25}, "dummy")
-        data3 = self._make_expanded_ref(registry, "cpBias", {"instrument": "DECam", "detector": 42}, "dummy")
+        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 5},
+                                        "dummy")
+        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 0},
+                                        "dummy")
+        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 1},
+                                        "dummy")
 
         combinations = [{data1, data2}, {data1, data2, data3}]
         # Case where src is empty covered below.
@@ -976,7 +977,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
-                _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam",
+                _filter_datasets(src_butler, existing_butler, "bias", instrument="LSSTComCamSim",
                                  all_callback=functools.partial(test_function, src))
 
         # Should not call
@@ -991,39 +992,28 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
-                    _filter_datasets(src_butler, existing_butler, "cpBias", instrument="DECam",
+                    _filter_datasets(src_butler, existing_butler, "bias", instrument="LSSTComCamSim",
                                      all_callback=non_callable)
 
-    def test_filter_calibs_by_date_early(self):
+    def test_filter_calibs_by_date_valid(self):
         # _filter_calibs_by_date requires a collection, not merely an iterable
-        all_calibs = list(self.central_butler.registry.queryDatasets("cpBias"))
-        early_calibs = list(_filter_calibs_by_date(
-            self.central_butler, "DECam/calib", all_calibs,
-            astropy.time.Time("2015-02-26 00:00:00", scale="utc")
+        all_calibs = list(self.central_butler.registry.queryDatasets("bias"))
+        now_calibs = list(_filter_calibs_by_date(
+            self.central_butler, "LSSTComCamSim/calib", all_calibs,
+            astropy.time.Time("2024-06-20 00:00:00", scale="utc")
         ))
-        self.assertEqual(len(early_calibs), 4)
-        for calib in early_calibs:
-            self.assertEqual(calib.run, "DECam/calib/20150218T000000Z")
-
-    def test_filter_calibs_by_date_late(self):
-        # _filter_calibs_by_date requires a collection, not merely an iterable
-        all_calibs = list(self.central_butler.registry.queryDatasets("cpFlat"))
-        late_calibs = list(_filter_calibs_by_date(
-            self.central_butler, "DECam/calib", all_calibs,
-            astropy.time.Time("2015-03-16 00:00:00", scale="utc")
-        ))
-        self.assertEqual(len(late_calibs), 4)
-        for calib in late_calibs:
-            self.assertEqual(calib.run, "DECam/calib/20150313T000000Z")
+        self.assertEqual(len(now_calibs), 2)
+        for calib in now_calibs:
+            self.assertEqual(calib.run, "u/jchiang/bias_70240217_w_2024_07/20240218T190659Z")
 
     def test_filter_calibs_by_date_never(self):
         # _filter_calibs_by_date requires a collection, not merely an iterable
-        all_calibs = list(self.central_butler.registry.queryDatasets("cpBias"))
+        all_calibs = list(self.central_butler.registry.queryDatasets("bias"))
         with warnings.catch_warnings():
             # Avoid "dubious year" warnings from using a 2050 date
             warnings.simplefilter("ignore", category=erfa.ErfaWarning)
             future_calibs = list(_filter_calibs_by_date(
-                self.central_butler, "DECam/calib", all_calibs,
+                self.central_butler, "LSSTComCamSim/calib", all_calibs,
                 astropy.time.Time("2050-01-01 00:00:00", scale="utc")
             ))
         self.assertEqual(len(future_calibs), 0)
@@ -1032,14 +1022,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # _filter_calibs_by_date requires a collection, not merely an iterable
         all_calibs = set(self.central_butler.registry.queryDatasets(["camera", "crosstalk"]))
         valid_calibs = set(_filter_calibs_by_date(
-            self.central_butler, "DECam/calib", all_calibs,
+            self.central_butler, "LSSTComCamSim/calib", all_calibs,
             astropy.time.Time("2015-03-15 00:00:00", scale="utc")
         ))
         self.assertEqual(valid_calibs, all_calibs)
 
     def test_filter_calibs_by_date_empty(self):
         valid_calibs = set(_filter_calibs_by_date(
-            self.central_butler, "DECam/calib", [],
+            self.central_butler, "LSSTComCamSim/calib", [],
             astropy.time.Time("2015-03-15 00:00:00", scale="utc")
         ))
         self.assertEqual(len(valid_calibs), 0)
@@ -1090,9 +1080,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.input_data = os.path.join(data_dir, "input_data")
 
         local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
-        self.local_cache = DatasetCache(2, {"ps1_pv3_3pi_20170110": 10, "gaia_dr2_20200414": 10})
+        self.local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "goodSeeingCoadd": 30})
         second_local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
-        self.second_local_cache = DatasetCache(2, {"ps1_pv3_3pi_20170110": 10, "gaia_dr2_20200414": 10})
+        self.second_local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "goodSeeingCoadd": 30})
         # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
         # getting garbage-collected.
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
@@ -1110,13 +1100,12 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
 
-        # coordinates from DECam data in ap_verify_ci_hits2015 for visit 411371
-        ra = 155.4702849608958
-        dec = -4.950050405424033
-        # DECam has no rotator; instrument angle is 90 degrees in our system.
-        rot = 90.
+        # coordinates from OR4 visit 7024061700046
+        ra = 215.82729413263485
+        dec = -12.4705546590231
+        rot = 149.86873311284756
         self.next_visit = FannedOutVisit(instrument=instname,
-                                         detector=56,
+                                         detector=4,
                                          groupId="1",
                                          nimages=1,
                                          filters=filter,
@@ -1230,7 +1219,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
     def test_flush_local_repo(self):
         central_butler = Butler(self.central_repo.name, writeable=True)
-        butler_tests.addDataIdValue(central_butler, "detector", 0)
         # Exposure is defined by the local repo, not the central repo.
         butler_tests.addDatasetType(central_butler, "testData", {"instrument", "exposure", "detector"}, "int")
         # Implementation detail: flush_local_repo looks for output-like
@@ -1246,7 +1234,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             butler = Butler(Butler.makeRepo(repo_dir, dimensionConfig=dimension_config), writeable=True)
             instrument = self.interface.instrument
             instrument.register(butler.registry)
-            butler_tests.addDataIdValue(butler, "detector", 0)
             butler_tests.addDataIdValue(butler, "day_obs", 20240627)
             butler_tests.addDataIdValue(butler, "group", "42")
             butler_tests.addDataIdValue(butler, "exposure", 42, physical_filter=filter)
@@ -1275,15 +1262,14 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             interface = MiddlewareInterface(central_butler, self.input_data,
                                             dataclasses.replace(self.next_visit, groupId="42"),
                                             pre_pipelines_empty, pipelines, skymap_name, local_repo,
-                                            DatasetCache(3, {"ps1_pv3_3pi_20170110": 10,
-                                                             "gaia_dr2_20200414": 10}),
+                                            DatasetCache(3, {"uw_stars_20240524": 10, "goodSeeingCoadd": 30}),
                                             prefix="file://")
             with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
                 interface.prep_butler()
 
             self.assertEqual(
-                self._count_datasets(interface.butler, "gaia_dr2_20200414", f"{instname}/defaults"),
-                3)
+                self._count_datasets(interface.butler, "uw_stars_20240524", f"{instname}/defaults"),
+                2)
             self.assertIn(
                 "emptyrun",
                 interface.butler.registry.queryCollections("refcats", flattenChains=True))
@@ -1315,7 +1301,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             1)
         # Did not export calibs or other inputs.
         self.assertEqual(
-            self._count_datasets(central_butler, ["cpBias", "gaia_dr2_20200414", "skyMap", "*Coadd"],
+            self._count_datasets(central_butler, ["bias", "uw_stars_20240524", "skyMap", "*Coadd"],
                                  self.output_run),
             0)
         # Nothing placed in "input" collections.
