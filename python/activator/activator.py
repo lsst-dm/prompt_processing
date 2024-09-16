@@ -50,7 +50,8 @@ from .raw import (
 from .repo_registry import LocalRepoRegistry
 from .visit import FannedOutVisit
 
-
+# Platform that prompt processing will run on
+platform = os.environ["PLATFORM"]
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
 # The skymap to use in the central repo
@@ -75,6 +76,10 @@ bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
 pre_pipelines = PipelinesConfig(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
 # The main pipelines to execute and the conditions in which to choose them.
 main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
+# Kafka cluster with next visit fanned out messages.
+next_visit_fan_out_kafka_cluster = os.environ["NEXT_VISIT_FAN_OUT_KAFKA_CLUSTER"]
+# Kafka group for next visit messages.
+next_visit_group_id = os.environ["NEXT_VISIT_KAFKA_GROUP_ID"]
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -169,6 +174,19 @@ def create_app():
         # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
         sys.exit(3)
 
+def keda_start():
+      
+    # Create consumer
+    consumer = Consumer({
+        "bootstrap.servers": next_visit_fan_out_kafka_cluster,
+        "group.id": next_visit_kafka_group_id,
+        "auto.offset.reset": "earliest",
+    }
+    next_visit_message = consumer.consume(num_messages=1, timeout=5)
+    log.info(next_visit_message)
+
+
+    
 
 def _graceful_shutdown(signum: int, stack_frame):
     """Signal handler for cases where the service should gracefully shut down.
@@ -589,9 +607,16 @@ def server_error(e: Exception) -> tuple[str, int]:
 def main():
     # This function is only called in test environments. Container
     # deployments call `create_app()()` through Gunicorn.
-    app = create_app()
-    app.run(host="127.0.0.1", port=8080, debug=True)
-
+    if platform == "knative"
+       log.info("starting knative instance")
+       app = create_app()
+       app.run(host="127.0.0.1", port=8080, debug=True)
+    # starts keda instance of the application
+    elif platform == "keda"
+        log.info("starting keda instance")
+        keda_start()
+    else:
+        log.info("no platform defined")
 
 if __name__ == "__main__":
     main()

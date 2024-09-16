@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - tickets/DM-43082
     paths:
       - '.github/workflows/build-service.yml'
       - 'config/**'
