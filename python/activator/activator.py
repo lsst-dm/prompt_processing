@@ -79,7 +79,7 @@ main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
 # Kafka cluster with next visit fanned out messages.
 next_visit_fan_out_kafka_cluster = os.environ["NEXT_VISIT_FAN_OUT_KAFKA_CLUSTER"]
 # Kafka group for next visit messages.
-next_visit_group_id = os.environ["NEXT_VISIT_KAFKA_GROUP_ID"]
+next_visit_kakfa_group_id = os.environ["NEXT_VISIT_KAFKA_GROUP_ID"]
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -174,16 +174,16 @@ def create_app():
         # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
         sys.exit(3)
 
+
 def keda_start():
-      
-    # Create consumer
-    consumer = Consumer({
+    next_visit_fan_out_consumer = kafka.Consumer({
         "bootstrap.servers": next_visit_fan_out_kafka_cluster,
-        "group.id": next_visit_kafka_group_id,
+        "group.id": next_visit_kakfa_group_id,
         "auto.offset.reset": "earliest",
     })
-    next_visit_message = consumer.consume(num_messages=1, timeout=5)
-    log.info(next_visit_message)
+    next_visit_fan_out_message = next_visit_fan_out_consumer.consume(num_messages=1, timeout=5)
+    _log.info(next_visit_fan_out_message)
+
 
 def _graceful_shutdown(signum: int, stack_frame):
     """Signal handler for cases where the service should gracefully shut down.
@@ -605,15 +605,16 @@ def main():
     # This function is only called in test environments. Container
     # deployments call `create_app()()` through Gunicorn.
     if platform == "knative":
-       log.info("starting knative instance")
-       app = create_app()
-       app.run(host="127.0.0.1", port=8080, debug=True)
+        _log.info("starting knative instance")
+        app = create_app()
+        app.run(host="127.0.0.1", port=8080, debug=True)
     # starts keda instance of the application
     elif platform == "keda":
-        log.info("starting keda instance")
+        _log.info("starting keda instance")
         keda_start()
     else:
-        log.info("no platform defined")
+        _log.info("no platform defined")
+
 
 if __name__ == "__main__":
     main()
