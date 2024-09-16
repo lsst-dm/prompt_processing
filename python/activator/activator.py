@@ -181,12 +181,9 @@ def keda_start():
         "bootstrap.servers": next_visit_fan_out_kafka_cluster,
         "group.id": next_visit_kafka_group_id,
         "auto.offset.reset": "earliest",
-    }
+    })
     next_visit_message = consumer.consume(num_messages=1, timeout=5)
     log.info(next_visit_message)
-
-
-    
 
 def _graceful_shutdown(signum: int, stack_frame):
     """Signal handler for cases where the service should gracefully shut down.
