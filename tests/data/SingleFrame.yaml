@@ -4,5 +4,4 @@ imports:
   - location: $PROMPT_PROCESSING_DIR/tests/data/ApPipe.yaml
     include:
       - isr
-      - characterizeImage
-      - calibrate
+      - calibrateImage
