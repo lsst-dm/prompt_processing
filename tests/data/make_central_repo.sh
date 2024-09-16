@@ -5,7 +5,8 @@
 
 REPO="${PROMPT_PROCESSING_DIR}/tests/data/central_repo/:?Can't find prompt_processing repo; is it set up?"
 
-butler create "$REPO"
+# Force version 6 repo for compatibility testing
+butler create "$REPO" --dimension-config "$DAF_BUTLER_DIR/python/lsst/daf/butler/configs/old_dimensions/daf_butler_universe6.yaml"
 butler register-instrument "$REPO" lsst.obs.lsst.LsstComCamSim
 
 # Import datasets
