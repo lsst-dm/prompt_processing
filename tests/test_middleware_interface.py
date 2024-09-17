@@ -1042,7 +1042,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
     def test_filter_calibs_by_date_unbounded(self):
         # _filter_calibs_by_date requires a collection, not merely an iterable
-        all_calibs = set(self.central_butler.registry.queryDatasets(["camera", "crosstalk"]))
+        all_calibs = set(self.central_butler.registry.queryDatasets(["camera", "transmission_filter"]))
         valid_calibs = set(_filter_calibs_by_date(
             self.central_butler, "LSSTComCamSim/calib", all_calibs,
             astropy.time.Time("2015-03-15 00:00:00", scale="utc")
@@ -1133,7 +1133,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          filters=filter,
                                          coordinateSystem=FannedOutVisit.CoordSys.ICRS,
                                          position=[ra, dec],
-                                         startTime=1424237500.0,
+                                         startTime=1718661950.0,
                                          rotationSystem=FannedOutVisit.RotSys.SKY,
                                          cameraAngle=rot,
                                          survey="SURVEY",
@@ -1142,7 +1142,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          dome=FannedOutVisit.Dome.OPEN,
                                          duration=35.0,
                                          totalCheckpoints=1,
-                                         private_sndStamp=1424237298.716517500,
+                                         private_sndStamp=1718661900.716517500,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
 
