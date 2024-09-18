@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - '.github/workflows/build-service.yml'
+      - 'config/**'
       - 'pipelines/**'
       - 'python/activator/**'
       - 'tests/**'
@@ -13,6 +14,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/build-service.yml'
+      - 'config/**'
       - 'pipelines/**'
       - 'python/activator/**'
       - 'tests/**'

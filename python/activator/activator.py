@@ -23,6 +23,7 @@ __all__ = ["next_visit_handler"]
 
 import collections.abc
 import contextlib
+import functools
 import json
 import logging
 import os
@@ -35,22 +36,21 @@ import boto3
 from botocore.handlers import validate_bucket_name
 import cloudevents.http
 import confluent_kafka as kafka
-from flask import Flask, request
-from werkzeug.exceptions import ServiceUnavailable
+import flask
 
 from .config import PipelinesConfig
-from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError
+from .exception import GracefulShutdownInterrupt, InvalidVisitError, NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
-from .middleware_interface import get_central_butler, flush_local_repo, \
+from .middleware_interface import get_central_butler, \
     make_local_repo, make_local_cache, MiddlewareInterface
 from .raw import (
     check_for_snap,
     is_path_consistent,
     get_group_id_from_oid,
 )
+from .repo_tracker import LocalRepoTracker
 from .visit import FannedOutVisit
 
-PROJECT_ID = "prompt-processing"
 
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
@@ -79,9 +79,6 @@ pre_pipelines = PipelinesConfig(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
 # The main pipelines to execute and the conditions in which to choose them.
 main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
 
-setup_usdf_logger(
-    labels={"instrument": instrument_name},
-)
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
@@ -103,30 +100,77 @@ def find_local_repos(base_path):
     return {d for d in subdirs if os.path.exists(os.path.join(d, "butler.yaml"))}
 
 
-try:
-    app = Flask(__name__)
-
-    consumer = kafka.Consumer({
+@functools.cache
+def _get_consumer():
+    """Lazy initialization of shared Kafka Consumer."""
+    return kafka.Consumer({
         "bootstrap.servers": kafka_cluster,
         "group.id": kafka_group_id,
         "auto.offset.reset": "latest",  # default, but make explicit
     })
 
+
+@functools.cache
+def _get_storage_client():
+    """Lazy initialization of cloud storage reader."""
     storage_client = boto3.client('s3', endpoint_url=s3_endpoint)
     storage_client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
+    return storage_client
 
-    central_butler = get_central_butler(calib_repo, instrument_name)
-    for old_repo in find_local_repos(local_repos):
-        _log.warning("Orphaned repo found at %s, attempting to remove.", old_repo)
-        flush_local_repo(old_repo, central_butler)
-    # local_repo is a temporary directory with the same lifetime as this process.
-    local_repo = make_local_repo(local_repos, central_butler, instrument_name)
-    local_cache = make_local_cache()
-except Exception as e:
-    _log.critical("Failed to start worker; aborting.")
-    _log.exception(e)
-    # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
-    sys.exit(3)
+
+@functools.cache
+def _get_central_butler():
+    """Lazy initialization of central Butler."""
+    return get_central_butler(calib_repo, instrument_name)
+
+
+@functools.cache
+def _get_local_repo():
+    """Lazy initialization of local repo.
+
+    Returns
+    -------
+    repo : `tempfile.TemporaryDirectory`
+        The directory containing the repo, to be removed when the
+        process exits.
+    """
+    repo = make_local_repo(local_repos, _get_central_butler(), instrument_name)
+    tracker = LocalRepoTracker.get()
+    tracker.register(os.getpid(), repo.name)
+    return repo
+
+
+@functools.cache
+def _get_local_cache():
+    """Lazy initialization of local repo dataset cache."""
+    return make_local_cache()
+
+
+def create_app():
+    try:
+        setup_usdf_logger(
+            labels={"instrument": instrument_name},
+        )
+
+        # Check initialization and abort early
+        _get_consumer()
+        _get_storage_client()
+        _get_central_butler()
+        _get_local_repo()
+
+        app = flask.Flask(__name__)
+        app.add_url_rule("/next-visit", view_func=next_visit_handler, methods=["POST"])
+        app.register_error_handler(InvalidVisitError, invalid_visit)
+        app.register_error_handler(RetriableError, request_retry)
+        app.register_error_handler(NonRetriableError, forbid_retry)
+        app.register_error_handler(500, server_error)
+        _log.info("Worker ready to handle requests.")
+        return app
+    except Exception as e:
+        _log.critical("Failed to start worker; aborting.")
+        _log.exception(e)
+        # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
+        sys.exit(3)
 
 
 def _graceful_shutdown(signum: int, stack_frame):
@@ -141,7 +185,7 @@ def _graceful_shutdown(signum: int, stack_frame):
 
     Raises
     ------
-    GracefulShutdownInterrupt
+    activator.exception.GracefulShutdownInterrupt
         Raised unconditionally.
     """
     signame = signal.Signals(signum).name
@@ -165,6 +209,7 @@ def with_signal(signum: int,
         The handler to register.
     """
     def decorator(func):
+        @functools.wraps(func)
         def wrapper(*args, **kwargs):
             old_handler = signal.signal(signum, handler)
             try:
@@ -284,14 +329,11 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
         return False
 
 
-@app.route("/next-visit", methods=["POST"])
-@with_signal(signal.SIGHUP, _graceful_shutdown)
-@with_signal(signal.SIGTERM, _graceful_shutdown)
 def next_visit_handler() -> tuple[str, int]:
     """A Flask view function for handling next-visit events.
 
     Like all Flask handlers, this function accepts input through the
-    ``request`` global rather than parameters.
+    ``flask.request`` global rather than parameters.
 
     Returns
     -------
@@ -300,165 +342,211 @@ def next_visit_handler() -> tuple[str, int]:
     status : `int`
         The HTTP response status code to return to the client.
     """
-    _log.info(f"Starting next_visit_handler for {request}.")
-    with contextlib.ExitStack() as cleanups:
+    _log.info(f"Starting next_visit_handler for {flask.request}.")
+
+    try:
+        try:
+            expected_visit = parse_next_visit(flask.request)
+        except ValueError as msg:
+            _log.exception()
+            return f"Bad Request: {msg}", 400
+        process_visit(expected_visit)
+        return "Pipeline executed", 200
+    except GracefulShutdownInterrupt:
+        # Safety net to minimize chance of interrupt propagating out of the worker.
+        # Ideally, this would be a Flask.errorhandler, but Flask ignores BaseExceptions.
+        _log.error("Service interrupted. Shutting down *without* syncing to the central repo.")
+        return "The worker was interrupted before it could complete the request. " \
+               "Retrying the request may not be safe.", 500
+    finally:
         # Want to know when the handler exited for any reason.
-        cleanups.callback(_log.info, "next_visit handling completed.")
+        _log.info("next_visit handling completed.")
+
+
+@with_signal(signal.SIGHUP, _graceful_shutdown)
+@with_signal(signal.SIGTERM, _graceful_shutdown)
+def process_visit(expected_visit: FannedOutVisit):
+    """Prepare and run a pipeline on a nextVisit message.
+
+    This function should not make any assumptions about the execution framework
+    for the Prompt Processing system; in particular, it should not assume it is
+    running on a web server.
+
+    Parameters
+    ----------
+    expected_visit : `activator.visit.FannedOutVisit`
+        The visit to process.
+
+    Raises
+    ------
+    activator.exception.GracefulShutdownInterrupt
+        Raised if the process was terminated at an unexpected point.
+        Terminations during preprocessing or processing are chained by
+        `~activator.exception.NonRetriableError` or
+        `~activator.exception.RetriableError`, depending on the program state
+        at the time.
+    activator.exception.InvalidVisitError
+        Raised if ``expected_visit`` is not processable.
+    activator.exception.NonRetriableError
+        Raised if external resources (such as the APDB or alert stream) may
+        have been left in a state that makes it unsafe to retry failures. This
+        exception is always chained to another exception representing the
+        original error.
+    activator.exception.RetriableError
+        Raised if the conditions for NonRetriableError are not met, *and*
+        processing failed in a way that is expected to be transient. This
+        exception is always chained to another exception representing the
+        original error.
+    """
+    with contextlib.ExitStack() as cleanups:
+        consumer = _get_consumer()
         consumer.subscribe([bucket_topic])
         cleanups.callback(consumer.unsubscribe)
         _log.debug(f"Created subscription to '{bucket_topic}'")
         # Try to get a message right away to minimize race conditions
         startup_response = consumer.consume(num_messages=1, timeout=0.001)
 
-        try:
+        assert expected_visit.instrument == instrument_name, \
+            f"Expected {instrument_name}, received {expected_visit.instrument}."
+        if not main_pipelines.get_pipeline_files(expected_visit):
+            raise InvalidVisitError(f"No pipeline configured for {expected_visit}.")
+
+        log_factory = logging.getLogRecordFactory()
+        with log_factory.add_context(group=expected_visit.groupId,
+                                     survey=expected_visit.survey,
+                                     detector=expected_visit.detector,
+                                     ):
             try:
-                expected_visit = parse_next_visit(request)
-            except ValueError as msg:
-                _log.warn(f"error: '{msg}'")
-                return f"Bad Request: {msg}", 400
-            assert expected_visit.instrument == instrument_name, \
-                f"Expected {instrument_name}, received {expected_visit.instrument}."
-            if not main_pipelines.get_pipeline_files(expected_visit):
-                _log.info(f"No pipeline configured for {expected_visit}, skipping.")
-                return "No pipeline configured for the received visit.", 422
+                expid_set = set()
 
-            log_factory = logging.getLogRecordFactory()
-            with log_factory.add_context(group=expected_visit.groupId,
-                                         survey=expected_visit.survey,
-                                         detector=expected_visit.detector,
-                                         ):
-                try:
-                    expid_set = set()
+                # Create a fresh MiddlewareInterface object to avoid accidental
+                # "cross-talk" between different visits.
+                mwi = MiddlewareInterface(_get_central_butler(),
+                                          image_bucket,
+                                          expected_visit,
+                                          pre_pipelines,
+                                          main_pipelines,
+                                          skymap,
+                                          _get_local_repo().name,
+                                          _get_local_cache())
+                # TODO: pipeline execution requires a clean run until DM-38041.
+                cleanups.callback(mwi.clean_local_repo, expid_set)
+                # Copy calibrations for this detector/visit
+                mwi.prep_butler()
 
-                    # Create a fresh MiddlewareInterface object to avoid accidental
-                    # "cross-talk" between different visits.
-                    mwi = MiddlewareInterface(central_butler,
-                                              image_bucket,
-                                              expected_visit,
-                                              pre_pipelines,
-                                              main_pipelines,
-                                              skymap,
-                                              local_repo.name,
-                                              local_cache)
-                    # TODO: pipeline execution requires a clean run until DM-38041.
-                    cleanups.callback(mwi.clean_local_repo, expid_set)
-                    # Copy calibrations for this detector/visit
-                    mwi.prep_butler()
+                # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
+                expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
+                # Heuristic: take the upcoming script's duration and multiply by 2 to
+                # include the currently executing script, then add time to transfer
+                # the last image.
+                timeout = expected_visit.duration * 2 + image_timeout
+                # Check to see if any snaps have already arrived
+                for snap in range(expected_snaps):
+                    oid = check_for_snap(
+                        _get_storage_client(),
+                        image_bucket,
+                        raw_microservice,
+                        expected_visit.instrument,
+                        expected_visit.groupId,
+                        snap,
+                        expected_visit.detector,
+                    )
+                if oid:
+                    _log.debug("Found object %s already present", oid)
+                    exp_id = mwi.ingest_image(oid)
+                    expid_set.add(exp_id)
 
-                    # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
-                    expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
-                    # Heuristic: take the upcoming script's duration and multiply by 2 to
-                    # include the currently executing script, then add time to transfer
-                    # the last image.
-                    timeout = expected_visit.duration * 2 + image_timeout
-                    # Check to see if any snaps have already arrived
-                    for snap in range(expected_snaps):
-                        oid = check_for_snap(
-                            storage_client,
-                            image_bucket,
-                            raw_microservice,
-                            expected_visit.instrument,
-                            expected_visit.groupId,
-                            snap,
-                            expected_visit.detector,
-                        )
-                    if oid:
-                        _log.debug("Found object %s already present", oid)
-                        exp_id = mwi.ingest_image(oid)
-                        expid_set.add(exp_id)
+                _log.debug("Waiting for snaps...")
+                start = time.time()
+                while len(expid_set) < expected_snaps and time.time() - start < timeout:
+                    if startup_response:
+                        response = startup_response
+                    else:
+                        time_remaining = max(0.0, timeout - (time.time() - start))
+                        response = consumer.consume(num_messages=1, timeout=time_remaining + 1.0)
+                    end = time.time()
+                    messages = _filter_messages(response)
+                    response = []
+                    if len(messages) == 0 and end - start < timeout and not startup_response:
+                        _log.debug(f"Empty consume after {end - start}s.")
+                        continue
+                    startup_response = []
 
-                    _log.debug("Waiting for snaps...")
-                    start = time.time()
-                    while len(expid_set) < expected_snaps and time.time() - start < timeout:
-                        if startup_response:
-                            response = startup_response
-                        else:
-                            time_remaining = max(0.0, timeout - (time.time() - start))
-                            response = consumer.consume(num_messages=1, timeout=time_remaining + 1.0)
-                        end = time.time()
-                        messages = _filter_messages(response)
-                        response = []
-                        if len(messages) == 0 and end - start < timeout and not startup_response:
-                            _log.debug(f"Empty consume after {end - start}s.")
-                            continue
-                        startup_response = []
-
-                        # Not all notifications are for this group/detector
-                        for received in messages:
-                            for oid in _parse_bucket_notifications(received.value()):
-                                try:
-                                    if is_path_consistent(oid, expected_visit):
-                                        _log.debug("Received %r", oid)
-                                        group_id = get_group_id_from_oid(oid)
-                                        if group_id == expected_visit.groupId:
-                                            # Ingest the snap
-                                            exp_id = mwi.ingest_image(oid)
-                                            expid_set.add(exp_id)
-                                except ValueError:
-                                    _log.error(f"Failed to match object id '{oid}'")
-                            # Commits are per-group, so this can't interfere with other
-                            # workers. This may wipe messages associated with a next_visit
-                            # that will later be assigned to this worker, but those cases
-                            # should be caught by the "already arrived" check.
-                            consumer.commit(message=received)
-                    if len(expid_set) < expected_snaps:
-                        _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
-                except GracefulShutdownInterrupt as e:
-                    _log.exception("Processing interrupted before pipeline execution")
-                    # Do not export, to leave room for the next attempt
-                    # Service unavailable is not quite right, but no better standard response
-                    raise ServiceUnavailable(f"The server aborted processing, but it can be retried: {e}",
-                                             retry_after=10) from None
-
-                if expid_set:
-                    with log_factory.add_context(exposures=expid_set):
-                        # Got at least some snaps; run the pipeline.
-                        # If this is only a partial set, the processed results may still be
-                        # useful for quality purposes.
-                        # If nimages == 0, any positive number of snaps is OK.
-                        if len(expid_set) < expected_visit.nimages:
-                            _log.warning(f"Processing {len(expid_set)} snaps, "
-                                         f"expected {expected_visit.nimages}.")
-                        _log.info("Running pipeline...")
-                        try:
-                            mwi.run_pipeline(expid_set)
+                    # Not all notifications are for this group/detector
+                    for received in messages:
+                        for oid in _parse_bucket_notifications(received.value()):
                             try:
-                                # TODO: broadcast alerts here
-                                mwi.export_outputs(expid_set)
-                            except Exception as e:
-                                raise NonRetriableError("APDB and possibly alerts or central repo modified") \
-                                    from e
-                        except RetriableError as e:
-                            error = e.nested if e.nested else e
-                            _log.error("Processing failed but can be retried: ", exc_info=error)
-                            # Do not export, to leave room for the next attempt
-                            # Service unavailable is not quite right, but no better standard response
-                            raise ServiceUnavailable(f"A temporary error occurred during processing: {error}",
-                                                     retry_after=10) from None
-                        except NonRetriableError as e:
-                            error = e.nested if e.nested else e
-                            _log.error("Processing failed: ", exc_info=error)
-                            _try_export(mwi, expid_set, _log)
-                            return f"An error occurred during processing: {error}.\nThe system's state has " \
-                                   "permanently changed, so this request should **NOT** be retried.", 500
+                                if is_path_consistent(oid, expected_visit):
+                                    _log.debug("Received %r", oid)
+                                    group_id = get_group_id_from_oid(oid)
+                                    if group_id == expected_visit.groupId:
+                                        # Ingest the snap
+                                        exp_id = mwi.ingest_image(oid)
+                                        expid_set.add(exp_id)
+                            except ValueError:
+                                _log.error(f"Failed to match object id '{oid}'")
+                        # Commits are per-group, so this can't interfere with other
+                        # workers. This may wipe messages associated with a next_visit
+                        # that will later be assigned to this worker, but those cases
+                        # should be caught by the "already arrived" check.
+                        consumer.commit(message=received)
+                if len(expid_set) < expected_snaps:
+                    _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
+            except GracefulShutdownInterrupt as e:
+                raise RetriableError("Processing interrupted before pipeline execution") from e
+
+            if expid_set:
+                with log_factory.add_context(exposures=expid_set):
+                    # Got at least some snaps; run the pipeline.
+                    # If this is only a partial set, the processed results may still be
+                    # useful for quality purposes.
+                    # If nimages == 0, any positive number of snaps is OK.
+                    if len(expid_set) < expected_visit.nimages:
+                        _log.warning(f"Processing {len(expid_set)} snaps, "
+                                     f"expected {expected_visit.nimages}.")
+                    _log.info("Running pipeline...")
+                    try:
+                        mwi.run_pipeline(expid_set)
+                        try:
+                            # TODO: broadcast alerts here
+                            mwi.export_outputs(expid_set)
                         except Exception as e:
-                            _log.error("Processing failed: ", exc_info=e)
-                            _try_export(mwi, expid_set, _log)
-                            return f"An error occurred during processing: {e}.", 500
-                        return "Pipeline executed", 200
-                else:
-                    _log.error("Timed out waiting for images.")
-                    return "Timed out waiting for images", 500
-        except GracefulShutdownInterrupt:
-            # Safety net to minimize chance of interrupt propagating out of the worker.
-            # Ideally, this would be a Flask.errorhandler, but Flask ignores BaseExceptions.
-            _log.error("Service interrupted. Shutting down *without* syncing to the central repo.")
-            return "The worker was interrupted before it could complete the request. " \
-                   "Retrying the request may not be safe.", 500
+                            raise NonRetriableError("APDB and possibly alerts or central repo modified") \
+                                from e
+                    except RetriableError:
+                        # Do not export, to leave room for the next attempt
+                        raise
+                    except Exception:
+                        _try_export(mwi, expid_set, _log)
+                        raise
+            else:
+                raise RuntimeError("Timed out waiting for images.")
 
 
-@app.errorhandler(500)
-def server_error(e) -> tuple[str, int]:
+def invalid_visit(e: InvalidVisitError) -> tuple[str, int]:
+    _log.exception()
+    return f"Cannot process visit: {e}.", 422
+
+
+def request_retry(e: RetriableError):
+    error = e.nested if e.nested else e
+    _log.error("Processing failed but can be retried: ", exc_info=error)
+    # Service unavailable is not quite right, but no better standard response
+    response = flask.make_response(
+        f"The server could not process the request, but it can be retried: {error}",
+        503,
+        {"Retry-After": 10})
+    return response
+
+
+def forbid_retry(e: NonRetriableError) -> tuple[str, int]:
+    error = e.nested if e.nested else e
+    _log.error("Processing failed: ", exc_info=error)
+    return f"An error occurred during processing: {error}.\nThe system's state has " \
+           "permanently changed, so this request should **NOT** be retried.", 500
+
+
+def server_error(e: Exception) -> tuple[str, int]:
     _log.exception("An error occurred during a request.")
     return (
         f"""
@@ -471,11 +559,10 @@ def server_error(e) -> tuple[str, int]:
 
 def main():
     # This function is only called in test environments. Container
-    # deployments call `app()` through Gunicorn.
+    # deployments call `create_app()()` through Gunicorn.
+    app = create_app()
     app.run(host="127.0.0.1", port=8080, debug=True)
 
 
 if __name__ == "__main__":
     main()
-else:
-    _log.info("Worker ready to handle requests.")
