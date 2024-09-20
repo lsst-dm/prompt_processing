@@ -36,6 +36,7 @@ from botocore.handlers import validate_bucket_name
 import cloudevents.http
 import confluent_kafka as kafka
 import flask
+import activator.repo_registry
 
 from .config import PipelinesConfig
 from .exception import GracefulShutdownInterrupt, InvalidVisitError, NonRetriableError, RetriableError
@@ -155,6 +156,10 @@ def create_app():
         setup_usdf_logger(
             labels={"instrument": instrument_name},
         )
+
+        # Initialize local registry
+        registry = activator.repo_registry.LocalRepoRegistry.get()
+        registry.init_registry()
 
         # Check initialization and abort early
         _get_consumer()
