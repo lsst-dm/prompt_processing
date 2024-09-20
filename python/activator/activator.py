@@ -157,10 +157,6 @@ def create_app():
             labels={"instrument": instrument_name},
         )
 
-        # Initialize local registry
-        registry = activator.repo_registry.LocalRepoRegistry.get()
-        registry.init_registry()
-
         # Check initialization and abort early
         _get_consumer()
         _get_storage_client()
@@ -187,6 +183,10 @@ def keda_start():
     setup_usdf_logger(
         labels={"instrument": instrument_name},
     )
+
+    # Initialize local registry
+    registry = activator.repo_registry.LocalRepoRegistry.get()
+    registry.init_registry()
 
     # Check initialization and abort early
     _get_consumer()
