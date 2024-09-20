@@ -26,7 +26,7 @@ __all__ = ["PipelinesConfig"]
 import collections
 import collections.abc
 import os
-import re
+import yaml
 
 from .visit import FannedOutVisit
 
@@ -42,34 +42,49 @@ class PipelinesConfig:
     Parameters
     ----------
     config : `str`
-        A string describing pipeline selection criteria. The current format is
-        a space-delimited list of mappings, each of which has the format
-        ``(survey="<survey>")=[<pipelines>]``. The zero or more pipelines are
-        comma-delimited, and each pipeline path may contain environment
-        variables. The list may be replaced by the keyword "None" to mean no
-        pipeline should be run. No key or value may contain the "=" character,
-        and no two pipelines may share the same name.
-        See examples below.
+        A YAML-encoded list of mappings, each of which maps ``survey`` to a
+        survey name and ``pipelines`` to a list of zero or more pipelines. Each
+        pipeline path may contain environment variables, and the list of
+        pipelines may be replaced by the keyword "None" to mean no pipeline
+        should be run. No two pipelines may share the same survey. See examples
+        below.
 
     Examples
     --------
     A single-survey, single-pipeline config:
 
-    >>> PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/SingleFrame.yaml]')  # doctest: +ELLIPSIS
+    >>> PipelinesConfig('''
+    ... -
+    ...   survey: TestSurvey
+    ...   pipelines: [/etc/pipelines/SingleFrame.yaml]''')  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
 
     A config with multiple surveys and pipelines, and environment variables:
 
-    >>> PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/ApPipe.yaml, /etc/pipelines/ISR.yaml] '
-    ...                 '(survey="Camera Test")=[${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml] '
-    ...                 '(survey="")=[${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml] ')
-    ... # doctest: +ELLIPSIS
+    >>> PipelinesConfig('''
+    ... -
+    ...   survey: TestSurvey
+    ...   pipelines: [/etc/pipelines/ApPipe.yaml, /etc/pipelines/ISR.yaml]
+    ... -
+    ...   survey: Camera Test
+    ...   pipelines:
+    ...   - ${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml
+    ... -
+    ...   survey: ""
+    ...   pipelines:
+    ...   - ${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml
+    ... ''')  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
 
     A config that omits a pipeline for non-sky data:
 
-    >>> PipelinesConfig('(survey="TestSurvey")=[/etc/pipelines/ApPipe.yaml] '
-    ...                 '(survey="Dome Flats")=None ')  # doctest: +ELLIPSIS
+    >>> PipelinesConfig('''
+    ... -
+    ...   survey: TestSurvey
+    ...   pipelines: [/etc/pipelines/ApPipe.yaml]
+    ... -
+    ...   survey: Dome Flats
+    ...   pipelines: None''')  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
     """
 
@@ -77,25 +92,24 @@ class PipelinesConfig:
         if not config:
             raise ValueError("Must configure at least one pipeline.")
 
-        self._mapping = self._parse_config(config)
+        parsed_config = yaml.safe_load(config)
+        self._mapping = self._expand_config(parsed_config)
 
         for pipelines in self._mapping.values():
             self._check_pipelines(pipelines)
 
     @staticmethod
-    def _parse_config(config: str) -> collections.abc.Mapping:
-        """Turn a config string into structured config information.
+    def _expand_config(config: collections.abc.Sequence) -> collections.abc.Mapping:
+        """Turn a config spec into structured config information.
 
         Parameters
         ----------
-        config : `str`
-            A string describing pipeline selection criteria. The current format
-            a space-delimited list of mappings, each of which has the format
-            ``(survey="<survey>")=[<pipelines>]``. The zero or more pipelines
-            are comma-delimited, and each pipeline path may contain environment
-            variables. The list may be replaced by the keyword "None" to mean
-            no pipeline should be run. No key or value may contain the "="
-            character.
+        config : sequence [mapping]
+            A sequence of mappings, each of which maps ``survey`` to a survey
+            name and ``pipelines`` to a list of zero or more pipelines. Each
+            pipeline path may contain environment variables, and the list of
+            pipelines may be replaced by `None` to mean no pipeline should be
+            run. No two pipelines may share the same survey.
 
         Returns
         -------
@@ -107,38 +121,36 @@ class PipelinesConfig:
         Raises
         ------
         ValueError
-            Raised if the string cannot be parsed.
+            Raised if the input config is invalid.
         """
-        # Use regex instead of str.split, in case keys or values also have
-        # spaces.
-        # Allow anything between the [ ] to avoid catastrophic backtracking
-        # when the input is invalid. If pickier matching is needed in the
-        # future, use a separate regex for filelist instead of making node
-        # more complex.
-        node = re.compile(r'\s*\(survey="(?P<survey>[^"\n=]*)"\)='
-                          r'(?:\[(?P<filelist>[^]]*)\]|none)(?:\s+|$)',
-                          re.IGNORECASE)
-
         items = {}
-        pos = 0
-        match = node.match(config, pos)
-        while match:
-            if match['filelist']:  # exclude None and ""; latter gives unexpected behavior with split
-                filenames = []
-                for file in match['filelist'].split(','):
-                    file = file.strip()
-                    if "\n" in file:
-                        raise ValueError(f"Unexpected newline in '{file}'.")
-                    filenames.append(file)
-                items[match['survey']] = filenames
-            else:
-                items[match['survey']] = []
+        for node in config:
+            try:
+                specs = dict(node)
+                pipelines_value = specs.pop('pipelines')
+                if pipelines_value is None or pipelines_value == "None":
+                    filenames = []
+                elif isinstance(pipelines_value, str):  # Strings are sequences!
+                    raise ValueError(f"Pipelines spec must be list or None, got {pipelines_value}")
+                elif isinstance(pipelines_value, collections.abc.Sequence):
+                    if any(not isinstance(x, str) for x in pipelines_value):
+                        raise ValueError(f"Pipeline list {pipelines_value} has invalid paths.")
+                    filenames = pipelines_value
+                else:
+                    raise ValueError(f"Pipelines spec must be list or None, got {pipelines_value}")
 
-            pos = match.end()
-            match = node.match(config, pos)
-        if pos != len(config):
-            raise ValueError(f"Unexpected text at position {pos}: '{config[pos:]}'.")
+                survey_value = specs.pop('survey')
+                if isinstance(survey_value, str):
+                    survey = survey_value
+                else:
+                    raise ValueError(f"{survey_value} is not a valid survey name.")
 
+                if specs:
+                    raise ValueError(f"Got unexpected keywords: {specs.keys()}")
+            except KeyError as e:
+                raise ValueError from e
+
+            items[survey] = filenames
         return items
 
     @staticmethod
