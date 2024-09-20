@@ -199,7 +199,7 @@ def keda_start():
         "group.id": next_visit_kakfa_group_id,
         "auto.offset.reset": "earliest",
     })
-    next_visit_fan_out_consumer.subscribe(next_visit_fan_out_topic)
+    next_visit_fan_out_consumer.subscribe([next_visit_fan_out_topic])
     next_visit_fan_out_message = next_visit_fan_out_consumer.consume(num_messages=1, timeout=5)
     _log.info(next_visit_fan_out_message)
 
