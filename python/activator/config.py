@@ -51,13 +51,6 @@ class PipelinesConfig:
         and no two pipelines may share the same name.
         See examples below.
 
-    Notes
-    -----
-    While it is not expected that there will ever be more than one
-    PipelinesConfig instance in a program's lifetime, this class is *not* a
-    singleton and objects must be passed explicitly to the code that
-    needs them.
-
     Examples
     --------
     A single-survey, single-pipeline config:
