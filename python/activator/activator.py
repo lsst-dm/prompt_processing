@@ -201,7 +201,10 @@ def keda_start():
     })
     next_visit_fan_out_consumer.subscribe([next_visit_fan_out_topic])
     next_visit_fan_out_message = next_visit_fan_out_consumer.consume(num_messages=1, timeout=5)
-    _log.info(next_visit_fan_out_message)
+    _log.info(next_visit_fan_out_message.value())
+
+    visit = FannedOutVisit(**next_visit_fan_out_message.value())
+    _log.info("Unpacked message as %r.", visit)
 
 
 def _graceful_shutdown(signum: int, stack_frame):
