@@ -57,7 +57,7 @@ from activator.middleware_interface import get_central_butler, flush_local_repo,
     _get_sasquatch_dispatcher, MiddlewareInterface, \
     _filter_datasets, _generic_query, _MissingDatasetError
 from shared.config import PipelinesConfig
-from shared.run_utils import get_output_run
+from shared.run_utils import get_output_run, get_deployment
 from shared.visit import FannedOutVisit
 
 # The short name of the instrument used in the test repo.
@@ -218,6 +218,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                 })
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
+        self.deploy_id = get_deployment(apdb_config=config_file.name)
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -247,7 +248,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                              pre_pipelines_empty, pipelines, skymap_name,
                                              self.local_repo.name, self.local_cache,
                                              prefix="file://")
-        self.deploy_id = self.interface._deployment
 
     def test_get_butler(self):
         for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstComCamSim"),
@@ -945,7 +945,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Since we're not calling prep_butler, need to set up the collections by hand
         raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
         butler.registry.registerCollection(raw_collection, CollectionType.RUN)
-        out_collection = get_output_run(self.interface.instrument, self.interface._deployment,
+        out_collection = get_output_run(self.interface.instrument, self.deploy_id,
                                         "ApPipe.yaml", self.interface._day_obs)
         butler.registry.registerCollection(out_collection, CollectionType.RUN)
         calib_collection = self.interface.instrument.makeCalibrationCollectionName()
@@ -1230,6 +1230,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                 })
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
+        self.deploy_id = get_deployment(apdb_config=config_file.name)
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -1260,7 +1261,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                              pre_pipelines_full, pipelines, skymap_name, local_repo.name,
                                              self.local_cache,
                                              prefix="file://")
-        self.deploy_id = self.interface._deployment
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.interface.prep_butler()
         filename = "fakeRawImage.fits"
