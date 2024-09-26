@@ -83,6 +83,7 @@ Please note that the tag does not include a ``v`` at the beginning.
 On GitHub.com, navigate to the main page of the repository.
 To the right of the list of files, click the latest release.
 At the top of the page, click **## commits to main since this release**.
+(If there's no such link or it doesn't mention ``main``, the release is probably based off a branch; go up to Releases and try older versions until you find one.)
 This is the list of internal changes that will be included in the next release.
 
 If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
@@ -147,6 +148,51 @@ At the HEAD of the ``main`` branch, create and push a tag with the semantic vers
 
    git tag -s X.Y.Z -m "X.Y.Z"
    git push --tags
+
+Patch Releases and Release Branches
+-----------------------------------
+
+During commissioning and operations, it may be necessary to quickly deploy a bug fix without making any other changes that might potentially introduce new breakages.
+This can be done using a patch version (``X.Y.Z``).
+If there have been unrelated changes committed since the last release, you will need to isolate the bug fixes on a release branch.
+
+If the repo does not already have a release branch, create one anchored at the corresponding minor version tag:
+
+.. code-block:: sh
+
+   git checkout -b releases/X.Y X.Y.0
+   git push -u origin releases/X.Y
+
+If you have a branch for your bug fix, you can make a copy for the release branch:
+
+.. code-block:: sh
+
+   git checkout -b tickets/DM-XXXXX-X.Y tickets/DM-XXXXX
+   git rebase --onto releases/X.Y <last main commit before your branch>
+
+Otherwise, you'll have to cherry-pick from ``main``:
+
+.. code-block:: sh
+
+   git checkout -b tickets/DM-XXXXX-X.Y releases/X.Y
+   git cherry-pick <last commit before your changes>..<last non-merge commit>
+
+Either way, the ``tickets/DM-XXXXX-X.Y`` branch should consist of ``releases/X.Y``, plus the changes you are trying to backport.
+
+.. note::
+
+   If you are trying to backport multiple tickets' changes at once, you may open a new Jira ticket for the backports, and create one branch for just that ticket.
+   You must list all the tickets you are backporting on the omnibus ticket so that the information isn't lost.
+
+Check that the ``latest`` base container is the same as was used for the ``X.Y.0`` release.
+Rebuild ``latest`` to match if it's not.
+
+Create a PR for the ``tickets/DM-XXXXX-X.Y`` branch to merge it into ``releases/X.Y`` (**not** ``main``!), and test the resulting build in the dev environment.
+Make sure the PR title is as descriptive as the original, because it will appear in the patch release notes.
+You do not need to review before merging.
+
+Then, follow the usual procedure for making a release, except that the target on the New Release page should be the release branch, not ``main``.
+Check again that the ``latest`` base container matches ``X.Y.0`` before publishing the release.
 
 
 Buckets
