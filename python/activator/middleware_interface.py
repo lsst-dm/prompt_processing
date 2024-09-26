@@ -1194,6 +1194,8 @@ class MiddlewareInterface:
         quantum_executor = SingleQuantumExecutor(
             butler,
             factory,
+            assumeNoExistingOutputs=True,  # Outputs cleared out on success *or* failure
+            raise_on_partial_outputs=True,  # Only way to detect that partial outputs happened
         )
         graph_executor = MPGraphExecutor(
             # TODO: re-enable parallel execution once we can log as desired with CliLog or a successor
