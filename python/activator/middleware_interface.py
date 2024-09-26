@@ -1194,6 +1194,7 @@ class MiddlewareInterface:
         quantum_executor = SingleQuantumExecutor(
             butler,
             factory,
+            assumeNoExistingOutputs=True,  # Outputs cleared out on success *or* failure
             raise_on_partial_outputs=True,  # Only way to detect that partial outputs happened
         )
         graph_executor = MPGraphExecutor(
