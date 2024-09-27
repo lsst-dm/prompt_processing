@@ -433,6 +433,7 @@ class MiddlewareInterface:
         ``self._init_local_butler`` must have already been run.
         """
         config = lsst.obs.base.RawIngestConfig()
+        self.instrument.applyConfigOverrides(lsst.obs.base.RawIngestTask._DefaultName, config)
         config.transfer = "copy"  # Copy files into the local butler.
         # TODO: Could we use the `on_ingest_failure` and `on_success` callbacks
         # to send information back to this interface?
@@ -445,7 +446,10 @@ class MiddlewareInterface:
 
         ``self._init_local_butler`` must have already been run.
         """
-        define_visits_config = lsst.obs.base.DefineVisitsConfig(groupExposures="one-to-one")
+        define_visits_config = lsst.obs.base.DefineVisitsConfig()
+        self.instrument.applyConfigOverrides(lsst.obs.base.DefineVisitsTask._DefaultName,
+                                             define_visits_config)
+        define_visits_config.groupExposures = "one-to-one"
         self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
 
     def _define_dimensions(self):
