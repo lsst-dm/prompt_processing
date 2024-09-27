@@ -435,8 +435,6 @@ class MiddlewareInterface:
         config = lsst.obs.base.RawIngestConfig()
         self.instrument.applyConfigOverrides(lsst.obs.base.RawIngestTask._DefaultName, config)
         config.transfer = "copy"  # Copy files into the local butler.
-        # TODO: Could we use the `on_ingest_failure` and `on_success` callbacks
-        # to send information back to this interface?
         config.failFast = True  # We want failed ingests to fail immediately.
         self.rawIngestTask = lsst.obs.base.RawIngestTask(config=config,
                                                          butler=self.butler)
@@ -668,8 +666,6 @@ class MiddlewareInterface:
         skymap_templates : iterable [`DatasetRef`]
             The datasets to be exported, after any filtering.
         """
-        # TODO: This exports the whole skymap, but we want to only export the
-        # subset of the skymap that covers this data.
         skymaps = set(_filter_datasets(
             self.central_butler, self.butler,
             "skyMap",
@@ -1138,9 +1134,6 @@ class MiddlewareInterface:
             The location to which the file has been downloaded.
         """
         local = ResourcePath(os.path.join(self._download_store.name, remote.basename()))
-        # TODO: this requires the service account to have the otherwise admin-ish
-        # storage.buckets.get permission (DM-34188). Once that's resolved, see if
-        # prompt-service can do without the "Storage Legacy Bucket Reader" role.
         local.transfer_from(remote, "copy")
         return local
 
@@ -1162,8 +1155,6 @@ class MiddlewareInterface:
         exposure_id : `int`
             The exposure ID of the image that was just ingested.
         """
-        # TODO: consider allowing pre-existing raws, as may happen when a
-        # pipeline is rerun (see DM-34141).
         _log.info(f"Ingesting image id '{oid}'")
         file = ResourcePath(f"{self.image_host}/{oid}")
         if not file.isLocal:
