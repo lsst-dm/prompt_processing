@@ -512,6 +512,15 @@ class MiddlewareInterface:
         detector = self.camera[self.visit.detector]
         wcs = self._predict_wcs(detector)
 
+        # Compare the preload region padding versus the visit region padding
+        # in the middleware visit definition.
+        visit_definition_padding = (
+            self.define_visits.config.computeVisitRegions["single-raw-wcs"].padding
+            * wcs.getPixelScale().asArcseconds()
+        )
+        if self.padding < visit_definition_padding:
+            _log.warning("Preload padding is smaller than visit definition's region padding.")
+
         center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
         corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
         padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
