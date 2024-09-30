@@ -42,10 +42,9 @@ import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan
-from lsst.daf.butler.registry import MissingDatasetTypeError
+from lsst.daf.butler import DataIdValueError, MissingDatasetTypeError
 import lsst.dax.apdb
 import lsst.geom
-from lsst.meas.algorithms.htmIndexer import HtmIndexer
 import lsst.obs.base
 import lsst.pipe.base
 import lsst.analysis.tools
@@ -615,30 +614,25 @@ class MiddlewareInterface:
         Parameters
         ----------
         region : `lsst.sphgeom.Region`
-            The region to find refcat shards in. A circular aperture containing
-            this region is used to search all refcat shards.
+            The region to find refcat shards in.
 
         Returns
         -------
         refcats : iterable [`DatasetRef`]
             The refcats to be exported, after any filtering.
         """
-        center = lsst.geom.SpherePoint(region.getCentroid())
-        radius = max([center.separation(lsst.geom.SpherePoint(vertex)) for vertex in region.getVertices()])
-        indexer = HtmIndexer(depth=7)
-        shard_ids, _ = indexer.getShardIds(center, radius)
-        htm_where = f"htm7 in ({','.join(str(x) for x in shard_ids)})"
         # Get shards from all refcats that overlap this region.
         refcats = set()
         for possible_refcat in _get_refcat_types(self.central_butler):
-            _log.debug("Searching for refcats of types %s in %s...", possible_refcat.name, shard_ids)
+            _log.debug("Searching for refcats of type %s.", possible_refcat.name)
             try:
                 new_datasets = set(_filter_datasets(
                     self.central_butler, self.butler,
                     possible_refcat,
                     collections=self.instrument.makeRefCatCollectionName(),
-                    where=htm_where,
-                    findFirst=True,
+                    where="patch.region OVERLAPS search_region",
+                    bind={"search_region": region},
+                    find_first=True,
                     all_callback=self._mark_dataset_usage,
                 ))
             except _MissingDatasetError:
@@ -671,16 +665,11 @@ class MiddlewareInterface:
             "skyMap",
             skymap=self.skymap_name,
             collections=self._collection_skymap,
-            findFirst=True,
+            find_first=True,
             all_callback=self._mark_dataset_usage,
         ))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
 
-        # htm7 is too coarse and many more patches than necessary would be selected.
-        # But searching Butler with htm higher level does not work.
-        # TODO: This will be replaced by the new spatial query feature in Butler.
-        template_where = " OR ".join([f"htm7 in ({range[0]}..{range[1]})"
-                                      for range in lsst.sphgeom.HtmPixelization(7).interior(region).ranges()])
         templates = set()
         for template_type in self._get_template_types():
             try:
@@ -692,8 +681,9 @@ class MiddlewareInterface:
                     instrument=self.instrument.getName(),
                     skymap=self.skymap_name,
                     physical_filter=filter,
-                    where=template_where,
-                    findFirst=True,
+                    where="patch.region OVERLAPS search_region",
+                    bind={"search_region": region},
+                    find_first=True,
                     all_callback=self._mark_dataset_usage,
                 ))
             except _MissingDatasetError:
@@ -727,8 +717,6 @@ class MiddlewareInterface:
         type_names = {t.name for t in self.central_butler.registry.queryDatasetTypes()
                       if t.isCalibration() and "exposure" not in t.dimensions}
         type_names = self.central_butler.collections._filter_dataset_types(type_names, collections_info)
-        # TODO: we can't use findFirst=True yet because findFirst query
-        # in CALIBRATION-type collection is not supported currently.
         calibs = set()
         for calib_type in type_names:
             try:
@@ -739,6 +727,7 @@ class MiddlewareInterface:
                     instrument=self.instrument.getName(),
                     detector=detector_id,
                     physical_filter=filter,
+                    find_first=True,
                     calib_date=calib_date,
                     all_callback=self._mark_dataset_usage,
                 ))
@@ -771,7 +760,7 @@ class MiddlewareInterface:
                 self.central_butler, self.butler,
                 "pretrainedModelPackage",
                 collections=self._collection_ml_model,
-                findFirst=True,
+                find_first=True,
                 all_callback=self._mark_dataset_usage,
             ))
         except _MissingDatasetError as err:
@@ -1739,8 +1728,7 @@ def _filter_datasets(src_repo: Butler,
     """Identify datasets in a source repository, filtering out those already
     present in a destination.
 
-    Unlike Butler or database queries, this method raises if nothing in the
-    source repository matches the query criteria.
+    This method raises if nothing in the source repository matches the query criteria.
 
     Parameters
     ----------
@@ -1757,7 +1745,7 @@ def _filter_datasets(src_repo: Butler,
         This callable is not called if the query returns no results.
     *args, **kwargs
         Parameters for describing the dataset query. They have the same
-        meanings as the parameters of `lsst.daf.butler.Registry.queryDatasets`.
+        meanings as the parameters of `lsst.daf.butler.query_datasets`
         The query must be valid for both ``src_repo`` and ``dest_repo``.
 
     Returns
@@ -1776,15 +1764,23 @@ def _filter_datasets(src_repo: Butler,
         ", ".join(repr(a) for a in args),
         ", ".join(f"{k}={v!r}" for k, v in kwargs.items()),
     )
-    try:
-        with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
-                                        level=logging.DEBUG):
-            known_datasets = set(dest_repo.registry.queryDatasets(*args, **kwargs))
+    # time_this automatically escalates its log to ERROR level if the code raises.
+    # Some errors are expected to happen sometimes, and we don't want those to log
+    # at the ERROR level and cause confusion.
+    with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
+                                    level=logging.DEBUG):
+        try:
+            # Okay to have empty results.
+            known_datasets = set(dest_repo.query_datasets(explain=False, *args, **kwargs))
             _log_trace.debug("Known datasets: %s", known_datasets)
-    except lsst.daf.butler.registry.DataIdValueError as e:
-        _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
-        # If dimensions are invalid, then *any* such datasets are missing.
-        known_datasets = set()
+        except MissingDatasetTypeError as e:
+            _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
+            # If dataset type never registered locally, then *any* such datasets are missing.
+            known_datasets = set()
+        except DataIdValueError as e:
+            _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
+            # If dimensions are invalid, then *any* such datasets are missing.
+            known_datasets = set()
 
     # Let exceptions from src_repo query raise: if it fails, that invalidates
     # this operation.
@@ -1792,7 +1788,9 @@ def _filter_datasets(src_repo: Butler,
     # comparison, so we only need them on src_datasets.
     with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (source datasets)",
                                     level=logging.DEBUG):
-        src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs).expanded())
+        # Ok with empty query result here, not log an error, and let the downstream
+        # method decide what to do with empty results.
+        src_datasets = set(src_repo.query_datasets(explain=False, *args, **kwargs))
         # In many contexts, src_datasets is too large to print.
         _log_trace3.debug("Source datasets: %s", src_datasets)
     if calib_date:

@@ -118,8 +118,8 @@ def _export_for_copy(butler, target_butler, wants):
         if "datasets" in wants:
             for selection in wants["datasets"]:
                 logging.debug(f"Selecting datasets: {selection}")
-                if "datasetType" not in selection:
-                    selection["datasetType"] = ...
+                if "dataset_type" not in selection:
+                    selection["dataset_type"] = ...
                 records = _filter_datasets(butler, target_butler, **selection)
                 contents.saveDatasets(records)
 

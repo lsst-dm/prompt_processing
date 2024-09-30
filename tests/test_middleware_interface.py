@@ -910,17 +910,17 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Case where src is empty now covered in test_filter_datasets_nosrc.
         for src, existing in itertools.product(combinations, [set()] + combinations):
             diff = src - existing
-            src_butler = unittest.mock.Mock(
-                **{"registry.queryDatasets.return_value.expanded.return_value": src})
-            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+            src_butler = unittest.mock.Mock(**{"query_datasets.return_value": src})
+            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
 
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
                 result = set(_filter_datasets(src_butler, existing_butler,
                                               "bias", instrument="LSSTComCamSim"))
-                src_butler.registry.queryDatasets.assert_called_once_with("bias", instrument="LSSTComCamSim")
-                existing_butler.registry.queryDatasets.assert_called_once_with("bias",
-                                                                               instrument="LSSTComCamSim")
+                src_butler.query_datasets.assert_called_once_with(
+                    "bias", instrument="LSSTComCamSim", explain=False)
+                existing_butler.query_datasets.assert_called_once_with(
+                    "bias", instrument="LSSTComCamSim", explain=False)
                 self.assertEqual(result, diff)
 
     def test_filter_datasets_nodim(self):
@@ -933,15 +933,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         data1 = self._make_expanded_ref(registry, "skyMap", {"skymap": skymap_name}, "dummy")
 
         src_butler = unittest.mock.Mock(
-            **{"registry.queryDatasets.return_value.expanded.return_value": {data1}})
+            **{"query_datasets.return_value": {data1}})
         existing_butler = unittest.mock.Mock(
-            **{"registry.queryDatasets.side_effect":
+            **{"query_datasets.side_effect":
                lsst.daf.butler.registry.DataIdValueError(
                    f"Unknown values specified for governor dimension skymap: {{{skymap_name}}}")
                })
 
         result = set(_filter_datasets(src_butler, existing_butler, "skyMap", ..., skymap="mymap"))
-        src_butler.registry.queryDatasets.assert_called_once_with("skyMap", ..., skymap="mymap")
+        src_butler.query_datasets.assert_called_once_with("skyMap", ..., skymap="mymap", explain=False)
         self.assertEqual(result, {data1})
 
     def test_filter_datasets_nosrc(self):
@@ -955,9 +955,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         "dummy")
 
         src_butler = unittest.mock.Mock(
-            **{"registry.queryDatasets.return_value.expanded.return_value": set()})
+            **{"query_datasets.return_value": set()})
         for existing in [set(), {data1}]:
-            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
 
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
@@ -982,8 +982,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Case where src is empty covered below.
         for src, existing in itertools.product(combinations, [set()] + combinations):
             src_butler = unittest.mock.Mock(
-                **{"registry.queryDatasets.return_value.expanded.return_value": src})
-            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+                **{"query_datasets.return_value": src})
+            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
 
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
@@ -997,8 +997,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         for existing in [set()] + combinations:
             src_butler = unittest.mock.Mock(
-                **{"registry.queryDatasets.return_value.expanded.return_value": set()})
-            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+                **{"query_datasets.return_value": set()})
+            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
 
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):

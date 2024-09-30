@@ -1,19 +1,19 @@
 datasets:
 - collections: LATISS/templates
-  datasetType: goodSeeingCoadd
+  dataset_type: goodSeeingCoadd
 - collections: refcats*
-  datasetType: atlas_refcat2_20220201
+  dataset_type: atlas_refcat2_20220201
 - collections: refcats*
-  datasetType: gaia_dr3_20230707
+  dataset_type: gaia_dr3_20230707
 - collections: skymaps
-  datasetType: skyMap
+  dataset_type: skyMap
 # Workaround for DM-43294: use a matching expression rather than
 # a specific string "LATISS/calib" for the collection argument, so
 # to avoid MissingCollectionError when the collection does not
 # exist in the target repo.
 - collections: "*LATISS/calib"
 - collections: pretrained_models
-  datasetType: pretrainedModelPackage
+  dataset_type: pretrainedModelPackage
 collections:
 - expression: LATISS/calib
   flattenChains: True
