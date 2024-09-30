@@ -270,9 +270,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the right templates are in the chained output collection.
         # Need to refresh the butler to get all the dimensions/collections.
         butler.registry.refresh()
-        for patch in (142, 143, 144, 158, 159, 160, 161, 175, 176, 177, 178,
-                      # TODO DM-43712: doesn't load 179 or 196
-                      179, 192, 193, 194, 195, 196, 210, 211,):
+        for patch in (142, 143, 158, 159, 160, 161, 175, 176, 177, 178,
+                      192, 193, 194, 195, 210, 211,):
             with self.subTest(tract=7445, patch=patch):
                 self.assertTrue(
                     butler.exists('goodSeeingCoadd', tract=7445, patch=patch, band="g",
@@ -303,8 +302,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           collections=preload_collection)
         )
 
-    # TODO: prep_butler doesn't grab all the refcats. Should be fixable on DM-43712
-    @unittest.expectedFailure
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """
@@ -339,8 +336,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
 
-    # TODO: prep_butler doesn't grab all the refcats. Should be fixable on DM-43712
-    @unittest.expectedFailure
     def test_prep_butler_nofilter(self):
         """Test that prep_butler can handle visits without a filter.
         """
@@ -381,8 +376,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         mock_pre.assert_not_called()
 
-    # TODO: prep_butler doesn't grab all the refcats. Should be fixable on DM-43712
-    @unittest.expectedFailure
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
         exception!) on a second run with the same, or a different detector.
