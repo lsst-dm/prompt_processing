@@ -629,21 +629,25 @@ class MiddlewareInterface:
         shard_ids, _ = indexer.getShardIds(center, radius)
         htm_where = f"htm7 in ({','.join(str(x) for x in shard_ids)})"
         # Get shards from all refcats that overlap this region.
-        possible_refcats = _get_refcat_types(self.central_butler)
-        _log.debug("Searching for refcats of types %s in %s...",
-                   {t.name for t in possible_refcats}, shard_ids)
-        refcats = set(_filter_datasets(
-                      self.central_butler, self.butler,
-                      possible_refcats,
-                      collections=self.instrument.makeRefCatCollectionName(),
-                      where=htm_where,
-                      findFirst=True,
-                      all_callback=self._mark_dataset_usage,
-                      ))
-        if refcats:
-            for dataset_type, n_datasets in self._count_by_type(refcats):
-                _log.debug("Found %d new refcat datasets from catalog '%s'.", n_datasets, dataset_type)
-        else:
+        refcats = set()
+        for possible_refcat in _get_refcat_types(self.central_butler):
+            _log.debug("Searching for refcats of types %s in %s...", possible_refcat.name, shard_ids)
+            try:
+                new_datasets = set(_filter_datasets(
+                    self.central_butler, self.butler,
+                    possible_refcat,
+                    collections=self.instrument.makeRefCatCollectionName(),
+                    where=htm_where,
+                    findFirst=True,
+                    all_callback=self._mark_dataset_usage,
+                ))
+            except _MissingDatasetError:
+                _log.debug("Found 0 new refcat datasets from %s.", possible_refcat.name)
+            else:
+                _log.debug("Found %d new refcat datasets from catalog '%s'.",
+                           len(new_datasets), possible_refcat.name)
+                refcats |= new_datasets
+        if not refcats:
             _log.debug("Found 0 new refcat datasets.")
         return refcats
 
@@ -677,24 +681,27 @@ class MiddlewareInterface:
         # TODO: This will be replaced by the new spatial query feature in Butler.
         template_where = " OR ".join([f"htm7 in ({range[0]}..{range[1]})"
                                       for range in lsst.sphgeom.HtmPixelization(7).interior(region).ranges()])
-        try:
-            _log.debug("Searching for templates.")
-            templates = set(_filter_datasets(
-                self.central_butler, self.butler,
-                self._get_template_types(),
-                collections=self._collection_template,
-                instrument=self.instrument.getName(),
-                skymap=self.skymap_name,
-                physical_filter=filter,
-                where=template_where,
-                findFirst=True,
-                all_callback=self._mark_dataset_usage,
-            ))
-        except _MissingDatasetError as err:
-            _log.error(err)
-            templates = set()
-        else:
-            _log.debug("Found %d new template datasets.", len(templates))
+        templates = set()
+        for template_type in self._get_template_types():
+            try:
+                _log.debug("Searching for templates %s.", template_type)
+                new_datasets = set(_filter_datasets(
+                    self.central_butler, self.butler,
+                    template_type,
+                    collections=self._collection_template,
+                    instrument=self.instrument.getName(),
+                    skymap=self.skymap_name,
+                    physical_filter=filter,
+                    where=template_where,
+                    findFirst=True,
+                    all_callback=self._mark_dataset_usage,
+                ))
+            except _MissingDatasetError:
+                _log.debug("Found 0 new template datasets of type %s.", template_type)
+                new_datasets = set()
+            else:
+                _log.debug("Found %d new template datasets.", len(new_datasets))
+            templates |= new_datasets
         return skymaps | templates
 
     def _export_calibs(self, detector_id, filter):
@@ -714,26 +721,36 @@ class MiddlewareInterface:
         """
         # TAI observation start time should be used for calib validity range.
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
-        # Querying by specific types is much faster than querying by ...
+        collections_info = self.central_butler.collections.query_info(
+            self.instrument.makeCalibrationCollectionName(), include_summary=True)
         # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
-        types = {t for t in self.central_butler.registry.queryDatasetTypes()
-                 if t.isCalibration() and "exposure" not in t.dimensions}
+        type_names = {t.name for t in self.central_butler.registry.queryDatasetTypes()
+                      if t.isCalibration() and "exposure" not in t.dimensions}
+        type_names = self.central_butler.collections._filter_dataset_types(type_names, collections_info)
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
-        calibs = set(_filter_datasets(
-            self.central_butler, self.butler,
-            types,
-            collections=self.instrument.makeCalibrationCollectionName(),
-            instrument=self.instrument.getName(),
-            detector=detector_id,
-            physical_filter=filter,
-            calib_date=calib_date,
-            all_callback=self._mark_dataset_usage,
-        ))
-        if calibs:
-            for dataset_type, n_datasets in self._count_by_type(calibs):
-                _log.debug("Found %d new calib datasets of type '%s'.", n_datasets, dataset_type)
-        else:
+        calibs = set()
+        for calib_type in type_names:
+            try:
+                new_datasets = set(_filter_datasets(
+                    self.central_butler, self.butler,
+                    calib_type,
+                    collections=self.instrument.makeCalibrationCollectionName(),
+                    instrument=self.instrument.getName(),
+                    detector=detector_id,
+                    physical_filter=filter,
+                    calib_date=calib_date,
+                    all_callback=self._mark_dataset_usage,
+                ))
+            # It is okay that some calib types exist in the collection but do not have
+            # datasets matching the selection criteria. DM-40245 will change this.
+            except _MissingDatasetError:
+                _log.debug("Found 0 new calib datasets of type %s.", calib_type)
+            else:
+                _log.debug("Found %d new calib datasets of type '%s'.",
+                           len(new_datasets), calib_type)
+                calibs |= new_datasets
+        if not calibs:
             _log.debug("Found 0 new calib datasets.")
         return calibs
 
@@ -898,29 +915,6 @@ class MiddlewareInterface:
             # arbitrary ones and assume that the first collection in the chain is
             # always the best.
             self.butler.registry.certify(calib_latest, datasets, Timespan(None, None))
-
-    @staticmethod
-    def _count_by_type(refs):
-        """Count the number of dataset references of each type.
-
-        Parameters
-        ----------
-        refs : iterable [`lsst.daf.butler.DatasetRef`]
-            The references to classify.
-
-        Yields
-        ------
-        type : `str`
-            The name of a dataset type in ``refs``.
-        count : `int`
-            The number of elements of type ``type`` in ``refs``.
-        """
-        def get_key(ref):
-            return ref.datasetType.name
-
-        ordered = sorted(refs, key=get_key)
-        for k, g in itertools.groupby(ordered, key=get_key):
-            yield k, len(list(g))
 
     def _write_region_time(self, region):
         """Store the preload sky region and timespan for this
