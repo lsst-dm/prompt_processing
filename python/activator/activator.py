@@ -177,8 +177,10 @@ def create_app():
         # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
         sys.exit(3)
 
+
 def deserializer(serialized):
     return json.loads(serialized)
+
 
 def keda_start():
 
@@ -213,6 +215,7 @@ def keda_start():
             _log.info(msg)
             visit = FannedOutVisit(**msg)
             _log.info("Unpacked message as %r.", visit)
+            process_visit(visit)
 
 
 def _graceful_shutdown(signum: int, stack_frame):
