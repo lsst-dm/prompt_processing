@@ -201,8 +201,7 @@ def keda_start():
     next_visit_fan_out_consumer = kafka.Consumer({
         "bootstrap.servers": next_visit_fan_out_kafka_cluster,
         "group.id": next_visit_kakfa_group_id,
-        "auto.offset.reset": "earliest",
-        "value_deserializer": deserializer
+        "auto.offset.reset": "earliest"
     })
     next_visit_fan_out_consumer.subscribe([next_visit_fan_out_topic])
     next_visit_fan_out_message = next_visit_fan_out_consumer.consume(num_messages=1, timeout=5)
