@@ -206,21 +206,16 @@ def keda_start():
     next_visit_fan_out_consumer.subscribe([next_visit_fan_out_topic])
     next_visit_fan_out_message = next_visit_fan_out_consumer.consume(num_messages=1, timeout=5)
 
-    _log.info(next_visit_fan_out_message[0])
-    visit = FannedOutVisit(next_visit_fan_out_message[0])
-    process_visit(visit)
-
-    '''
     for msg in next_visit_fan_out_message:
         if msg.error():
             # TODO: not all error() are actually *errors*
             _log.warning("Consumer event: %s", msg.error())
         else:
             _log.info(msg)
-            visit = FannedOutVisit(**msg)
+            data = json.loads(msg)
+            visit = FannedOutVisit(data)
             _log.info("Unpacked message as %r.", visit)
             process_visit(visit)
-    '''
 
 
 def _graceful_shutdown(signum: int, stack_frame):
