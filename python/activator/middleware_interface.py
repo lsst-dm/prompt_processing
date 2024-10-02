@@ -275,7 +275,7 @@ class MiddlewareInterface:
         Information about which pipelines to run before a visit arrives.
     main_pipelines : `activator.config.PipelinesConfig`
         Information about which pipelines to run on ``visit``'s raws.
-    skymap: `str`
+    skymap : `str`
         Name of the skymap in the central repo for querying templates.
     local_repo : `str`
         A URI to the local Butler repo, which is assumed to already exist and
