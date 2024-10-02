@@ -211,8 +211,8 @@ def keda_start():
             # TODO: not all error() are actually *errors*
             _log.warning("Consumer event: %s", msg.error())
         else:
-            _log.info(msg)
-            data = json.loads(msg)
+            _log.info(msg.value().decode("utf-8"))
+            data = json.loads(msg.value().decode("utf-8"))
             visit = FannedOutVisit(data)
             _log.info("Unpacked message as %r.", visit)
             process_visit(visit)
