@@ -114,11 +114,11 @@ class TesterUtilsTest(unittest.TestCase):
         s3 = boto3.resource("s3")
         bucket = s3.Bucket(self.bucket_name)
 
-        last_group = get_last_group(bucket, "HSC", "20231102")
+        last_group = get_last_group(bucket, "HSC", "20241102")
         self.assertEqual(last_group, "11020002")
 
         # Test the case of no match
-        last_group = get_last_group(bucket, "HSC", "20240101")
+        last_group = get_last_group(bucket, "HSC", "20250101")
         self.assertEqual(last_group, "13010000")
 
     def test_exposure_id_hsc(self):
@@ -151,10 +151,10 @@ class TesterUtilsTest(unittest.TestCase):
         s3 = boto3.resource("s3")
         bucket = s3.Bucket(self.bucket_name)
 
-        group = get_last_group(bucket, "HSC", "20240930")
+        group = get_last_group(bucket, "HSC", "20250930")
         self.assertEqual(group, "21300000")
         with self.assertRaises(RuntimeError):
-            get_last_group(bucket, "HSC", "20241001")
+            get_last_group(bucket, "HSC", "20251001")
 
 
 class TesterGoupIdTest(unittest.TestCase):
