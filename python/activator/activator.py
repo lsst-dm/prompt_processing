@@ -221,6 +221,7 @@ def keda_start():
             process_visit(visit)
     '''
 
+
 def _graceful_shutdown(signum: int, stack_frame):
     """Signal handler for cases where the service should gracefully shut down.
 
