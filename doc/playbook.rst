@@ -212,7 +212,7 @@ The bucket ``rubin-pp-dev`` holds incoming raw images.
 
 The bucket ``rubin-pp-dev-users`` holds:
 
-* ``rubin-pp-dev-users/central_repo/`` contains the central repository described in `DMTN-219`_.
+* ``rubin-pp-dev-users/central_repo_2/`` contains the central repository described in `DMTN-219`_.
   This repository currently contains HSC, LATISS, and LSSTComCamSim data, uploaded with ``make_export.py``.
 
 * ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload scripts can draw from to create incoming raws.
@@ -273,7 +273,7 @@ For Butler not to complain about the bucket names, set the environment variable 
 Central Repo
 ============
 
-The central repo for development use is located at ``s3://rubin-pp-dev-users/central_repo/``.
+The central repo for development use is located at ``s3://rubin-pp-dev-users/central_repo_2/``.
 You need developer credentials to access it, as described under `Buckets`_.
 To run ``butler`` commands, which access the registry, you also need to set ``PGUSER=pp``.
 
@@ -354,7 +354,7 @@ One raw was ingested, visit-defined, and kept in the development central repo, s
 .. code-block:: sh
 
    apdb-cli create-sql "sqlite:///apdb.db" apdb_config.py
-   pipetask run -b s3://rubin-pp-dev-users/central_repo -i LATISS/raw/all,LATISS/defaults,LATISS/templates -o u/username/collection  -d "detector=0 and instrument='LATISS' and exposure=2023082900500 and visit_system=0" -p $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml -c parameters:apdb_config=apdb_config.py -c diaPipe:doPackageAlerts=False --register-dataset-types --init-only
+   pipetask run -b s3://rubin-pp-dev-users/central_repo_2 -i LATISS/raw/all,LATISS/defaults,LATISS/templates -o u/username/collection  -d "detector=0 and instrument='LATISS' and exposure=2023082900500 and visit_system=0" -p $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml -c parameters:apdb_config=apdb_config.py -c diaPipe:doPackageAlerts=False --register-dataset-types --init-only
 
 .. note::
 
