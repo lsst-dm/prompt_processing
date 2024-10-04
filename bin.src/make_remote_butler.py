@@ -53,8 +53,8 @@ def _make_parser():
                         help="The config file to use for the new repository. Defaults to etc/db_butler.yaml.")
     parser.add_argument("--export-file", default="export.yaml",
                         help="The export file containing the repository contents. Defaults to ./export.yaml.")
-    parser.add_argument("--instrument",
-                        help="The short name of the instrument (HSC, LATISS, etc).")
+    parser.add_argument("--add-instrument-chain", default=None,
+                        help="The instrument short name (HSC, LATISS, etc) to make default collections.")
     return parser
 
 
@@ -73,11 +73,7 @@ def _add_chains(butler, instrument_name):
     instrument_name : `str`
         The short name of the instrument.
     """
-    butler.registry.registerCollection("templates", type=CollectionType.CHAINED)
-    butler.registry.setCollectionChain(
-        "templates",
-        list(butler.registry.queryCollections("templates/*", collectionTypes=CollectionType.RUN))
-    )
+    butler.registry.registerCollection(f"{instrument_name}/templates", type=CollectionType.CHAINED)
 
     butler.registry.registerCollection("refcats", type=CollectionType.CHAINED)
     butler.registry.setCollectionChain(
@@ -92,7 +88,7 @@ def _add_chains(butler, instrument_name):
     butler.registry.registerCollection(calib_collection, type=CollectionType.CHAINED)
     butler.registry.setCollectionChain(
         defaults,
-        [calib_collection, "templates", "skymaps", "refcats", "pretrained_models"]
+        [calib_collection, f"{instrument_name}/templates", "skymaps", "refcats", "pretrained_models"]
     )
 
 
@@ -108,7 +104,8 @@ def main():
         butler = Butler(config, writeable=True)
     with time_this(msg="Import", level=logging.INFO):
         butler.import_(directory=args.src_repo, filename=args.export_file, transfer="auto")
-    _add_chains(butler, args.instrument)
+    if args.add_instrument_chain:
+        _add_chains(butler, args.add_instrument_chain)
 
 
 if __name__ == "__main__":
