@@ -7,7 +7,7 @@ datastore:
   root: <butlerRoot>
 registry:
   db: postgresql://pp@usdf-prompt-processing-dev.slac.stanford.edu/ppcentralbutler
-  namespace: pp_dev_central_repo
+  namespace: pp_dev_central_repo_2
   managers:
     attributes: lsst.daf.butler.registry.attributes.DefaultButlerAttributeManager
     collections: lsst.daf.butler.registry.collections.synthIntKey.SynthIntKeyCollectionManager
