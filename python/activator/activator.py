@@ -227,8 +227,8 @@ def keda_start():
     # Check initialization and abort early
     _get_consumer()
     _get_storage_client()
-    #_get_central_butler()
-    #_get_local_repo()
+    # _get_central_butler()
+    # _get_local_repo()
 
     schema_str = """
    {
