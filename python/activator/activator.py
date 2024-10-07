@@ -231,83 +231,83 @@ def keda_start():
     # _get_local_repo()
 
     schema_str = """
-   {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Fanout",
-      "description": "Fanout message",
-      "type": "object",
-      "properties": {
-        "salIndex": {
-          "description": "sal Index",
-          "type": "string"
-        },
-        "scriptSalIndex": {
-          "description": "script sal index",
-          "type": "string"
-        },
-        "instrument": {
-          "description": "instrument",
-          "type": "string"
-        },
-        "groupId": {
-          "description": "group id",
-          "type": "string"
-        },
-        "coordinateSystem": {
-          "description": "coordinate system",
-          "type": "string"
-        },
-        "position": {
-          "description": "position",
-          "type": "string"
-        },
-        "startTime": {
-          "description": "start time",
-          "type": "string"
-        },
-        "rotationSystem" :{
-          "description": "rotation system",
-          "type": "string"
-        },
-        "cameraAngle": {
-          "description": "camera angle",
-          "type": "string"
-        },
-        "filters": {
-          "description": "filters",
-          "type": "string"
-        },
-        "dome": {
-          "description": "dome",
-          "type": "string"
-        },
-        "duration": {
-          "description": "duration",
-          "type": "string"
-        },
-        "nimages": {
-          "description": "number of images"
-          "type": "string"
-        },
-        "survey": {
-          "description": "survey",
-          "type": "string"
-        },
-        "totalCheckpoints: {
-          "description": "total checkpoints",
-          "type": "string"
-        },
-        "private_sndStamp": {
-          "description": "private send stamp",
-          "type": "string"
-        },
-        "detector": {
-          "description": "detector",
-          "type": "string"
+    {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "Fanout",
+        "description": "Fanout message",
+        "type": "object",
+        "properties": {
+            "salIndex": {
+                "description": "sal Index",
+                "type": "string"
+            },
+            "scriptSalIndex": {
+                "description": "script sal index",
+                "type": "string"
+            },
+            "instrument": {
+                "description": "instrument",
+                "type": "string"
+            },
+            "groupId": {
+                "description": "group id",
+                "type": "string"
+            },
+            "coordinateSystem": {
+                "description": "coordinate system",
+                "type": "string"
+            },
+            "position": {
+                "description": "position",
+                "type": "string"
+            },
+            "startTime": {
+                "description": "start time",
+                "type": "string"
+            },
+            "rotationSystem" :{
+                "description": "rotation system",
+                "type": "string"
+            },
+            "cameraAngle": {
+                "description": "camera angle",
+                "type": "string"
+            },
+            "filters": {
+                "description": "filters",
+                "type": "string"
+            },
+            "dome": {
+                "description": "dome",
+                "type": "string"
+            },
+            "duration": {
+                "description": "duration",
+                "type": "string"
+            },
+            "nimages": {
+                "description": "number of images",
+                "type": "string"
+            },
+            "survey": {
+                "description": "survey",
+                "type": "string"
+            },
+            "totalCheckpoints": {
+                "description": "total checkpoints",
+                "type": "string"
+            },
+            "private_sndStamp": {
+                "description": "private send stamp",
+                "type": "string"
+            },
+            "detector": {
+                "description": "detector",
+                "type": "string"
+            }
         }
-      }
-    """
-
+    }
+"""
     json_deserializer = JSONDeserializer(schema_str,
                                          from_dict=dict_to_bare_visit)
 
