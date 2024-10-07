@@ -38,6 +38,8 @@ import confluent_kafka as kafka
 import flask
 import activator.repo_registry
 
+from confluent_kafka.schema_registry.json_schema import JSONDeserializer
+from confluent_kafka.serialization import SerializationContext, MessageField
 from .config import PipelinesConfig
 from .exception import GracefulShutdownInterrupt, InvalidVisitError, NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
@@ -49,7 +51,7 @@ from .raw import (
     get_group_id_from_oid,
 )
 from .repo_registry import LocalRepoRegistry
-from .visit import FannedOutVisit
+from .visit import FannedOutVisit, BareVisit
 
 # Platform that prompt processing will run on
 platform = os.environ["PLATFORM"]
@@ -178,6 +180,36 @@ def create_app():
         sys.exit(3)
 
 
+def dict_to_bare_visit(obj, ctx):
+    """
+    Converts object literal(dict) to a Fanned Out instance.
+
+    Args:
+        ctx (SerializationContext): Metadata pertaining to the serialization
+            operation.
+        obj (dict): Object literal(dict)
+    """
+
+    if obj is None:
+        return None
+
+    return BareVisit(salIndex=obj['salIndex'],
+                     scriptSalIndex=obj['scriptSalIndex'],
+                     groupId=obj['groupId'],
+                     coordinateSystem=obj['coordinateSystem'],
+                     position=obj['position'],
+                     startTime=obj['startTime'],
+                     rotationSystem=obj['rotationSystem'],
+                     cameraAngle=obj['cameraAngle'],
+                     filters=obj['filters'],
+                     dome=obj['dome'],
+                     duration=obj['duration'],
+                     nImages=obj['nImages'],
+                     instrument=obj['instrument'],
+                     survey=obj['survey'],
+                     totalCheckpoints=obj['totalCheckpoints'])
+
+
 def deserializer(serialized):
     return json.loads(serialized)
 
@@ -198,6 +230,87 @@ def keda_start():
     _get_central_butler()
     _get_local_repo()
 
+    schema_str = """
+   {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Fanout",
+      "description": "Fanout message",
+      "type": "object",
+      "properties": {
+        "salIndex": {
+          "description": "sal Index",
+          "type": "string"
+        },
+        "scriptSalIndex": {
+          "description": "script sal index",
+          "type": "string"
+        },
+        "instrument": {
+          "description": "instrument",
+          "type": "string"
+        },
+        "groupId": {
+          "description": "group id",
+          "type": "string"
+        },
+        "coordinateSystem": {
+          "description": "coordinate system",
+          "type": "string"
+        },
+        "position": {
+          "description": "position",
+          "type": "string"
+        },
+        "startTime": {
+          "description": "start time",
+          "type": "string"
+        },
+        "rotationSystem" :{
+          "description": "rotation system",
+          "type": "string"
+        },
+        "cameraAngle": {
+          "description": "camera angle",
+          "type": "string"
+        },
+        "filters": {
+          "description": "filters",
+          "type": "string"
+        },
+        "dome": {
+          "description": "dome",
+          "type": "string"
+        },
+        "duration": {
+          "description": "duration",
+          "type": "string"
+        },
+        "nimages": {
+          "description": "number of images"
+          "type": "string"
+        },
+        "survey": {
+          "description": "survey",
+          "type": "string"
+        },
+        "totalCheckpoints: {
+          "description": "total checkpoints",
+          "type": "string"
+        },
+        "private_sndStamp": {
+          "description": "private send stamp",
+          "type": "string"
+        },
+        "detector": {
+          "description": "detector",
+          "type": "string"
+        }
+      }
+    """
+
+    json_deserializer = JSONDeserializer(schema_str,
+                                         from_dict=dict_to_bare_visit)
+
     next_visit_fan_out_consumer = kafka.Consumer({
         "bootstrap.servers": next_visit_fan_out_kafka_cluster,
         "group.id": next_visit_kakfa_group_id,
@@ -212,8 +325,11 @@ def keda_start():
             _log.warning("Consumer event: %s", msg.error())
         else:
             _log.info(msg.value().decode("utf-8"))
-            data = json.loads(msg.value().decode("utf-8"))
-            visit = FannedOutVisit(data)
+            deserialized_data = json_deserializer(msg.value(),
+                                                  SerializationContext(msg.topic(),
+                                                  MessageField.VALUE))
+            # data = json.loads(msg.value().decode("utf-8"))
+            visit = FannedOutVisit(deserialized_data)
             _log.info("Unpacked message as %r.", visit)
             process_visit(visit)
 
