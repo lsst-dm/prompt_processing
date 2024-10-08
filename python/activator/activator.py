@@ -38,8 +38,6 @@ import confluent_kafka as kafka
 import flask
 import activator.repo_registry
 
-from confluent_kafka.schema_registry.json_schema import JSONDeserializer
-from confluent_kafka.serialization import SerializationContext, MessageField
 from .config import PipelinesConfig
 from .exception import GracefulShutdownInterrupt, InvalidVisitError, NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
@@ -52,6 +50,8 @@ from .raw import (
 )
 from .repo_registry import LocalRepoRegistry
 from .visit import FannedOutVisit, BareVisit
+
+from aiokafka import AIOKafkaConsumer
 
 # Platform that prompt processing will run on
 platform = os.environ["PLATFORM"]
@@ -82,7 +82,7 @@ main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
 # Kafka cluster with next visit fanned out messages.
 next_visit_fan_out_kafka_cluster = os.environ["NEXT_VISIT_FAN_OUT_KAFKA_CLUSTER"]
 # Kafka group for next visit fan out messages.
-next_visit_kakfa_group_id = os.environ["NEXT_VISIT_KAFKA_GROUP_ID"]
+next_visit_kafka_group_id = os.environ["NEXT_VISIT_KAFKA_GROUP_ID"]
 # Kafka topic for next visit fan out messages.
 next_visit_fan_out_topic = os.environ["NEXT_VISIT_FAN_OUT_TOPIC"]
 
@@ -230,108 +230,25 @@ def keda_start():
     # _get_central_butler()
     # _get_local_repo()
 
-    schema_str = """
-    {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "title": "Fanout",
-        "description": "Fanout message",
-        "type": "object",
-        "properties": {
-            "salIndex": {
-                "description": "sal Index",
-                "type": "string"
-            },
-            "scriptSalIndex": {
-                "description": "script sal index",
-                "type": "string"
-            },
-            "instrument": {
-                "description": "instrument",
-                "type": "string"
-            },
-            "groupId": {
-                "description": "group id",
-                "type": "string"
-            },
-            "coordinateSystem": {
-                "description": "coordinate system",
-                "type": "string"
-            },
-            "position": {
-                "description": "position",
-                "type": "string"
-            },
-            "startTime": {
-                "description": "start time",
-                "type": "string"
-            },
-            "rotationSystem" :{
-                "description": "rotation system",
-                "type": "string"
-            },
-            "cameraAngle": {
-                "description": "camera angle",
-                "type": "string"
-            },
-            "filters": {
-                "description": "filters",
-                "type": "string"
-            },
-            "dome": {
-                "description": "dome",
-                "type": "string"
-            },
-            "duration": {
-                "description": "duration",
-                "type": "string"
-            },
-            "nimages": {
-                "description": "number of images",
-                "type": "string"
-            },
-            "survey": {
-                "description": "survey",
-                "type": "string"
-            },
-            "totalCheckpoints": {
-                "description": "total checkpoints",
-                "type": "string"
-            },
-            "private_sndStamp": {
-                "description": "private send stamp",
-                "type": "string"
-            },
-            "detector": {
-                "description": "detector",
-                "type": "string"
-            }
-        }
-    }
-"""
-    json_deserializer = JSONDeserializer(schema_str,
-                                         from_dict=dict_to_bare_visit)
+    # https://aiokafka.readthedocs.io/en/stable/examples/manual_commit.html
+    next_visit_fan_out_consumer = AIOKafkaConsumer(
+        next_visit_fan_out_topic,
+        bootstrap_servers=next_visit_fan_out_kafka_cluster,
+        auto_offset_rest='earliest',
+        group_id=next_visit_kafka_group_id,
+        value_deserializer=deserializer,
+        enable_auto_commit=False)
 
-    next_visit_fan_out_consumer = kafka.Consumer({
-        "bootstrap.servers": next_visit_fan_out_kafka_cluster,
-        "group.id": next_visit_kakfa_group_id,
-        "auto.offset.reset": "earliest"
-    })
-    next_visit_fan_out_consumer.subscribe([next_visit_fan_out_topic])
-    next_visit_fan_out_message = next_visit_fan_out_consumer.consume(num_messages=1, timeout=5)
+    next_visit_fan_out_consumer.start()
 
-    for msg in next_visit_fan_out_message:
-        if msg.error():
-            # TODO: not all error() are actually *errors*
-            _log.warning("Consumer event: %s", msg.error())
-        else:
-            _log.info(msg.value().decode("utf-8"))
-            deserialized_data = json_deserializer(msg.value(),
-                                                  SerializationContext(msg.topic(),
-                                                  MessageField.VALUE))
-            # data = json.loads(msg.value().decode("utf-8"))
-            visit = FannedOutVisit(deserialized_data)
-            _log.info("Unpacked message as %r.", visit)
-            process_visit(visit)
+    for _ in range(1):
+        msg = next_visit_fan_out_consumer.getone()
+    next_visit_fan_out_consumer.commit()
+
+    _log.info("Message deserialized %s", msg.value)
+
+    visit = FannedOutVisit(msg.value)
+    process_visit(visit)
 
 
 def _graceful_shutdown(signum: int, stack_frame):
