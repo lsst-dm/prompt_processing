@@ -3,31 +3,32 @@ name: "Build base"
 on:
   push:
     paths:
-      - '.github/workflows/build-base.yml'
-      - 'base/Dockerfile'
+      - ".github/workflows/build-base.yml"
+      - "base/Dockerfile"
     branches:
       - main
+      - tickets/DM-43082
   pull_request:
     paths:
-      - '.github/workflows/build-base.yml'
-      - 'base/Dockerfile'
+      - ".github/workflows/build-base.yml"
+      - "base/Dockerfile"
   workflow_dispatch:
     inputs:
       pipeContainer:
-        description: 'Science Pipelines container'
+        description: "Science Pipelines container"
         required: true
-        default: 'lsstsqre/centos'
+        default: "lsstsqre/centos"
         type: string
       stackTag:
-        description: 'Science Pipelines tag'
+        description: "Science Pipelines tag"
         required: true
-        default: 'd_latest'
+        default: "d_latest"
         type: string
       makeLatest:
         description: 'Push container with "latest" tag'
         required: false
+        default: false
         type: boolean
-
 
 permissions:
   packages: write
