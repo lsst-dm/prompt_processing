@@ -6,20 +6,20 @@ on:
       - main
       - tickets/DM-43082
     paths:
-      - '.github/workflows/build-service.yml'
-      - 'config/**'
-      - 'pipelines/**'
-      - 'python/activator/**'
-      - 'tests/**'
-      - 'Dockerfile'
+      - ".github/workflows/build-service.yml"
+      - "config/**"
+      - "pipelines/**"
+      - "python/activator/**"
+      - "tests/**"
+      - "Dockerfile"
   pull_request:
     paths:
-      - '.github/workflows/build-service.yml'
-      - 'config/**'
-      - 'pipelines/**'
-      - 'python/activator/**'
-      - 'tests/**'
-      - 'Dockerfile'
+      - ".github/workflows/build-service.yml"
+      - "config/**"
+      - "pipelines/**"
+      - "python/activator/**"
+      - "tests/**"
+      - "Dockerfile"
   workflow_dispatch:
 
 permissions:
@@ -32,7 +32,7 @@ env:
   # relatively stable Pipelines containers that are needed to avoid issues with
   # the "latest" version; they would remain in this list until "latest" becomes
   # usable for all building and testing.
-  BASE_TAG_LIST: '["latest"]'
+  BASE_TAG_LIST: '["DM-43082-d_2024_10_08"]'
 
 jobs:
   matrix-gen:

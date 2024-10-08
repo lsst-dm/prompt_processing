@@ -8,7 +8,6 @@ WORKDIR $APP_HOME
 COPY python/activator activator/
 COPY pipelines pipelines/
 COPY config/gunicorn.conf.py ./
-CMD pip install --no-input aiokafka
 CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
     && exec gunicorn --bind :$PORT --config gunicorn.conf.py 'activator.activator:create_app()'
