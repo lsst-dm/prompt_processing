@@ -10,4 +10,5 @@ COPY pipelines pipelines/
 COPY config/gunicorn.conf.py ./
 CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
+    && pip install --no-input aiokafka \
     && exec gunicorn --bind :$PORT --config gunicorn.conf.py 'activator.activator:create_app()'
