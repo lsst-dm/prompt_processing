@@ -234,7 +234,7 @@ def keda_start():
     next_visit_fan_out_consumer = AIOKafkaConsumer(
         next_visit_fan_out_topic,
         bootstrap_servers=next_visit_fan_out_kafka_cluster,
-        auto_offset_rest='earliest',
+        auto_offset_reset='earliest',
         group_id=next_visit_kafka_group_id,
         value_deserializer=deserializer,
         enable_auto_commit=False)
