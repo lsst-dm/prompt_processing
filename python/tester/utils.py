@@ -146,10 +146,10 @@ def make_compressed_date(date):
 
     Notes
     -----
-    The current implementation gives 4-digit results until September 2024.
+    The current implementation gives 4-digit results until September 2025.
     If this generator is still needed after that, it will need to be tweaked.
     """
-    year = int(date[:4]) - 2023            # Always 1 digit, 0-1
+    year = int(date[:4]) - 2024            # Always 1 digit, 0-1
     night_id = int(date[-4:])              # Always 4 digits up to 1231
     compressed = year*1200 + night_id      # Always 4 digits
     limit = max_exposure["HSC"] // 10_000
