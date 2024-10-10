@@ -497,8 +497,7 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 * For HSC, 4 groups, in total 10 raw files, are curated.
   They are the COSMOS data as curated in `ap_verify_ci_cosmos_pdr2 <https://github.com/lsst/ap_verify_ci_cosmos_pdr2>`_.
 * For LATISS, 3 groups, in total 3 raw fits files and their corresponding json metadata files, are curated.
-  One of the files, the unobserved group `2023-10-11T01:45:47.810`, has modified RA at a location with no templates.
-  Astrometry is also expected to fail in WCS fitting.
+  One of the files, the unobserved group `2024-09-04T05:59:29.342`, has no templates and is known to fail `calibrateImage` in determining PSF.
   This visit can test pipeline fallback features.
 * For LSSTComCamSim, 2 groups, in total 18 raw fits files and their corresponding json metadata files, are curated.
 
