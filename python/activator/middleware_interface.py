@@ -678,7 +678,7 @@ class MiddlewareInterface:
         """
         skymaps = set(_filter_datasets(
             self.central_butler, self.butler,
-            "skyMap",
+            ["skyMap"],
             skymap=self.skymap_name,
             collections=self._collection_skymap,
             findFirst=True,
@@ -777,7 +777,7 @@ class MiddlewareInterface:
         try:
             models = set(_filter_datasets(
                 self.central_butler, self.butler,
-                "pretrainedModelPackage",
+                ["pretrainedModelPackage"],
                 collections=self._collection_ml_model,
                 findFirst=True,
                 all_callback=self._mark_dataset_usage,
@@ -1752,6 +1752,7 @@ class _MissingDatasetError(RuntimeError):
 # properly separated.
 def _filter_datasets(src_repo: Butler,
                      dest_repo: Butler,
+                     dataset_types: collections.abc.Iterable[str | lsst.daf.butler.DatasetType],
                      *args,
                      calib_date: astropy.time.Time | None = None,
                      all_callback: typing.Callable[[collections.abc.Iterable[lsst.daf.butler.DatasetRef]],
@@ -1769,6 +1770,8 @@ def _filter_datasets(src_repo: Butler,
         The repository in which a dataset must be present.
     dest_repo : `lsst.daf.butler.Butler`
         The repository in which a dataset must not be present.
+    dataset_types : iterable [`str` | `lsst.daf.butler.DatasetType`]
+        Iterable of dataset type object or name to search for.
     calib_date : `astropy.time.Time`, optional
         If provided, also filter anything other than calibs valid at
         ``calib_date`` and check that at least one valid calib was found.
@@ -1793,19 +1796,25 @@ def _filter_datasets(src_repo: Butler,
         Raised if the query on ``src_repo`` failed to find any datasets, or
         (if ``calib_date`` is set) if none of them are currently valid.
     """
-    formatted_args = "{}, {}".format(
+    formatted_args = "dataset_types={}, {}, {}".format(
+        dataset_types,
         ", ".join(repr(a) for a in args),
         ", ".join(f"{k}={v!r}" for k, v in kwargs.items()),
     )
-    try:
-        with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
-                                        level=logging.DEBUG):
-            known_datasets = set(dest_repo.registry.queryDatasets(*args, **kwargs))
-            _log_trace.debug("Known datasets: %s", known_datasets)
-    except lsst.daf.butler.registry.DataIdValueError as e:
-        _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
-        # If dimensions are invalid, then *any* such datasets are missing.
+    # time_this automatically escalates its log to ERROR level if the code raises.
+    # Some errors are expected to happen sometimes, and we don't want those to log
+    # at the ERROR level and cause confusion.
+    with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
+                                    level=logging.DEBUG):
         known_datasets = set()
+        for dataset_type in dataset_types:
+            try:
+                # Okay to have empty results.
+                known_datasets |= set(dest_repo.registry.queryDatasets(dataset_type, *args, **kwargs))
+            except lsst.daf.butler.registry.DataIdValueError as e:
+                _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
+                # If dimensions are invalid, then *any* such datasets are missing.
+        _log_trace.debug("Known datasets: %s", known_datasets)
 
     # Let exceptions from src_repo query raise: if it fails, that invalidates
     # this operation.
@@ -1813,7 +1822,9 @@ def _filter_datasets(src_repo: Butler,
     # comparison, so we only need them on src_datasets.
     with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (source datasets)",
                                     level=logging.DEBUG):
-        src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs).expanded())
+        src_datasets = set()
+        for dataset_type in dataset_types:
+            src_datasets |= set(src_repo.registry.queryDatasets(dataset_type, *args, **kwargs).expanded())
         # In many contexts, src_datasets is too large to print.
         _log_trace3.debug("Source datasets: %s", src_datasets)
     if calib_date:

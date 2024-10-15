@@ -934,7 +934,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
                 result = set(_filter_datasets(src_butler, existing_butler,
-                                              "bias", instrument="LSSTComCamSim"))
+                                              ["bias"], instrument="LSSTComCamSim"))
                 src_butler.registry.queryDatasets.assert_called_once_with("bias", instrument="LSSTComCamSim")
                 existing_butler.registry.queryDatasets.assert_called_once_with("bias",
                                                                                instrument="LSSTComCamSim")
@@ -957,7 +957,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                    f"Unknown values specified for governor dimension skymap: {{{skymap_name}}}")
                })
 
-        result = set(_filter_datasets(src_butler, existing_butler, "skyMap", ..., skymap="mymap"))
+        result = set(_filter_datasets(src_butler, existing_butler, ["skyMap"], ..., skymap="mymap"))
         src_butler.registry.queryDatasets.assert_called_once_with("skyMap", ..., skymap="mymap")
         self.assertEqual(result, {data1})
 
@@ -978,7 +978,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
-                    _filter_datasets(src_butler, existing_butler, "bias", instrument="LSSTComCamSim")
+                    _filter_datasets(src_butler, existing_butler, ["bias"], instrument="LSSTComCamSim")
 
     def test_filter_datasets_all_callback(self):
         """Test that _filter_datasets passes the correct values to its callback.
@@ -1004,7 +1004,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
-                _filter_datasets(src_butler, existing_butler, "bias", instrument="LSSTComCamSim",
+                _filter_datasets(src_butler, existing_butler, ["bias"], instrument="LSSTComCamSim",
                                  all_callback=functools.partial(test_function, src))
 
         # Should not call
@@ -1019,7 +1019,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
-                    _filter_datasets(src_butler, existing_butler, "bias", instrument="LSSTComCamSim",
+                    _filter_datasets(src_butler, existing_butler, ["bias"], instrument="LSSTComCamSim",
                                      all_callback=non_callable)
 
     def test_filter_calibs_by_date_valid(self):
