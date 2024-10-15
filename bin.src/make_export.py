@@ -118,9 +118,22 @@ def _export_for_copy(butler, target_butler, wants):
         if "datasets" in wants:
             for selection in wants["datasets"]:
                 logging.debug(f"Selecting datasets: {selection}")
-                if "datasetType" not in selection:
-                    selection["datasetType"] = ...
-                records = _filter_datasets(butler, target_butler, **selection)
+                if "collections" not in selection:
+                    raise RuntimeError("Must provide collections to select datasets.")
+                if "datasetType" in selection:
+                    dataset_types = [selection.pop("datasetType")]
+                else:
+                    # TODO: A new query API after DM-45873 may replace or improve this usage.
+                    all_types = {t.name for t in butler.registry.queryDatasetTypes()}
+                    collections_info = butler.collections.query_info(
+                        selection["collections"], include_summary=True
+                    )
+                    dataset_types = butler.collections._filter_dataset_types(
+                        all_types, collections_info
+                    )
+                records = _filter_datasets(
+                    butler, target_butler, dataset_types, **selection
+                )
                 contents.saveDatasets(records)
 
         # Save selected collections and chains
