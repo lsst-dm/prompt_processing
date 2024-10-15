@@ -734,16 +734,22 @@ class MiddlewareInterface:
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
         # Querying by specific types is much faster than querying by ...
         # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
-        types = {t for t in self.central_butler.registry.queryDatasetTypes()
-                 if t.isCalibration() and "exposure" not in t.dimensions}
+        type_names = {t.name for t in self.central_butler.registry.queryDatasetTypes()
+                      if t.isCalibration() and "exposure" not in t.dimensions}
         data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
         if filter:
             data_id["physical_filter"] = filter
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
+        # For now, filter down to the dataset types that exist in the specific calib collection.
+        # TODO: A new query API after DM-45873 may replace or improve this usage.
+        # TODO: DM-40245 to identify the datasets.
+        collections_info = self.central_butler.collections.query_info(
+            self.instrument.makeCalibrationCollectionName(), include_summary=True)
+        type_names = self.central_butler.collections._filter_dataset_types(type_names, collections_info)
         calibs = set(_filter_datasets(
             self.central_butler, self.butler,
-            types,
+            type_names,
             collections=self.instrument.makeCalibrationCollectionName(),
             dataId=data_id,
             calib_date=calib_date,
