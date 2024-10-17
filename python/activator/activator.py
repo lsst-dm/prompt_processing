@@ -50,8 +50,10 @@ from .raw import (
 )
 from .repo_registry import LocalRepoRegistry
 from .visit import FannedOutVisit, BareVisit
+from confluent_kafka.serialization import SerializationContext, MessageField
+from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry.avro import AvroDeserializer
 
-from aiokafka import AIOKafkaConsumer
 
 # Platform that prompt processing will run on
 platform = os.environ["PLATFORM"]
@@ -210,10 +212,6 @@ def dict_to_bare_visit(obj, ctx):
                      totalCheckpoints=obj['totalCheckpoints'])
 
 
-def deserializer(serialized):
-    return json.loads(serialized)
-
-
 def keda_start():
 
     setup_usdf_logger(
@@ -230,20 +228,33 @@ def keda_start():
     # _get_central_butler()
     # _get_local_repo()
 
-    # https://aiokafka.readthedocs.io/en/stable/examples/manual_commit.html
-    next_visit_fan_out_consumer = AIOKafkaConsumer(
-        next_visit_fan_out_topic,
-        bootstrap_servers=next_visit_fan_out_kafka_cluster,
-        auto_offset_reset='earliest',
-        group_id=next_visit_kafka_group_id,
-        value_deserializer=deserializer,
-        enable_auto_commit=False)
+    schema_registry_conf = {'url': "http://10.104.75.248:8081"}
+    schema_registry_client = SchemaRegistryClient(schema_registry_conf)
 
-    next_visit_fan_out_consumer.start()
+    fan_out_schema = schema_registry_client(schema_id=1)
 
-    for _ in range(1):
-        msg = next_visit_fan_out_consumer.getone()
-    next_visit_fan_out_consumer.commit()
+    fan_out_avro_deserializer = AvroDeserializer(schema_registry_client,
+                                                 fan_out_schema,
+                                                 dict_to_bare_visit)
+
+    next_visit_fan_out_consumer = kafka.Consumer({
+        "bootstrap.servers": next_visit_fan_out_kafka_cluster,
+        "group.id": next_visit_kafka_group_id,
+        "auto.offset.reset": "earliest"
+    })
+    next_visit_fan_out_consumer.subscribe([next_visit_fan_out_topic])
+    next_visit_fan_out_message = next_visit_fan_out_consumer.consume(num_messages=1, timeout=5)
+
+    # TODO fixup for cleaner logic
+    for msg in next_visit_fan_out_message:
+
+        _log.info(msg.value().decode("utf-8"))
+        deserialized_data = fan_out_avro_deserializer(msg.value(),
+                                                      SerializationContext(msg.topic(),
+                                                      MessageField.VALUE))
+        visit = FannedOutVisit(deserialized_data)
+        _log.info("Unpacked message as %r.", visit)
+        process_visit(visit)
 
     _log.info("Message deserialized %s", msg.value)
 
