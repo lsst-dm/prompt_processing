@@ -15,6 +15,7 @@ butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-
 butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type bias --collections LSSTComCamSim/calib/DM-42287 --where "instrument='LSSTComCamSim' and detector in (4, 5)"
 butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type dark --collections LSSTComCamSim/calib/DM-42287 --where "instrument='LSSTComCamSim' and detector in (4, 5)"
 butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type flat --collections LSSTComCamSim/calib/DM-44910 --where "instrument='LSSTComCamSim' and detector in (4, 5) and physical_filter='g_01'"
+butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type ptc --collections LSSTComCamSim/calib/DM-46360 --where "instrument='LSSTComCamSim' and detector in (4, 5)"
 butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type pretrainedModelPackage --collections pretrained_models/dummy
 butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type skyMap --where "skymap='ops_rehersal_prep_2k_v1'"
 butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type goodSeeingCoadd --collections LSSTComCamSim/runs/OR4_templates/w_2024_23/DM-44718/20240610T044930Z --where "instrument='LSSTComCamSim' and detector=4 and visit=7024061700046"
@@ -25,18 +26,19 @@ butler certify-calibrations "$REPO" u/abrought/bfk_70240217_w_2024_07_final/2024
 butler certify-calibrations "$REPO" u/jchiang/bias_70240217_w_2024_07/20240218T190659Z LSSTComCamSim/calib/DM-46312 bias --begin-date "2024-06-15T12:00:00" --end-date "2024-06-25T12:00:00"
 butler certify-calibrations "$REPO" u/jchiang/dark_70240217_w_2024_07/20240218T191310Z LSSTComCamSim/calib/DM-46312 dark --begin-date "2024-06-15T12:00:00" --end-date "2024-06-25T12:00:00"
 butler certify-calibrations "$REPO" u/jchiang/flat_70240417_w_2024_15/20240418T050546Z LSSTComCamSim/calib/DM-46312 flat --begin-date "2024-06-15T12:00:00" --end-date "2024-06-25T12:00:00"
+butler certify-calibrations "$REPO" LSSTComCamSim/calib/DM-46360/isrTaskLSST/ptcGen.20240926a/20240926T153341Z LSSTComCamSim/calib/DM-46987 ptc --begin-date "2024-06-15T12:00:00" --end-date "2024-06-25T12:00:00"
 
 # Alias all the runs
 butler collection-chain "$REPO" pretrained_models pretrained_models/dummy
 butler collection-chain "$REPO" refcats refcats/DM-42510
-butler collection-chain "$REPO" LSSTComCamSim/calib LSSTComCamSim/calib/DM-46312
+butler collection-chain "$REPO" LSSTComCamSim/calib LSSTComCamSim/calib/DM-46312 LSSTComCamSim/calib/DM-46987
 butler collection-chain "$REPO" LSSTComCamSim/templates LSSTComCamSim/runs/OR4_templates/w_2024_23/DM-44718/20240610T044930Z
 butler collection-chain "$REPO" LSSTComCamSim/defaults LSSTComCamSim/calib skymaps refcats pretrained_models
 
 # Empty out files and make them size 0 in the registry.
 # We do not empty the camera or skymap because we actually need to read them.
 for x in `find "$REPO/LSSTComCamSim/calib/curated/" -name "*.fits"`; do : > $x; done
-for x in `find "$REPO/LSSTComCamSim/calib/DM-43441/" -name "*.fits"`; do : > $x; done
+for x in `find "$REPO/LSSTComCamSim/calib/DM-46360/" -name "*.fits"`; do : > $x; done
 for x in `find "$REPO/LSSTComCamSim/runs/" -name "*.fits"`; do : > $x; done
 for x in `find "$REPO/pretrained_models/" -name "*.zip"`; do : > $x; done
 for x in `find "$REPO/refcats/DM-42510/" -name "*.fits"`; do : > $x; done
