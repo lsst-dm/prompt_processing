@@ -260,8 +260,6 @@ def keda_start():
 
     # TODO fixup for cleaner logic
     for msg in next_visit_fan_out_message:
-
-        _log.info(msg.value().decode("utf-8"))
         deserialized_data = fan_out_avro_deserializer(msg.value(),
                                                       SerializationContext(msg.topic(),
                                                       MessageField.VALUE))
