@@ -237,8 +237,8 @@ def keda_start():
     # Check initialization and abort early
     _get_consumer()
     _get_storage_client()
-    # _get_central_butler()
-    # _get_local_repo()
+    _get_central_butler()
+    _get_local_repo()
 
     schema_registry_conf = {'url': "http://10.104.75.248:8081"}
     schema_registry_client = SchemaRegistryClient(schema_registry_conf)
