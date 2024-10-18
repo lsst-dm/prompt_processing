@@ -82,11 +82,21 @@ pre_pipelines = PipelinesConfig(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
 # The main pipelines to execute and the conditions in which to choose them.
 main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
 # Kafka cluster with next visit fanned out messages.
-next_visit_fan_out_kafka_cluster = os.environ["NEXT_VISIT_FAN_OUT_KAFKA_CLUSTER"]
+fan_out_kafka_cluster = os.environ["FAN_OUT_KAFKA_CLUSTER"]
 # Kafka group for next visit fan out messages.
-next_visit_kafka_group_id = os.environ["NEXT_VISIT_KAFKA_GROUP_ID"]
+fan_out_kafka_group_id = os.environ["FAN_OUT_KAFKA_GROUP_ID"]
 # Kafka topic for next visit fan out messages.
-next_visit_fan_out_topic = os.environ["NEXT_VISIT_FAN_OUT_TOPIC"]
+fan_out_kafka_topic = os.environ["FAN_OUT_KAFKA_TOPIC"]
+# Kafka topic offset for next visit fan out messages.
+fan_out_kafka_topic_offset = os.environ["FAN_OUT_KAFKA_TOPIC_OFFSET"]
+# Kafka Fan Out SASL Mechansim.
+fan_out_kafka_sasl_mechanism = os.environ["FAN_OUT_KAFKA_SASL_MECHANISM"]
+# Kafka Fan Out Security Protocol.
+fan_out_kafka_security_protocol = os.environ["FAN_OUT_KAFKA_SECURITY_PROTOCOL"]
+# Kafka Fan Out Consumer Username.
+fan_out_kafka_sasl_username = os.environ["FAN_OUT_KAFKA_SASL_USERNAME"]
+# Kafka Fan Out Consumer Password.
+fan_out_kafka_sasl_password = os.environ["FAN_OUT_KAFKA_SASL_PASSWORD"]
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -237,11 +247,16 @@ def keda_start():
                                                  from_dict=dict_to_bare_visit)
 
     next_visit_fan_out_consumer = kafka.Consumer({
-        "bootstrap.servers": next_visit_fan_out_kafka_cluster,
-        "group.id": next_visit_kafka_group_id,
-        "auto.offset.reset": "earliest"
+        "bootstrap.servers": fan_out_kafka_cluster,
+        "group.id": fan_out_kafka_group_id,
+        "auto.offset.reset": fan_out_kafka_topic_offset,
+        "sasl.mechansim": fan_out_kafka_sasl_mechanism,
+        "security.protocol": fan_out_kafka_security_protocol,
+        "sasl_plain_username": fan_out_kafka_sasl_username,
+        "sasl_plain_password": fan_out_kafka_sasl_password
+
     })
-    next_visit_fan_out_consumer.subscribe([next_visit_fan_out_topic])
+    next_visit_fan_out_consumer.subscribe([fan_out_kafka_topic])
     next_visit_fan_out_message = next_visit_fan_out_consumer.consume(num_messages=1, timeout=5)
 
     # TODO fixup for cleaner logic
