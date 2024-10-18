@@ -231,11 +231,10 @@ def keda_start():
     schema_registry_conf = {'url': "http://10.104.75.248:8081"}
     schema_registry_client = SchemaRegistryClient(schema_registry_conf)
 
-    fan_out_schema = schema_registry_client.get_schema(schema_id=1)
+    # fan_out_schema = schema_registry_client.get_schema(schema_id=1)
 
-    fan_out_avro_deserializer = AvroDeserializer(schema_registry_client,
-                                                 fan_out_schema,
-                                                 dict_to_bare_visit)
+    fan_out_avro_deserializer = AvroDeserializer(schema_registry_client=schema_registry_client,
+                                                 from_dict=dict_to_bare_visit)
 
     next_visit_fan_out_consumer = kafka.Consumer({
         "bootstrap.servers": next_visit_fan_out_kafka_cluster,
