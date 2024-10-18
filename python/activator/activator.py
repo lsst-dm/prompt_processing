@@ -231,7 +231,7 @@ def keda_start():
     schema_registry_conf = {'url': "http://10.104.75.248:8081"}
     schema_registry_client = SchemaRegistryClient(schema_registry_conf)
 
-    fan_out_schema = schema_registry_client(schema_id=1)
+    fan_out_schema = schema_registry_client.get_schema(schema_id=1)
 
     fan_out_avro_deserializer = AvroDeserializer(schema_registry_client,
                                                  fan_out_schema,
