@@ -250,7 +250,7 @@ def keda_start():
         "bootstrap.servers": fan_out_kafka_cluster,
         "group.id": fan_out_kafka_group_id,
         "auto.offset.reset": fan_out_kafka_topic_offset,
-        "sasl.mechansim": fan_out_kafka_sasl_mechanism,
+        "sasl.mechanism": fan_out_kafka_sasl_mechanism,
         "security.protocol": fan_out_kafka_security_protocol,
         "sasl_plain_username": fan_out_kafka_sasl_username,
         "sasl_plain_password": fan_out_kafka_sasl_password
