@@ -49,7 +49,7 @@ from .raw import (
     get_group_id_from_oid,
 )
 from .repo_registry import LocalRepoRegistry
-from .visit import FannedOutVisit, BareVisit
+from .visit import FannedOutVisit
 from confluent_kafka.serialization import SerializationContext, MessageField
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroDeserializer
@@ -192,7 +192,7 @@ def create_app():
         sys.exit(3)
 
 
-def dict_to_bare_visit(obj, ctx):
+def dict_to_fanned_out_visit(obj, ctx):
     """
     Converts object literal(dict) to a Fanned Out instance.
 
@@ -205,21 +205,23 @@ def dict_to_bare_visit(obj, ctx):
     if obj is None:
         return None
 
-    return BareVisit(salIndex=obj['salIndex'],
-                     scriptSalIndex=obj['scriptSalIndex'],
-                     groupId=obj['groupId'],
-                     coordinateSystem=obj['coordinateSystem'],
-                     position=obj['position'],
-                     startTime=obj['startTime'],
-                     rotationSystem=obj['rotationSystem'],
-                     cameraAngle=obj['cameraAngle'],
-                     filters=obj['filters'],
-                     dome=obj['dome'],
-                     duration=obj['duration'],
-                     nImages=obj['nImages'],
-                     instrument=obj['instrument'],
-                     survey=obj['survey'],
-                     totalCheckpoints=obj['totalCheckpoints'])
+    return FannedOutVisit(salIndex=obj['salIndex'],
+                          scriptSalIndex=obj['scriptSalIndex'],
+                          groupId=obj['groupId'],
+                          coordinateSystem=obj['coordinateSystem'],
+                          position=obj['position'],
+                          startTime=obj['startTime'],
+                          rotationSystem=obj['rotationSystem'],
+                          cameraAngle=obj['cameraAngle'],
+                          filters=obj['filters'],
+                          dome=obj['dome'],
+                          duration=obj['duration'],
+                          nimages=obj['nimages'],
+                          instrument=obj['instrument'],
+                          survey=obj['survey'],
+                          totalCheckpoints=obj['totalCheckpoints'],
+                          detector=obj['detector'],
+                          private_sndStamp=obj['private_sndStamp'])
 
 
 def keda_start():
@@ -244,9 +246,9 @@ def keda_start():
     # fan_out_schema = schema_registry_client.get_schema(schema_id=1)
 
     fan_out_avro_deserializer = AvroDeserializer(schema_registry_client=schema_registry_client,
-                                                 from_dict=dict_to_bare_visit)
+                                                 from_dict=dict_to_fanned_out_visit)
 
-    next_visit_fan_out_consumer = kafka.Consumer({
+    fan_out_consumer = kafka.Consumer({
         "bootstrap.servers": fan_out_kafka_cluster,
         "group.id": fan_out_kafka_group_id,
         "auto.offset.reset": fan_out_kafka_topic_offset,
@@ -255,22 +257,16 @@ def keda_start():
         "sasl.username": fan_out_kafka_sasl_username,
         "sasl.password": fan_out_kafka_sasl_password
     })
-    next_visit_fan_out_consumer.subscribe([fan_out_kafka_topic])
-    next_visit_fan_out_message = next_visit_fan_out_consumer.consume(num_messages=1, timeout=5)
+    fan_out_consumer.subscribe([fan_out_kafka_topic])
+    fan_out_message = fan_out_consumer.consume(num_messages=1, timeout=5)
 
     # TODO fixup for cleaner logic
-    for msg in next_visit_fan_out_message:
-        deserialized_data = fan_out_avro_deserializer(msg.value(),
-                                                      SerializationContext(msg.topic(),
-                                                      MessageField.VALUE))
-        visit = FannedOutVisit(deserialized_data)
-        _log.info("Unpacked message as %r.", visit)
-        process_visit(visit)
-
-    _log.info("Message deserialized %s", msg.value)
-
-    visit = FannedOutVisit(msg.value)
-    process_visit(visit)
+    for msg in fan_out_message:
+        deserialized_fan_out_visit = fan_out_avro_deserializer(msg.value(),
+                                                               SerializationContext(msg.topic(),
+                                                               MessageField.VALUE))
+        _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
+        process_visit(deserialized_fan_out_visit)
 
 
 def _graceful_shutdown(signum: int, stack_frame):
