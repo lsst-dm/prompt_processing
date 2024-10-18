@@ -252,9 +252,8 @@ def keda_start():
         "auto.offset.reset": fan_out_kafka_topic_offset,
         "sasl.mechanism": fan_out_kafka_sasl_mechanism,
         "security.protocol": fan_out_kafka_security_protocol,
-        "sasl_plain_username": fan_out_kafka_sasl_username,
-        "sasl_plain_password": fan_out_kafka_sasl_password
-
+        "sasl.username": fan_out_kafka_sasl_username,
+        "sasl.password": fan_out_kafka_sasl_password
     })
     next_visit_fan_out_consumer.subscribe([fan_out_kafka_topic])
     next_visit_fan_out_message = next_visit_fan_out_consumer.consume(num_messages=1, timeout=5)
