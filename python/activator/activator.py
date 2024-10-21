@@ -37,6 +37,7 @@ from botocore.handlers import validate_bucket_name
 import cloudevents.http
 import confluent_kafka as kafka
 import flask
+import activator.repo_registry
 
 from .config import PipelinesConfig
 from .exception import GracefulShutdownInterrupt, InvalidVisitError, NonRetriableError, RetriableError
@@ -50,8 +51,12 @@ from .raw import (
 )
 from .repo_tracker import LocalRepoTracker
 from .visit import FannedOutVisit
+from confluent_kafka.serialization import SerializationContext, MessageField
+from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry.avro import AvroDeserializer
 
-
+# Platform that prompt processing will run on
+platform = os.environ["PLATFORM"]
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
 # The skymap to use in the central repo
@@ -78,6 +83,24 @@ bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
 pre_pipelines = PipelinesConfig(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
 # The main pipelines to execute and the conditions in which to choose them.
 main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
+# Kafka Schema Registry URL for next visit fan out messages
+fan_out_schema_registry_url = os.environ["FAN_OUT_SCHEMA_REGISTRY_URL"]
+# Kafka cluster with next visit fanned out messages.
+fan_out_kafka_cluster = os.environ["FAN_OUT_KAFKA_CLUSTER"]
+# Kafka group for next visit fan out messages.
+fan_out_kafka_group_id = os.environ["FAN_OUT_KAFKA_GROUP_ID"]
+# Kafka topic for next visit fan out messages.
+fan_out_kafka_topic = os.environ["FAN_OUT_KAFKA_TOPIC"]
+# Kafka topic offset for next visit fan out messages.
+fan_out_kafka_topic_offset = os.environ["FAN_OUT_KAFKA_TOPIC_OFFSET"]
+# Kafka Fan Out SASL Mechansim.
+fan_out_kafka_sasl_mechanism = os.environ["FAN_OUT_KAFKA_SASL_MECHANISM"]
+# Kafka Fan Out Security Protocol.
+fan_out_kafka_security_protocol = os.environ["FAN_OUT_KAFKA_SECURITY_PROTOCOL"]
+# Kafka Fan Out Consumer Username.
+fan_out_kafka_sasl_username = os.environ["FAN_OUT_KAFKA_SASL_USERNAME"]
+# Kafka Fan Out Consumer Password.
+fan_out_kafka_sasl_password = os.environ["FAN_OUT_KAFKA_SASL_PASSWORD"]
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -171,6 +194,82 @@ def create_app():
         _log.exception(e)
         # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
         sys.exit(3)
+
+
+def dict_to_fanned_out_visit(obj, ctx):
+    """
+    Converts object literal(dict) to a Fanned Out instance.
+
+    Args:
+        ctx (SerializationContext): Metadata pertaining to the serialization
+            operation.
+        obj (dict): Object literal(dict)
+    """
+
+    if obj is None:
+        return None
+
+    return FannedOutVisit(salIndex=obj['salIndex'],
+                          scriptSalIndex=obj['scriptSalIndex'],
+                          groupId=obj['groupId'],
+                          coordinateSystem=obj['coordinateSystem'],
+                          position=obj['position'],
+                          startTime=obj['startTime'],
+                          rotationSystem=obj['rotationSystem'],
+                          cameraAngle=obj['cameraAngle'],
+                          filters=obj['filters'],
+                          dome=obj['dome'],
+                          duration=obj['duration'],
+                          nimages=obj['nimages'],
+                          instrument=obj['instrument'],
+                          survey=obj['survey'],
+                          totalCheckpoints=obj['totalCheckpoints'],
+                          detector=obj['detector'],
+                          private_sndStamp=obj['private_sndStamp'])
+
+
+def keda_start():
+
+    setup_usdf_logger(
+        labels={"instrument": instrument_name},
+    )
+
+    # Initialize local registry
+    registry = activator.repo_registry.LocalRepoRegistry.get()
+    registry.init_registry()
+
+    # Check initialization and abort early
+    _get_consumer()
+    _get_storage_client()
+    _get_central_butler()
+    _get_local_repo()
+
+    # Initiialize schema registry for fan out
+    fan_out_schema_registry_conf = {'url': fan_out_schema_registry_url}
+    fan_out_schema_registry_client = SchemaRegistryClient(fan_out_schema_registry_conf)
+
+    fan_out_avro_deserializer = AvroDeserializer(schema_registry_client=fan_out_schema_registry_client,
+                                                 from_dict=dict_to_fanned_out_visit)
+
+    fan_out_consumer = kafka.Consumer({
+        "bootstrap.servers": fan_out_kafka_cluster,
+        "group.id": fan_out_kafka_group_id,
+        "auto.offset.reset": fan_out_kafka_topic_offset,
+        "sasl.mechanism": fan_out_kafka_sasl_mechanism,
+        "security.protocol": fan_out_kafka_security_protocol,
+        "sasl.username": fan_out_kafka_sasl_username,
+        "sasl.password": fan_out_kafka_sasl_password
+    })
+    fan_out_consumer.subscribe([fan_out_kafka_topic])
+    fan_out_message = fan_out_consumer.consume(num_messages=1, timeout=5)
+
+    # TODO fixup for cleaner logic
+    for msg in fan_out_message:
+        deserialized_fan_out_visit = fan_out_avro_deserializer(msg.value(),
+                                                               SerializationContext(msg.topic(),
+                                                               MessageField.VALUE))
+        _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
+        process_visit(deserialized_fan_out_visit)
 
 
 def _graceful_shutdown(signum: int, stack_frame):
@@ -560,8 +659,16 @@ def server_error(e: Exception) -> tuple[str, int]:
 def main():
     # This function is only called in test environments. Container
     # deployments call `create_app()()` through Gunicorn.
-    app = create_app()
-    app.run(host="127.0.0.1", port=8080, debug=True)
+    if platform == "knative":
+        _log.info("starting knative instance")
+        app = create_app()
+        app.run(host="127.0.0.1", port=8080, debug=True)
+    # starts keda instance of the application
+    elif platform == "keda":
+        _log.info("starting keda instance")
+        keda_start()
+    else:
+        _log.info("no platform defined")
 
 
 if __name__ == "__main__":
