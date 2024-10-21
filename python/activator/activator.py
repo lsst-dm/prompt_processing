@@ -81,6 +81,8 @@ bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
 pre_pipelines = PipelinesConfig(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
 # The main pipelines to execute and the conditions in which to choose them.
 main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
+# Kafka Schema Registry URL for next visit fan out messages
+fan_out_schema_registry_url = os.environ["FAN_OUT_SCHEMA_REGISTRY_URL"]
 # Kafka cluster with next visit fanned out messages.
 fan_out_kafka_cluster = os.environ["FAN_OUT_KAFKA_CLUSTER"]
 # Kafka group for next visit fan out messages.
@@ -240,12 +242,11 @@ def keda_start():
     _get_central_butler()
     _get_local_repo()
 
-    schema_registry_conf = {'url': "http://10.104.75.248:8081"}
-    schema_registry_client = SchemaRegistryClient(schema_registry_conf)
+    # Initiialize schema registry for fan out
+    fan_out_schema_registry_conf = {'url': fan_out_schema_registry_url}
+    fan_out_schema_registry_client = SchemaRegistryClient(fan_out_schema_registry_conf)
 
-    # fan_out_schema = schema_registry_client.get_schema(schema_id=1)
-
-    fan_out_avro_deserializer = AvroDeserializer(schema_registry_client=schema_registry_client,
+    fan_out_avro_deserializer = AvroDeserializer(schema_registry_client=fan_out_schema_registry_client,
                                                  from_dict=dict_to_fanned_out_visit)
 
     fan_out_consumer = kafka.Consumer({
