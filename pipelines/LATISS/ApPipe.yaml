@@ -9,6 +9,15 @@ imports:
     include:
       - prompt
 tasks:
+  isr:
+    class: lsst.ip.isr.IsrTaskLSST
+    config:
+      # These are copied from obs_lsst ticket branch DM-46356
+      overscanCamera.defaultDetectorConfig.defaultAmpConfig.saturation: 120000
+      crosstalk.doQuadraticCrosstalkCorrection: False
+      doDeferredCharge: False
+      doBrighterFatter: False
+      cameraKeywordsToCompare: ["SEQNAME", "SEQFILE", "SEQCKSUM", "ODP", "AP0_RC", "TEMP_SET"]
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:
