@@ -4,22 +4,23 @@ on:
   push:
     branches:
       - main
-      - 'releases/**'
+      - "releases/**"
+      - tickets/DM-43082-1
     paths:
-      - '.github/workflows/build-service.yml'
-      - 'config/**'
-      - 'pipelines/**'
-      - 'python/activator/**'
-      - 'tests/**'
-      - 'Dockerfile'
+      - ".github/workflows/build-service.yml"
+      - "config/**"
+      - "pipelines/**"
+      - "python/activator/**"
+      - "tests/**"
+      - "Dockerfile"
   pull_request:
     paths:
-      - '.github/workflows/build-service.yml'
-      - 'config/**'
-      - 'pipelines/**'
-      - 'python/activator/**'
-      - 'tests/**'
-      - 'Dockerfile'
+      - ".github/workflows/build-service.yml"
+      - "config/**"
+      - "pipelines/**"
+      - "python/activator/**"
+      - "tests/**"
+      - "Dockerfile"
   workflow_dispatch:
 
 permissions:
