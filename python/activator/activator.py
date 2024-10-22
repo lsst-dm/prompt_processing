@@ -37,7 +37,7 @@ from botocore.handlers import validate_bucket_name
 import cloudevents.http
 import confluent_kafka as kafka
 import flask
-import activator.repo_registry
+import activator.repo_tracker
 
 from .config import PipelinesConfig
 from .exception import GracefulShutdownInterrupt, InvalidVisitError, NonRetriableError, RetriableError
@@ -235,8 +235,8 @@ def keda_start():
     )
 
     # Initialize local registry
-    registry = activator.repo_registry.LocalRepoRegistry.get()
-    registry.init_registry()
+    registry = activator.repo_tracker.LocalRepoTracker.get()
+    registry.init_tracker()
 
     # Check initialization and abort early
     _get_consumer()
