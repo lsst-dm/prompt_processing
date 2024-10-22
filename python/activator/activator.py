@@ -54,6 +54,7 @@ from .visit import FannedOutVisit
 from confluent_kafka.serialization import SerializationContext, MessageField
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroDeserializer
+from confluent_kafka import KafkaException, KafkaError
 
 # Platform that prompt processing will run on
 platform = os.environ["PLATFORM"]
@@ -260,16 +261,32 @@ def keda_start():
         "sasl.username": fan_out_kafka_sasl_username,
         "sasl.password": fan_out_kafka_sasl_password
     })
-    fan_out_consumer.subscribe([fan_out_kafka_topic])
-    fan_out_message = fan_out_consumer.consume(num_messages=1, timeout=5)
 
-    # TODO fixup for cleaner logic
-    for msg in fan_out_message:
-        deserialized_fan_out_visit = fan_out_avro_deserializer(msg.value(),
-                                                               SerializationContext(msg.topic(),
-                                                               MessageField.VALUE))
-        _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
-        process_visit(deserialized_fan_out_visit)
+    try:
+        fan_out_consumer.subscribe([fan_out_kafka_topic])
+
+        while True:
+            fan_out_consumer.subscribe([fan_out_kafka_topic])
+            fan_out_message = fan_out_consumer.poll(timeout=1)
+            if fan_out_message is None:
+                continue
+
+            if fan_out_message.error():
+                if fan_out_message.error().code() == KafkaError._PARTITION_EOF:
+                    # End of partition event
+                    _log.warning('reached end of offset')
+                elif fan_out_message.error():
+                    raise KafkaException(fan_out_message.error())
+            else:
+                for msg in fan_out_message:
+                    deserialized_fan_out_visit = fan_out_avro_deserializer(msg.value(),
+                                                                           SerializationContext(msg.topic(),
+                                                                           MessageField.VALUE))
+                    _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
+                    process_visit(deserialized_fan_out_visit)
+                    break
+    finally:
+        fan_out_consumer.close()
 
 
 def _graceful_shutdown(signum: int, stack_frame):
