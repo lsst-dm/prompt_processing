@@ -262,6 +262,8 @@ def keda_start():
         "sasl.password": fan_out_kafka_sasl_password
     })
 
+    _log.info("starting fan out consumer")
+
     try:
         fan_out_consumer.subscribe([fan_out_kafka_topic])
 
@@ -269,8 +271,8 @@ def keda_start():
             fan_out_consumer.subscribe([fan_out_kafka_topic])
             fan_out_message = fan_out_consumer.poll(timeout=1)
             if fan_out_message is None:
+                _log.info("no message")
                 continue
-
             if fan_out_message.error():
                 if fan_out_message.error().code() == KafkaError._PARTITION_EOF:
                     # End of partition event
