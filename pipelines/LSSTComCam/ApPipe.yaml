@@ -12,5 +12,6 @@ tasks:
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:
+      # Alert distribution only runnable in PP environment.
       doPackageAlerts: True
       alertPackager.doProduceAlerts: True
