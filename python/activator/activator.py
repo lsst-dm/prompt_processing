@@ -280,13 +280,13 @@ def keda_start():
                 elif fan_out_message.error():
                     raise KafkaException(fan_out_message.error())
             else:
-                for msg in fan_out_message:
-                    deserialized_fan_out_visit = fan_out_avro_deserializer(msg.value(),
-                                                                           SerializationContext(msg.topic(),
+                deserialized_fan_out_visit = fan_out_avro_deserializer(fan_out_message.value(),
+                                                                       SerializationContext(
+                                                                           fan_out_message.topic(),
                                                                            MessageField.VALUE))
-                    _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
-                    process_visit(deserialized_fan_out_visit)
-                    break
+                _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
+                process_visit(deserialized_fan_out_visit)
+                break
     finally:
         fan_out_consumer.close()
 
