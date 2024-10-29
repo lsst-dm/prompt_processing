@@ -259,7 +259,8 @@ def keda_start():
         "sasl.mechanism": fan_out_kafka_sasl_mechanism,
         "security.protocol": fan_out_kafka_security_protocol,
         "sasl.username": fan_out_kafka_sasl_username,
-        "sasl.password": fan_out_kafka_sasl_password
+        "sasl.password": fan_out_kafka_sasl_password,
+        'enable.auto.commit': False
     })
 
     _log.info("starting fan out consumer")
@@ -284,6 +285,7 @@ def keda_start():
                                                                            fan_out_message.topic(),
                                                                            MessageField.VALUE))
                 _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
+                fan_out_consumer.commit(fan_out_message)
                 process_visit(deserialized_fan_out_visit)
                 break
     finally:
