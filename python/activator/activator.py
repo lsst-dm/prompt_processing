@@ -285,7 +285,7 @@ def keda_start():
                                                                            fan_out_message.topic(),
                                                                            MessageField.VALUE))
                 _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
-                fan_out_consumer.commit(fan_out_message)
+                fan_out_consumer.commit(fan_out_message, asynchronous=False)
                 process_visit(deserialized_fan_out_visit)
                 break
     finally:
