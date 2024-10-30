@@ -211,6 +211,7 @@ def make_local_cache():
             "gaia_dr3_20230707": refcat_factor * base_keep_limit,
             "gaia_dr2_20200414": refcat_factor * base_keep_limit,
             "atlas_refcat2_20220201": refcat_factor * base_keep_limit,
+            "the_monster_20240904": refcat_factor * base_keep_limit,
         },
     )
 
