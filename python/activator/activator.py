@@ -260,8 +260,7 @@ def keda_start():
         "security.protocol": fan_out_kafka_security_protocol,
         "sasl.username": fan_out_kafka_sasl_username,
         "sasl.password": fan_out_kafka_sasl_password,
-        'enable.auto.commit': False,
-        'max.poll.records': 1
+        'enable.auto.commit': False
     })
 
     _log.info("starting fan out consumer")
@@ -271,7 +270,7 @@ def keda_start():
 
         while True:
             fan_out_consumer.subscribe([fan_out_kafka_topic])
-            fan_out_message = fan_out_consumer.poll(timeout=1)
+            fan_out_message = fan_out_consumer.consume(num_messages=1, timeout=5)
             if fan_out_message is None:
                 continue
             if fan_out_message.error():
@@ -286,7 +285,7 @@ def keda_start():
                                                                            fan_out_message.topic(),
                                                                            MessageField.VALUE))
                 _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
-                fan_out_consumer.commit(fan_out_message, asynchronous=False)
+                fan_out_consumer.commit(message=fan_out_message, asynchronous=False)
                 process_visit(deserialized_fan_out_visit)
                 break
     finally:
