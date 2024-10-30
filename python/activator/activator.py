@@ -263,7 +263,7 @@ def keda_start():
         'enable.auto.commit': False
     }
 
-    fan_out_consumer = kafka.Consumer(conf=fan_out_consumer_conf, logger=_log)
+    fan_out_consumer = kafka.Consumer(fan_out_consumer_conf, logger=_log)
 
     _log.info("starting fan out consumer")
 
