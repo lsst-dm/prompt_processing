@@ -102,6 +102,8 @@ fan_out_kafka_security_protocol = os.environ["FAN_OUT_KAFKA_SECURITY_PROTOCOL"]
 fan_out_kafka_sasl_username = os.environ["FAN_OUT_KAFKA_SASL_USERNAME"]
 # Kafka Fan Out Consumer Password.
 fan_out_kafka_sasl_password = os.environ["FAN_OUT_KAFKA_SASL_PASSWORD"]
+# Offset for Kafka bucket notification.
+bucket_notification_kafka_offset_reset = os.environ["BUCKET_NOTIFICATION_KAFKA_OFFSET_RESET"]
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -130,7 +132,7 @@ def _get_consumer():
     return kafka.Consumer({
         "bootstrap.servers": kafka_cluster,
         "group.id": kafka_group_id,
-        "auto.offset.reset": "latest",  # default, but make explicit
+        "auto.offset.reset": bucket_notification_kafka_offset_reset,
     })
 
 
