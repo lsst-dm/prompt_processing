@@ -347,9 +347,9 @@ def next_visit_handler() -> tuple[str, int]:
     try:
         try:
             expected_visit = parse_next_visit(flask.request)
-        except ValueError as msg:
-            _log.exception()
-            return f"Bad Request: {msg}", 400
+        except ValueError as e:
+            _log.exception("Bad Request: %s", e)
+            return f"Bad Request: {e}", 400
         process_visit(expected_visit)
         return "Pipeline executed", 200
     except GracefulShutdownInterrupt:
@@ -524,7 +524,7 @@ def process_visit(expected_visit: FannedOutVisit):
 
 
 def invalid_visit(e: InvalidVisitError) -> tuple[str, int]:
-    _log.exception()
+    _log.exception("Invalid visit: %s", e)
     return f"Cannot process visit: {e}.", 422
 
 
