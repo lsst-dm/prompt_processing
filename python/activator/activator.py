@@ -39,7 +39,8 @@ import confluent_kafka as kafka
 import flask
 
 from .config import PipelinesConfig
-from .exception import GracefulShutdownInterrupt, InvalidVisitError, NonRetriableError, RetriableError
+from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
+    NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
 from .middleware_interface import get_central_butler, \
     make_local_repo, make_local_cache, MiddlewareInterface
@@ -160,6 +161,7 @@ def create_app():
 
         app = flask.Flask(__name__)
         app.add_url_rule("/next-visit", view_func=next_visit_handler, methods=["POST"])
+        app.register_error_handler(IgnorableVisit, skip_visit)
         app.register_error_handler(InvalidVisitError, invalid_visit)
         app.register_error_handler(RetriableError, request_retry)
         app.register_error_handler(NonRetriableError, forbid_retry)
@@ -385,6 +387,8 @@ def process_visit(expected_visit: FannedOutVisit):
         `~activator.exception.NonRetriableError` or
         `~activator.exception.RetriableError`, depending on the program state
         at the time.
+    activator.exception.IgnorableVisit
+        Raised if the service is configured to not process ``expected_visit``.
     activator.exception.InvalidVisitError
         Raised if ``expected_visit`` is not processable.
     activator.exception.NonRetriableError
@@ -409,7 +413,7 @@ def process_visit(expected_visit: FannedOutVisit):
         assert expected_visit.instrument == instrument_name, \
             f"Expected {instrument_name}, received {expected_visit.instrument}."
         if not main_pipelines.get_pipeline_files(expected_visit):
-            raise InvalidVisitError(f"No pipeline configured for {expected_visit}.")
+            raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
 
         log_factory = logging.getLogRecordFactory()
         with log_factory.add_context(group=expected_visit.groupId,
@@ -526,6 +530,11 @@ def process_visit(expected_visit: FannedOutVisit):
 def invalid_visit(e: InvalidVisitError) -> tuple[str, int]:
     _log.exception("Invalid visit")
     return f"Cannot process visit: {e}.", 422
+
+
+def skip_visit(e: IgnorableVisit) -> tuple[str, int]:
+    _log.info("Skipping visit: %s", e)
+    return f"Skipping visit without processing: {e}.", 422
 
 
 def request_retry(e: RetriableError):
