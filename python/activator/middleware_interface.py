@@ -71,6 +71,8 @@ base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))-1
 # Multipliers to base_keep_limit for refcats and templates.
 refcat_factor = int(os.environ.get("REFCATS_PER_IMAGE", 4))
 template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
+# Minimum number of datasets to keep for filter-dependent datasets.
+filter_floor = int(os.environ.get("FILTERS_WITH_CALIBS", 20))
 # VALIDITY-HACK: local-only calib collections break if calibs are not requested
 # in chronological order. Turn off for large development runs.
 cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
@@ -202,8 +204,8 @@ def make_local_cache():
         base_keep_limit,
         cache_sizes={
             # TODO: find an API that doesn't require explicit enumeration
-            "goodSeeingCoadd": template_factor * base_keep_limit,
-            "deepCoadd": template_factor * base_keep_limit,
+            "goodSeeingCoadd": template_factor * max(base_keep_limit, filter_floor),
+            "deepCoadd": template_factor * max(base_keep_limit, filter_floor),
             "uw_stars_20240524": refcat_factor * base_keep_limit,
             "uw_stars_20240228": refcat_factor * base_keep_limit,
             "uw_stars_20240130": refcat_factor * base_keep_limit,
@@ -212,6 +214,11 @@ def make_local_cache():
             "gaia_dr2_20200414": refcat_factor * base_keep_limit,
             "atlas_refcat2_20220201": refcat_factor * base_keep_limit,
             "the_monster_20240904": refcat_factor * base_keep_limit,
+            "eo_flat": max(base_keep_limit, filter_floor),
+            "flat": max(base_keep_limit, filter_floor),
+            "flatBootstrap": max(base_keep_limit, filter_floor),
+            "fringe": max(base_keep_limit, filter_floor),
+            "transmission_filter": max(base_keep_limit, filter_floor),
         },
     )
 
@@ -660,7 +667,8 @@ class MiddlewareInterface:
         wcs : `lsst.afw.geom.SkyWcs`
             Rough WCS for the upcoming visit, to help finding patches.
         filter : `str`
-            Physical filter for which to export templates.
+            Physical filter for which to export templates. May be empty to
+            indicate no specific filter.
 
         Returns
         -------
@@ -686,6 +694,12 @@ class MiddlewareInterface:
         patches = tract.findPatchList(points)
         patches_str = ','.join(str(p.sequential_index) for p in patches)
         template_where = f"patch in ({patches_str})"
+        data_id = {"instrument": self.instrument.getName(),
+                   "skymap": self.skymap_name,
+                   "tract": tract.tract_id,
+                   }
+        if filter:
+            data_id["physical_filter"] = filter
         # TODO: do we need to have the coadd name used in the pipeline
         # specified as a class kwarg, so that we only load one here?
         # TODO: alternately, we need to extract it from the pipeline? (best?)
@@ -695,10 +709,7 @@ class MiddlewareInterface:
                 self.central_butler, self.butler,
                 "*Coadd",
                 collections=self._collection_template,
-                instrument=self.instrument.getName(),
-                skymap=self.skymap_name,
-                tract=tract.tract_id,
-                physical_filter=filter,
+                dataId=data_id,
                 where=template_where,
                 findFirst=True,
                 all_callback=self._mark_dataset_usage,
@@ -718,7 +729,8 @@ class MiddlewareInterface:
         detector_id : `int`
             Identifier of the detector to load calibs for.
         filter : `str`
-            Physical filter name of the upcoming visit.
+            Physical filter name of the upcoming visit. May be empty to indicate
+            no specific filter.
 
         Returns
         -------
@@ -731,15 +743,16 @@ class MiddlewareInterface:
         # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
         types = {t for t in self.central_butler.registry.queryDatasetTypes()
                  if t.isCalibration() and "exposure" not in t.dimensions}
+        data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
+        if filter:
+            data_id["physical_filter"] = filter
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
         calibs = set(_filter_datasets(
             self.central_butler, self.butler,
             types,
             collections=self.instrument.makeCalibrationCollectionName(),
-            instrument=self.instrument.getName(),
-            detector=detector_id,
-            physical_filter=filter,
+            dataId=data_id,
             calib_date=calib_date,
             all_callback=self._mark_dataset_usage,
         ))
@@ -1248,7 +1261,7 @@ class MiddlewareInterface:
             exec_butler = Butler(butler=self.butler,
                                  collections=[output_run, init_output_run]
                                  + in_collections
-                                 + list(self.butler.collections),
+                                 + list(self.butler.collections.defaults),
                                  run=output_run)
             factory = lsst.ctrl.mpexec.TaskFactory()
             executor = SeparablePipelineExecutor(

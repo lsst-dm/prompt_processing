@@ -141,7 +141,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                      inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
-        self.local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "goodSeeingCoadd": 30})
+        self.local_cache = DatasetCache(3, {"uw_stars_20240524": 10, "goodSeeingCoadd": 30})
         self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
 
         config = ApdbSql.init_database(db_url=f"sqlite:///{self.local_repo.name}/apdb.db")
@@ -193,7 +193,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.assertTrue(
                 butler.getURI("skyMap", skymap=skymap_name, run="foo", predict=True).ospath
                 .startswith(self.central_repo))
-            self.assertEqual(list(butler.collections), [f"{instname}/defaults"])
+            self.assertEqual(list(butler.collections.defaults), [f"{instname}/defaults"])
             self.assertTrue(butler.isWriteable())
 
     def test_make_local_repo(self):
@@ -218,7 +218,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the butler instance is properly configured.
         instruments = list(self.interface.butler.registry.queryDimensionRecords("instrument"))
         self.assertEqual(instname, instruments[0].name)
-        self.assertEqual(set(self.interface.butler.collections), {self.umbrella})
+        self.assertEqual(set(self.interface.butler.collections.defaults), {self.umbrella})
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
@@ -334,6 +334,26 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             # Nothing should have been imported
             self._check_imports(self.interface.butler, group="1", detector=4,
                                 expected_shards=expected_shards)
+
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
+
+    # TODO: prep_butler doesn't grab all the refcats. Should be fixable on DM-43712
+    @unittest.expectedFailure
+    def test_prep_butler_nofilter(self):
+        """Test that prep_butler can handle visits without a filter.
+        """
+        self.interface.visit = dataclasses.replace(
+            self.interface.visit,
+            filters="",
+        )
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            self.interface.prep_butler()
+
+        expected_shards = {166464, 177536}
+        self._check_imports(self.interface.butler, group="1", detector=4,
+                            expected_shards=expected_shards)
 
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
@@ -818,6 +838,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         calib_data_id_1 = {k: v for k, v in raw_data_id.required.items() if k in {"instrument", "detector"}}
         calib_data_id_2 = {"instrument": self.interface.instrument.getName(), "detector": 1}
         calib_data_id_3 = {"instrument": self.interface.instrument.getName(), "detector": 2}
+        calib_data_id_4 = {"instrument": self.interface.instrument.getName(), "detector": 3}
         processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.required.items()}
         butler_tests.addDataIdValue(butler, "exposure", raw_data_id["exposure"])
         butler_tests.addDataIdValue(butler, "visit", processed_data_id["visit"])
@@ -845,8 +866,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         bias_1 = butler.put(exp, "bias", calib_data_id_1, run=calib_collection)
         bias_2 = butler.put(exp, "bias", calib_data_id_2, run=calib_collection)
         bias_3 = butler.put(exp, "bias", calib_data_id_3, run=calib_collection)
+        bias_4 = butler.put(exp, "bias", calib_data_id_4, run=calib_collection)
         with self.assertWarns(RuntimeWarning):  # Deliberately overflowing cache
-            self.local_cache.update([bias_1, bias_2, bias_3, ])
+            self.local_cache.update([bias_1, bias_2, bias_3, bias_4, ])
         self._assert_in_collection(butler, "*", "raw", raw_data_id)
         self._assert_in_collection(butler, "*", "src", processed_data_id)
         self._assert_in_collection(butler, "*", "calexp", processed_data_id)
