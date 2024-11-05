@@ -660,7 +660,8 @@ class MiddlewareInterface:
         wcs : `lsst.afw.geom.SkyWcs`
             Rough WCS for the upcoming visit, to help finding patches.
         filter : `str`
-            Physical filter for which to export templates.
+            Physical filter for which to export templates. May be empty to
+            indicate no specific filter.
 
         Returns
         -------
@@ -686,6 +687,12 @@ class MiddlewareInterface:
         patches = tract.findPatchList(points)
         patches_str = ','.join(str(p.sequential_index) for p in patches)
         template_where = f"patch in ({patches_str})"
+        data_id = {"instrument": self.instrument.getName(),
+                   "skymap": self.skymap_name,
+                   "tract": tract.tract_id,
+                   }
+        if filter:
+            data_id["physical_filter"] = filter
         # TODO: do we need to have the coadd name used in the pipeline
         # specified as a class kwarg, so that we only load one here?
         # TODO: alternately, we need to extract it from the pipeline? (best?)
@@ -695,10 +702,7 @@ class MiddlewareInterface:
                 self.central_butler, self.butler,
                 "*Coadd",
                 collections=self._collection_template,
-                instrument=self.instrument.getName(),
-                skymap=self.skymap_name,
-                tract=tract.tract_id,
-                physical_filter=filter,
+                dataId=data_id,
                 where=template_where,
                 findFirst=True,
                 all_callback=self._mark_dataset_usage,
@@ -718,7 +722,8 @@ class MiddlewareInterface:
         detector_id : `int`
             Identifier of the detector to load calibs for.
         filter : `str`
-            Physical filter name of the upcoming visit.
+            Physical filter name of the upcoming visit. May be empty to indicate
+            no specific filter.
 
         Returns
         -------
@@ -731,15 +736,16 @@ class MiddlewareInterface:
         # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
         types = {t for t in self.central_butler.registry.queryDatasetTypes()
                  if t.isCalibration() and "exposure" not in t.dimensions}
+        data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
+        if filter:
+            data_id["physical_filter"] = filter
         # TODO: we can't use findFirst=True yet because findFirst query
         # in CALIBRATION-type collection is not supported currently.
         calibs = set(_filter_datasets(
             self.central_butler, self.butler,
             types,
             collections=self.instrument.makeCalibrationCollectionName(),
-            instrument=self.instrument.getName(),
-            detector=detector_id,
-            physical_filter=filter,
+            dataId=data_id,
             calib_date=calib_date,
             all_callback=self._mark_dataset_usage,
         ))

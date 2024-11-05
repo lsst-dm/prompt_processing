@@ -67,7 +67,8 @@ class BareVisit:
     rotationSystem: RotSys      # coordinate system of cameraAngle
     cameraAngle: float          # in degrees
     # physical filter(s) name as used in Middleware. It is a combination of filter and
-    # grating joined by a "~". For example, "SDSSi_65mm~empty".
+    # grating joined by a "~". For example, "SDSSi_65mm~empty". May be empty
+    # to indicate no specific filter.
     filters: str
     dome: Dome
     duration: float             # script execution, not exposure
