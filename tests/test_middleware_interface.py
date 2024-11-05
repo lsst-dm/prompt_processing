@@ -193,7 +193,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.assertTrue(
                 butler.getURI("skyMap", skymap=skymap_name, run="foo", predict=True).ospath
                 .startswith(self.central_repo))
-            self.assertEqual(list(butler.collections), [f"{instname}/defaults"])
+            self.assertEqual(list(butler.collections.defaults), [f"{instname}/defaults"])
             self.assertTrue(butler.isWriteable())
 
     def test_make_local_repo(self):
@@ -218,7 +218,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the butler instance is properly configured.
         instruments = list(self.interface.butler.registry.queryDimensionRecords("instrument"))
         self.assertEqual(instname, instruments[0].name)
-        self.assertEqual(set(self.interface.butler.collections), {self.umbrella})
+        self.assertEqual(set(self.interface.butler.collections.defaults), {self.umbrella})
 
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)

@@ -1248,7 +1248,7 @@ class MiddlewareInterface:
             exec_butler = Butler(butler=self.butler,
                                  collections=[output_run, init_output_run]
                                  + in_collections
-                                 + list(self.butler.collections),
+                                 + list(self.butler.collections.defaults),
                                  run=output_run)
             factory = lsst.ctrl.mpexec.TaskFactory()
             executor = SeparablePipelineExecutor(
