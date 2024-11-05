@@ -20,7 +20,9 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-__all__ = ["NonRetriableError", "RetriableError", "GracefulShutdownInterrupt", "InvalidVisitError"]
+__all__ = ["NonRetriableError", "RetriableError", "GracefulShutdownInterrupt",
+           "InvalidVisitError", "IgnorableVisit",
+           ]
 
 
 class NonRetriableError(Exception):
@@ -88,6 +90,17 @@ class GracefulShutdownInterrupt(BaseException):
 class InvalidVisitError(ValueError):
     """An exception raised if a visit object has invalid or inappropriate
     fields.
+
+    See Also
+    --------
+    activator.visit.SummitVisit
+    activator.visit.FannedOutVisit
+    """
+
+
+class IgnorableVisit(ValueError):
+    """An exception raised if a visit object has fields that are valid,
+    but that is configured to not be processed.
 
     See Also
     --------
