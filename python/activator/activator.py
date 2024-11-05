@@ -30,6 +30,7 @@ import os
 import sys
 import time
 import signal
+import yaml
 import uuid
 
 import boto3
@@ -75,13 +76,32 @@ kafka_cluster = os.environ["KAFKA_CLUSTER"]
 kafka_group_id = str(uuid.uuid4())
 # The topic on which to listen to updates to image_bucket
 bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
-# The preprocessing pipelines to execute and the conditions in which to choose them.
-pre_pipelines = PipelinesConfig(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
-# The main pipelines to execute and the conditions in which to choose them.
-main_pipelines = PipelinesConfig(os.environ["MAIN_PIPELINES_CONFIG"])
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+
+
+def _config_from_yaml(yaml_string):
+    """Initialize a PipelinesConfig from a YAML-formatted string.
+
+    Parameters
+    ----------
+    yaml_string : `str`
+        A YAML representation of the structured config. See
+        `~activator.config.PipelineConfig` for details.
+
+    Returns
+    -------
+    config : `activator.config.PipelineConfig`
+        The corresponding config object.
+    """
+    return PipelinesConfig(yaml.safe_load(yaml_string))
+
+
+# The preprocessing pipelines to execute and the conditions in which to choose them.
+pre_pipelines = _config_from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
+# The main pipelines to execute and the conditions in which to choose them.
+main_pipelines = _config_from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
 
 
 def find_local_repos(base_path):

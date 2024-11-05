@@ -66,22 +66,17 @@ skymap_name = "ops_rehersal_prep_2k_v1"
 # A pipelines config that returns the test pipelines.
 # Unless a test imposes otherwise, the first pipeline should run, and
 # the second should not be attempted.
-pipelines = PipelinesConfig('''
-    -
-      survey: SURVEY
-      pipelines:
-      - ${PROMPT_PROCESSING_DIR}/tests/data/ApPipe.yaml
-      - ${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml''')
-pre_pipelines_empty = PipelinesConfig('''
-    - survey: SURVEY
-      pipelines: []''')
-pre_pipelines_full = PipelinesConfig(
-    '''-
-         survey: SURVEY
-         pipelines:
-         - ${PROMPT_PROCESSING_DIR}/tests/data/Preprocess.yaml
-         - ${PROMPT_PROCESSING_DIR}/tests/data/MinPrep.yaml
-    ''')
+pipelines = PipelinesConfig([{"survey": "SURVEY",
+                              "pipelines": ["${PROMPT_PROCESSING_DIR}/tests/data/ApPipe.yaml",
+                                            "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml",
+                                            ],
+                              }])
+pre_pipelines_empty = PipelinesConfig([{"survey": "SURVEY", "pipelines": None}])
+pre_pipelines_full = PipelinesConfig([{"survey": "SURVEY",
+                                       "pipelines": ["${PROMPT_PROCESSING_DIR}/tests/data/Preprocess.yaml",
+                                                     "${PROMPT_PROCESSING_DIR}/tests/data/MinPrep.yaml",
+                                                     ],
+                                       }])
 
 
 def fake_file_data(filename, dimensions, instrument, visit):

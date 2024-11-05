@@ -26,7 +26,6 @@ __all__ = ["PipelinesConfig"]
 import collections
 import collections.abc
 import os
-import yaml
 
 from .visit import FannedOutVisit
 
@@ -41,59 +40,53 @@ class PipelinesConfig:
 
     Parameters
     ----------
-    config : `str`
-        A YAML-encoded list of mappings, each of which maps ``survey`` to a
-        survey name and ``pipelines`` to a list of zero or more pipelines. Each
-        pipeline path may contain environment variables, and the list of
-        pipelines may be replaced by the keyword "None" to mean no pipeline
-        should be run. No two pipelines may share the same survey. See examples
-        below.
+    config : sequence [mapping]
+        A sequence of mappings ("nodes"), each with the following keys:
+
+        ``"survey"``
+            The survey that triggers the pipelines (`str`). No two nodes may
+            share the same survey.
+        ``"pipelines"``
+            A list of zero or more pipelines (sequence [`str`] or `None`). Each
+            pipeline path may contain environment variables, and the list of
+            pipelines may be replaced by `None` to mean no pipeline should
+            be run.
 
     Examples
     --------
     A single-survey, single-pipeline config:
 
-    >>> PipelinesConfig('''
-    ... -
-    ...   survey: TestSurvey
-    ...   pipelines: [/etc/pipelines/SingleFrame.yaml]''')  # doctest: +ELLIPSIS
+    >>> PipelinesConfig([{"survey": "TestSurvey",
+    ...                   "pipelines": ["/etc/pipelines/SingleFrame.yaml"]},
+    ...                  ])  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
 
     A config with multiple surveys and pipelines, and environment variables:
 
-    >>> PipelinesConfig('''
-    ... -
-    ...   survey: TestSurvey
-    ...   pipelines: [/etc/pipelines/ApPipe.yaml, /etc/pipelines/ISR.yaml]
-    ... -
-    ...   survey: Camera Test
-    ...   pipelines:
-    ...   - ${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml
-    ... -
-    ...   survey: ""
-    ...   pipelines:
-    ...   - ${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml
-    ... ''')  # doctest: +ELLIPSIS
+    >>> PipelinesConfig([{"survey": "TestSurvey",
+    ...                   "pipelines": ["/etc/pipelines/ApPipe.yaml", "/etc/pipelines/ISR.yaml"]},
+    ...                  {"survey": "Camera Test",
+    ...                   "pipelines": ["${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml"]},
+    ...                  {"survey": "",
+    ...                   "pipelines": ["${AP_PIPE_DIR}/pipelines/LSSTComCam/Isr.yaml"]},
+    ...                  ])  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
 
     A config that omits a pipeline for non-sky data:
 
-    >>> PipelinesConfig('''
-    ... -
-    ...   survey: TestSurvey
-    ...   pipelines: [/etc/pipelines/ApPipe.yaml]
-    ... -
-    ...   survey: Dome Flats
-    ...   pipelines: None''')  # doctest: +ELLIPSIS
+    >>> PipelinesConfig([{"survey": "TestSurvey",
+                          "pipelines": ["/etc/pipelines/ApPipe.yaml"]},
+                         {"survey": "Dome Flats",
+                          "pipelines": None},
+    ...                  ])  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
     """
 
-    def __init__(self, config: str):
+    def __init__(self, config: collections.abc.Sequence):
         if not config:
             raise ValueError("Must configure at least one pipeline.")
 
-        parsed_config = yaml.safe_load(config)
-        self._mapping = self._expand_config(parsed_config)
+        self._mapping = self._expand_config(config)
 
         for pipelines in self._mapping.values():
             self._check_pipelines(pipelines)
@@ -105,11 +98,7 @@ class PipelinesConfig:
         Parameters
         ----------
         config : sequence [mapping]
-            A sequence of mappings, each of which maps ``survey`` to a survey
-            name and ``pipelines`` to a list of zero or more pipelines. Each
-            pipeline path may contain environment variables, and the list of
-            pipelines may be replaced by `None` to mean no pipeline should be
-            run. No two pipelines may share the same survey.
+            A sequence of mappings, see class docs for details.
 
         Returns
         -------
