@@ -132,12 +132,9 @@ def flush_local_repo(repo_dir: str, central_butler: Butler):
             MiddlewareInterface._export_exposure_dimensions(butler, central_butler)
             transferred = central_butler.transfer_from(butler, datasets,
                                                        transfer="copy", transfer_dimensions=False)
-            if len(transferred) != len(datasets):
-                # Not necessarily a problem -- we might be transferring datasets
-                # that have already been (partially?) transferred.
-                _log.warning("Uploaded only %d datasets out of %d; missing %s.",
-                             len(transferred), len(datasets),
-                             datasets - set(transferred))
+            # Not necessarily a problem -- we might be transferring datasets
+            # that have already been (partially?) transferred.
+            _check_transfer_completion(datasets, transferred, "Uploaded")
             # Don't try to chain the runs -- only way to get the correct chain
             # name is to parse the collection name(s), too brittle for the rare
             # case that the runs aren't already in central repo.
@@ -809,10 +806,7 @@ class MiddlewareInterface:
                                                     register_dataset_types=True,
                                                     transfer_dimensions=True,
                                                     )
-            if len(transferred) != len(datasets):
-                _log.warning("Downloaded only %d datasets out of %d; missing %s.",
-                             len(transferred), len(datasets),
-                             datasets - set(transferred))
+            _check_transfer_completion(datasets, transferred, "Downloaded")
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)", level=logging.DEBUG):
             # VALIDITY-HACK: ensure local <instrument>/calibs is a
@@ -1566,10 +1560,7 @@ class MiddlewareInterface:
             )
             transferred = self.central_butler.transfer_from(self.butler, datasets,
                                                             transfer="copy", transfer_dimensions=False)
-            if len(transferred) != len(datasets):
-                _log.error("Uploaded only %d datasets out of %d; missing %s.",
-                           len(transferred), len(datasets),
-                           datasets - set(transferred))
+            _check_transfer_completion(datasets, transferred, "Uploaded")
 
         return transferred
 
@@ -1901,3 +1892,27 @@ def _remove_run_completely(butler, run):
     for chain in butler.registry.getCollectionParentChains(run):
         butler.collections.remove_from_chain(chain, [run])
     butler.removeRuns([run], unstore=True)
+
+
+def _check_transfer_completion(expected, transferred, transfer_type):
+    """Test whether a Butler transfer ran to completion.
+
+    Current behavior on an incomplete transfer is to log a warning.
+
+    Parameters
+    ----------
+    expected : collection [`lsst.daf.butler.DatasetRef`]
+        The datasets that were marked for transfer.
+    transferred : collection [`lsst.daf.butler.DatasetRef`]
+        The datasets that were successfully transferred.
+    transfer_type : `str`
+        A brief description of the transfer. Should be a past-tense verb.
+    """
+    # Count only unique datasets
+    expected_s = set(expected)
+    transferred_s = set(transferred)
+    if len(transferred_s) != len(expected_s):
+        _log.warning("%s only %d datasets out of %d; missing %s.",
+                     transfer_type.capitalize(),
+                     len(transferred_s), len(expected_s),
+                     expected_s - transferred_s)
