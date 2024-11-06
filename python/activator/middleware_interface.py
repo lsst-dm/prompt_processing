@@ -1529,8 +1529,8 @@ class MiddlewareInterface:
 
         with lsst.utils.timer.time_this(_log, msg="export_outputs (find outputs)", level=logging.DEBUG):
             try:
-                # Need to iterate over datasets at least twice, so list.
-                datasets = list(self.butler.registry.queryDatasets(
+                # Need to iterate over datasets at least twice, so make a collection.
+                datasets = set(self.butler.registry.queryDatasets(
                     dataset_types,
                     collections=in_collections,
                     # in_collections may include other runs, so need to filter.
@@ -1569,7 +1569,7 @@ class MiddlewareInterface:
             if len(transferred) != len(datasets):
                 _log.error("Uploaded only %d datasets out of %d; missing %s.",
                            len(transferred), len(datasets),
-                           set(datasets) - set(transferred))
+                           datasets - set(transferred))
 
         return transferred
 
