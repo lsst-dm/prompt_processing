@@ -519,6 +519,9 @@ With the optional ``--ordered`` command line argument, images are uploaded follo
 Currently the upload script does not follow the actual relative timing of the input exposures.
 Images can be uploaded in parallel processes.
 
+Currently the LATISS calibration data in `s3://rubin-pp-dev-users/central_repo_2/` are only compatible with data newer than 2024-04-09T16:00:00.
+Running the tester with older LATISS is expected to fail.
+
 
 next_visit Events
 =================

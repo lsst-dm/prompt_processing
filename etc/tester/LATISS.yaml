@@ -1,5 +1,5 @@
 instrument: LATISS
 query:
   collections: LATISS/raw/all
-  where: "exposure.science_program='AUXTEL_PHOTO_IMAGING' and exposure.day_obs=20240403"
-repo: /repo/embargo
+  where: "exposure.science_program in ('AUXTEL_PHOTO_IMAGING', 'BLOCK-306') and exposure.day_obs in (20240409..20241001)"
+repo: /repo/embargo_old
