@@ -274,6 +274,7 @@ def _query_microservice(
     """
     detector_name = _DETECTOR_FROM_INT[instrument][detector]
     uri = f"{microservice}/{instrument}/{group}/{snap}/{detector_name}"
+    _log.debug("Querying %s for raws...", uri)
     try:
         response = requests.get(uri, timeout=1.0)
         response.raise_for_status()
@@ -283,6 +284,7 @@ def _query_microservice(
     except requests.RequestException as e:
         raise RuntimeError("Could not query raw microservice.") from e
 
+    _log.debug("Microservice sent: %s", unpacked)
     if unpacked["error"]:
         raise RuntimeError(f"Raw microservice had an internal error: {unpacked['message']}")
     if unpacked["present"]:
