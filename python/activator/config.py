@@ -170,7 +170,7 @@ class PipelinesConfig:
         if duplicates:
             raise ValueError(f"Pipeline names must be unique, found multiple copies of {duplicates}.")
 
-    def get_pipeline_files(self, visit: FannedOutVisit) -> str:
+    def get_pipeline_files(self, visit: FannedOutVisit) -> list[str]:
         """Identify the pipeline to be run, based on the provided visit.
 
         Parameters
