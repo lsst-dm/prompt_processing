@@ -152,6 +152,12 @@ class PipelinesConfigTest(unittest.TestCase):
             PipelinesConfig([{"survey": "TestSurvey",
                               "pipelines": ["/etc/pipelines/ApPipe.yaml", "/etc/pipelines/ApPipe.yaml#isr"]}])
 
+    def test_needpipeline(self):
+        with self.assertRaises(ValueError):
+            PipelinesConfig([{"survey": "TestSurvey"}])
+        with self.assertRaises(ValueError):
+            PipelinesConfig([{}])
+
     def test_order(self):
         config = PipelinesConfig([{"survey": "TestSurvey",
                                    "pipelines": ["/etc/pipelines/SingleFrame.yaml"],
@@ -164,4 +170,26 @@ class PipelinesConfigTest(unittest.TestCase):
         self.assertEqual(
             config.get_pipeline_files(self.visit),
             [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
+        )
+
+    def test_unconstrained(self):
+        config = PipelinesConfig([{"survey": "TestSurvey",
+                                   "pipelines": ["/etc/pipelines/SingleFrame.yaml"],
+                                   },
+                                  {"pipelines": ["${AP_PIPE_DIR}/pipelines/Isr.yaml"]},
+                                  {"survey": "", "pipelines": ["Default.yaml"]},
+                                  ])
+        self.assertEqual(
+            config.get_pipeline_files(self.visit),
+            [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
+        )
+        self.assertEqual(
+            # Matches the second node, which has no constraints
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest")),
+            [os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml"))]
+        )
+        self.assertEqual(
+            # Matches the second node, which has no constraints
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey="")),
+            [os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml"))]
         )

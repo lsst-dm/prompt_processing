@@ -45,7 +45,7 @@ class PipelinesConfig:
         A sequence of mappings ("nodes"), each with the following keys:
 
         ``"survey"``
-            The survey that triggers the pipelines (`str`).
+            The survey that triggers the pipelines (`str`, optional).
         ``"pipelines"``
             A list of zero or more pipelines (sequence [`str`] or `None`). Each
             pipeline path may contain environment variables, and the list of
@@ -53,7 +53,8 @@ class PipelinesConfig:
             be run.
 
         Nodes are arranged by precedence, i.e., the first node that matches a
-        visit is used.
+        visit is used. A node containing only ``pipelines`` is unconstrained
+        and matches *any* visit.
 
     Examples
     --------
@@ -112,8 +113,8 @@ class PipelinesConfig:
                     raise ValueError(f"Pipelines spec must be list or None, got {pipelines_value}")
                 self._check_pipelines(self._filenames)
 
-                survey_value = specs.pop('survey')
-                if isinstance(survey_value, str):
+                survey_value = specs.pop('survey', None)
+                if isinstance(survey_value, str) or survey_value is None:
                     self._survey = survey_value
                 else:
                     raise ValueError(f"{survey_value} is not a valid survey name.")
@@ -158,7 +159,9 @@ class PipelinesConfig:
             matches : `bool`
                 `True` if the visit meets all conditions, `False` otherwise.
             """
-            return self._survey == visit.survey
+            if self._survey is not None and self._survey != visit.survey:
+                return False
+            return True
 
         @property
         def pipeline_files(self) -> collections.abc.Sequence[str]:
