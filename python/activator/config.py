@@ -110,6 +110,7 @@ class PipelinesConfig:
                     self._filenames = pipelines_value
                 else:
                     raise ValueError(f"Pipelines spec must be list or None, got {pipelines_value}")
+                self._check_pipelines(self._filenames)
 
                 survey_value = specs.pop('survey')
                 if isinstance(survey_value, str):
@@ -121,6 +122,28 @@ class PipelinesConfig:
                     raise ValueError(f"Got unexpected keywords: {specs.keys()}")
             except KeyError as e:
                 raise ValueError from e
+
+        @staticmethod
+        def _check_pipelines(pipelines: collections.abc.Sequence[str]):
+            """Test the correctness of a list of pipelines.
+
+            At present, the only test is that no two pipelines have the same
+            filename, which is used as a pipeline ID elsewhere in the Prompt
+            Processing service.
+
+            Parameters
+            ----------
+            pipelines : sequence [`str`]
+
+            Raises
+            ------
+            ValueError
+                Raised if the pipeline list is invalid.
+            """
+            filenames = collections.Counter(os.path.splitext(os.path.basename(path))[0] for path in pipelines)
+            duplicates = [filename for filename, num in filenames.items() if num > 1]
+            if duplicates:
+                raise ValueError(f"Pipeline names must be unique, found multiple copies of {duplicates}.")
 
         def matches(self, visit: FannedOutVisit) -> bool:
             """Test whether a visit matches the conditions for this spec.
@@ -149,9 +172,6 @@ class PipelinesConfig:
 
         self._specs = self._expand_config(config)
 
-        for spec in self._specs:
-            self._check_pipelines(spec.pipeline_files)
-
     @staticmethod
     def _expand_config(config: collections.abc.Sequence) -> collections.abc.Sequence[_Spec]:
         """Turn a config spec into structured config information.
@@ -176,28 +196,6 @@ class PipelinesConfig:
         for node in config:
             items.append(PipelinesConfig._Spec(node))
         return items
-
-    @staticmethod
-    def _check_pipelines(pipelines: collections.abc.Sequence[str]):
-        """Test the correctness of a list of pipelines.
-
-        At present, the only test is that no two pipelines have the same
-        filename, which is used as a pipeline ID elsewhere in the Prompt
-        Processing service.
-
-        Parameters
-        ----------
-        pipelines : sequence [`str`]
-
-        Raises
-        ------
-        ValueError
-            Raised if the pipeline list is invalid.
-        """
-        filenames = collections.Counter(os.path.splitext(os.path.basename(path))[0] for path in pipelines)
-        duplicates = [filename for filename, num in filenames.items() if num > 1]
-        if duplicates:
-            raise ValueError(f"Pipeline names must be unique, found multiple copies of {duplicates}.")
 
     def get_pipeline_files(self, visit: FannedOutVisit) -> list[str]:
         """Identify the pipeline to be run, based on the provided visit.
