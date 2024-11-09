@@ -151,3 +151,17 @@ class PipelinesConfigTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             PipelinesConfig([{"survey": "TestSurvey",
                               "pipelines": ["/etc/pipelines/ApPipe.yaml", "/etc/pipelines/ApPipe.yaml#isr"]}])
+
+    def test_order(self):
+        config = PipelinesConfig([{"survey": "TestSurvey",
+                                   "pipelines": ["/etc/pipelines/SingleFrame.yaml"],
+                                   },
+                                  {"survey": "TestSurvey",
+                                   "pipelines": ["${AP_PIPE_DIR}/pipelines/Isr.yaml"],
+                                   },
+                                  ])
+        # Second TestSurvey spec should be ignored
+        self.assertEqual(
+            config.get_pipeline_files(self.visit),
+            [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
+        )

@@ -26,6 +26,7 @@ __all__ = ["PipelinesConfig"]
 import collections
 import collections.abc
 import os
+import typing
 
 from .visit import FannedOutVisit
 
@@ -44,13 +45,15 @@ class PipelinesConfig:
         A sequence of mappings ("nodes"), each with the following keys:
 
         ``"survey"``
-            The survey that triggers the pipelines (`str`). No two nodes may
-            share the same survey.
+            The survey that triggers the pipelines (`str`).
         ``"pipelines"``
             A list of zero or more pipelines (sequence [`str`] or `None`). Each
             pipeline path may contain environment variables, and the list of
             pipelines may be replaced by `None` to mean no pipeline should
             be run.
+
+        Nodes are arranged by precedence, i.e., the first node that matches a
+        visit is used.
 
     Examples
     --------
@@ -82,17 +85,75 @@ class PipelinesConfig:
     <config.PipelinesConfig object at 0x...>
     """
 
+    class _Spec:
+        """A single case of which pipelines should be run in particular
+        circumstances.
+
+        Parameters
+        ----------
+        config : mapping [`str`]
+            A config node with the same keys as documented for the
+            `PipelinesConfig` constructor.
+        """
+
+        def __init__(self, config: collections.abc.Mapping[str, typing.Any]):
+            specs = dict(config)
+            try:
+                pipelines_value = specs.pop('pipelines')
+                if pipelines_value is None or pipelines_value == "None":
+                    self._filenames = []
+                elif isinstance(pipelines_value, str):  # Strings are sequences!
+                    raise ValueError(f"Pipelines spec must be list or None, got {pipelines_value}")
+                elif isinstance(pipelines_value, collections.abc.Sequence):
+                    if any(not isinstance(x, str) for x in pipelines_value):
+                        raise ValueError(f"Pipeline list {pipelines_value} has invalid paths.")
+                    self._filenames = pipelines_value
+                else:
+                    raise ValueError(f"Pipelines spec must be list or None, got {pipelines_value}")
+
+                survey_value = specs.pop('survey')
+                if isinstance(survey_value, str):
+                    self._survey = survey_value
+                else:
+                    raise ValueError(f"{survey_value} is not a valid survey name.")
+
+                if specs:
+                    raise ValueError(f"Got unexpected keywords: {specs.keys()}")
+            except KeyError as e:
+                raise ValueError from e
+
+        def matches(self, visit: FannedOutVisit) -> bool:
+            """Test whether a visit matches the conditions for this spec.
+
+            Parameters
+            ----------
+            visit : `activator.visit.FannedOutVisit`
+                The visit to test against this spec.
+
+            Returns
+            -------
+            matches : `bool`
+                `True` if the visit meets all conditions, `False` otherwise.
+            """
+            return self._survey == visit.survey
+
+        @property
+        def pipeline_files(self) -> collections.abc.Sequence[str]:
+            """An ordered list of pipelines to run in this spec (sequence [`str`]).
+            """
+            return self._filenames
+
     def __init__(self, config: collections.abc.Sequence):
         if not config:
             raise ValueError("Must configure at least one pipeline.")
 
-        self._mapping = self._expand_config(config)
+        self._specs = self._expand_config(config)
 
-        for pipelines in self._mapping.values():
-            self._check_pipelines(pipelines)
+        for spec in self._specs:
+            self._check_pipelines(spec.pipeline_files)
 
     @staticmethod
-    def _expand_config(config: collections.abc.Sequence) -> collections.abc.Mapping:
+    def _expand_config(config: collections.abc.Sequence) -> collections.abc.Sequence[_Spec]:
         """Turn a config spec into structured config information.
 
         Parameters
@@ -102,44 +163,18 @@ class PipelinesConfig:
 
         Returns
         -------
-        config : mapping [`str`, `list` [`str`]]
-            A mapping from the survey type to the pipeline(s) to run for that
-            survey. A more complex key or container type may be needed in the
-            future, if other pipeline selection criteria are added.
+        config : sequence [`PipelinesConfig._Spec`]
+            A sequence of node objects specifying the pipeline(s) to run and the
+            conditions in which to run them.
 
         Raises
         ------
         ValueError
             Raised if the input config is invalid.
         """
-        items = {}
+        items = []
         for node in config:
-            try:
-                specs = dict(node)
-                pipelines_value = specs.pop('pipelines')
-                if pipelines_value is None or pipelines_value == "None":
-                    filenames = []
-                elif isinstance(pipelines_value, str):  # Strings are sequences!
-                    raise ValueError(f"Pipelines spec must be list or None, got {pipelines_value}")
-                elif isinstance(pipelines_value, collections.abc.Sequence):
-                    if any(not isinstance(x, str) for x in pipelines_value):
-                        raise ValueError(f"Pipeline list {pipelines_value} has invalid paths.")
-                    filenames = pipelines_value
-                else:
-                    raise ValueError(f"Pipelines spec must be list or None, got {pipelines_value}")
-
-                survey_value = specs.pop('survey')
-                if isinstance(survey_value, str):
-                    survey = survey_value
-                else:
-                    raise ValueError(f"{survey_value} is not a valid survey name.")
-
-                if specs:
-                    raise ValueError(f"Got unexpected keywords: {specs.keys()}")
-            except KeyError as e:
-                raise ValueError from e
-
-            items[survey] = filenames
+            items.append(PipelinesConfig._Spec(node))
         return items
 
     @staticmethod
@@ -167,6 +202,9 @@ class PipelinesConfig:
     def get_pipeline_files(self, visit: FannedOutVisit) -> list[str]:
         """Identify the pipeline to be run, based on the provided visit.
 
+        The first node that matches the visit is returned, and no other nodes
+        are considered even if they would provide a "tighter" match.
+
         Parameters
         ----------
         visit : `activator.visit.FannedOutVisit`
@@ -178,8 +216,7 @@ class PipelinesConfig:
             Path(s) to the configured pipeline file(s). An empty list means
             that *no* pipeline should be run on this visit.
         """
-        try:
-            values = self._mapping[visit.survey]
-        except KeyError as e:
-            raise RuntimeError(f"Unsupported survey: {visit.survey}") from e
-        return [os.path.expandvars(path) for path in values]
+        for node in self._specs:
+            if node.matches(visit):
+                return [os.path.expandvars(path) for path in node.pipeline_files]
+        raise RuntimeError(f"Unsupported survey: {visit.survey}")
