@@ -104,6 +104,8 @@ fan_out_kafka_sasl_username = os.environ["FAN_OUT_KAFKA_SASL_USERNAME"]
 fan_out_kafka_sasl_password = os.environ["FAN_OUT_KAFKA_SASL_PASSWORD"]
 # Offset for Kafka bucket notification.
 bucket_notification_kafka_offset_reset = os.environ["BUCKET_NOTIFICATION_KAFKA_OFFSET_RESET"]
+# Time to wait for fanned out messages before spawning new pod.
+fanned_out_msg_listen_timeout = int(os.environ.get("FANNED_OUT_MSG_LISTEN_TIMEOUT", 20))
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -270,9 +272,10 @@ def keda_start():
     _log.info("starting fan out consumer")
 
     try:
+        fanned_out_msg_listen_timeout = 5
         fan_out_consumer.subscribe([fan_out_kafka_topic])
 
-        while True:
+        while time.time() < fanned_out_msg_listen_timeout:
             fan_out_consumer.subscribe([fan_out_kafka_topic])
             fan_out_message = fan_out_consumer.poll(timeout=5)
             if fan_out_message is None:
