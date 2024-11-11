@@ -274,7 +274,9 @@ def keda_start():
     try:
         fan_out_consumer.subscribe([fan_out_kafka_topic])
 
-        while time.time() < fanned_out_msg_listen_timeout:
+        fan_out_listen_start_time = time.time()
+
+        while time.time() - fan_out_listen_start_time < fanned_out_msg_listen_timeout:
             fan_out_consumer.subscribe([fan_out_kafka_topic])
             fan_out_message = fan_out_consumer.poll(timeout=5)
             if fan_out_message is None:
