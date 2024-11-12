@@ -31,6 +31,7 @@ import sys
 import time
 import signal
 import uuid
+import socket
 
 import boto3
 from botocore.handlers import validate_bucket_name
@@ -296,6 +297,7 @@ def keda_start():
                 fan_out_consumer.commit(message=fan_out_message, asynchronous=False)
                 fan_out_consumer.close()
                 process_visit(deserialized_fan_out_visit)
+                _log.info("Processing completed for %s", socket.gethostname())
                 break
     finally:
         _log.info("Finished listening for fanned out messages")
