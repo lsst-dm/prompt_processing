@@ -42,10 +42,9 @@ import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan
-from lsst.daf.butler.registry import MissingDatasetTypeError
+from lsst.daf.butler import DataIdValueError, MissingDatasetTypeError
 import lsst.dax.apdb
 import lsst.geom
-from lsst.meas.algorithms.htmIndexer import HtmIndexer
 import lsst.obs.base
 import lsst.pipe.base
 import lsst.analysis.tools
@@ -76,6 +75,8 @@ filter_floor = int(os.environ.get("FILTERS_WITH_CALIBS", 20))
 # VALIDITY-HACK: local-only calib collections break if calibs are not requested
 # in chronological order. Turn off for large development runs.
 cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
+# The number of arcseconds to pad the region in preloading spatial datasets.
+padding = float(os.environ.get("PRELOAD_PADDING", 30))
 
 
 def get_central_butler(central_repo: str, instrument_class: str):
@@ -275,7 +276,7 @@ class MiddlewareInterface:
         Information about which pipelines to run before a visit arrives.
     main_pipelines : `activator.config.PipelinesConfig`
         Information about which pipelines to run on ``visit``'s raws.
-    skymap: `str`
+    skymap : `str`
         Name of the skymap in the central repo for querying templates.
     local_repo : `str`
         A URI to the local Butler repo, which is assumed to already exist and
@@ -386,8 +387,8 @@ class MiddlewareInterface:
         self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
                                               collections=self._collection_skymap)
 
-        # How much to pad the refcat region we will copy over.
-        self.padding = 30*lsst.geom.arcseconds
+        # How much to pad the spatial region we will copy over.
+        self.padding = padding*lsst.geom.arcseconds
 
     def _get_deployment(self):
         """Get a unique version ID of the active stack and pipeline configuration(s).
@@ -496,38 +497,33 @@ class MiddlewareInterface:
             self.visit.position[0], self.visit.position[1], lsst.geom.degrees)
         orientation = self.visit.cameraAngle * lsst.geom.degrees
 
-        flip_x = True if self.instrument.getName() == "DECam" else False
-        return lsst.obs.base.createInitialSkyWcsFromBoresight(boresight_center,
-                                                              orientation,
-                                                              detector,
-                                                              flipX=flip_x)
+        formatter = self.instrument.getRawFormatter({"detector": detector.getId()})
+        return formatter.makeRawSkyWcsFromBoresight(boresight_center, orientation, detector)
 
-    def _detector_bounding_circle(self, detector: lsst.afw.cameraGeom.Detector,
-                                  wcs: lsst.afw.geom.SkyWcs
-                                  ) -> (lsst.geom.SpherePoint, lsst.geom.Angle):
-        # Could return a sphgeom.Circle, but that would require a lot of
-        # sphgeom->geom conversions downstream. Even their Angles are different!
-        """Compute a small sky circle that contains the detector.
-
-        Parameters
-        ----------
-        detector : `lsst.afw.cameraGeom.Detector`
-            The detector for which to compute an on-sky bounding circle.
-        wcs : `lsst.afw.geom.SkyWcs`
-            The conversion from detector to sky coordinates.
+    def _compute_region(self) -> lsst.sphgeom.Region:
+        """Compute the sky region of this visit for preload
 
         Returns
         -------
-        center : `lsst.geom.SpherePoint`
-            The center of the bounding circle.
-        radius : `lsst.geom.Angle`
-            The opening angle of the bounding circle.
+        region : `lsst.sphgeom.Region`
+            Region for preload.
         """
-        radii = []
+        detector = self.camera[self.visit.detector]
+        wcs = self._predict_wcs(detector)
+
+        # Compare the preload region padding versus the visit region padding
+        # in the middleware visit definition.
+        visit_definition_padding = (
+            self.define_visits.config.computeVisitRegions["single-raw-wcs"].padding
+            * wcs.getPixelScale().asArcseconds()
+        )
+        if self.padding < visit_definition_padding:
+            _log.warning("Preload padding is smaller than visit definition's region padding.")
+
         center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
-        for corner in detector.getCorners(lsst.afw.cameraGeom.PIXELS):
-            radii.append(wcs.pixelToSky(corner).separation(center))
-        return center, max(radii)
+        corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
+        padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
+        return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
 
     def prep_butler(self) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
@@ -546,8 +542,11 @@ class MiddlewareInterface:
             with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
                 _log.info(f"Preparing Butler for visit {self.visit!r}")
 
-                if not self._skip_spatial_preload:
-                    self._write_region_time()  # Must be done before preprocessing pipeline
+                if self._skip_spatial_preload:
+                    region = None
+                else:
+                    region = self._compute_region()
+                    self._write_region_time(region)  # Must be done before preprocessing pipeline
 
                 # repos may have been modified by other MWI instances.
                 # TODO: get a proper synchronization API for Butler
@@ -555,7 +554,7 @@ class MiddlewareInterface:
                 self.butler.registry.refresh()
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
-                    all_datasets, calib_datasets = self._find_data_to_preload()
+                    all_datasets, calib_datasets = self._find_data_to_preload(region)
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
                     self._transfer_data(all_datasets, calib_datasets)
@@ -582,11 +581,16 @@ class MiddlewareInterface:
                         detector=self.visit.detector,
                         group=self.visit.groupId)
 
-    def _find_data_to_preload(self):
+    def _find_data_to_preload(self, region):
         """Identify the datasets to export from the central repo.
 
         The returned datasets are a superset of those needed by any pipeline,
         but exclude any datasets that are already present in the local repo.
+
+        Parameters
+        ----------
+        region : `lsst.sphgeom.Region` or None
+            The region to find data to preload.
 
         Returns
         -------
@@ -594,55 +598,53 @@ class MiddlewareInterface:
             The datasets to be exported, after any filtering.
         calibs : set [`~lsst.daf.butler.DatasetRef`]
             The subset of ``datasets`` representing calibs.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if attempting the spatial preload with the input region being None.
         """
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)", level=logging.DEBUG):
             calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
         if self._skip_spatial_preload:
             return (calib_datasets, calib_datasets)
-
-        detector = self.camera[self.visit.detector]
-        wcs = self._predict_wcs(detector)
-        center, radius = self._detector_bounding_circle(detector, wcs)
+        elif region is None:
+            raise RuntimeError("Cannot do spatial preload without a region.")
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)", level=logging.DEBUG):
-            refcat_datasets = set(self._export_refcats(center, radius))
+            refcat_datasets = set(self._export_refcats(region))
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)", level=logging.DEBUG):
             template_datasets = set(self._export_skymap_and_templates(
-                center, detector, wcs, self.visit.filters))
+                region, self.visit.filters))
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)", level=logging.DEBUG):
             model_datasets = set(self._export_ml_models())
         return (refcat_datasets | template_datasets | calib_datasets | model_datasets,
                 calib_datasets,
                 )
 
-    def _export_refcats(self, center, radius):
+    def _export_refcats(self, region):
         """Identify the refcats to export from the central butler.
 
         Parameters
         ----------
-        center : `lsst.geom.SpherePoint`
-            Center of the region to find refcat shards in.
-        radius : `lst.geom.Angle`
-            Radius to search for refcat shards in.
+        region : `lsst.sphgeom.Region`
+            The region to find refcat shards in.
 
         Returns
         -------
         refcats : iterable [`DatasetRef`]
             The refcats to be exported, after any filtering.
         """
-        indexer = HtmIndexer(depth=7)
-        shard_ids, _ = indexer.getShardIds(center, radius+self.padding)
-        htm_where = f"htm7 in ({','.join(str(x) for x in shard_ids)})"
-        # Get shards from all refcats that overlap this detector.
+        # Get shards from all refcats that overlap this region.
         possible_refcats = _get_refcat_types(self.central_butler)
-        _log.debug("Searching for refcats of types %s in %s...",
-                   {t.name for t in possible_refcats}, shard_ids)
+        _log.debug("Searching for refcats of types %s.", {t.name for t in possible_refcats})
         refcats = set(_filter_datasets(
                       self.central_butler, self.butler,
                       possible_refcats,
                       collections=self.instrument.makeRefCatCollectionName(),
-                      where=htm_where,
-                      findFirst=True,
+                      where="htm7.region OVERLAPS search_region",
+                      bind={"search_region": region},
+                      find_first=True,
                       all_callback=self._mark_dataset_usage,
                       ))
         if refcats:
@@ -652,17 +654,13 @@ class MiddlewareInterface:
             _log.debug("Found 0 new refcat datasets.")
         return refcats
 
-    def _export_skymap_and_templates(self, center, detector, wcs, filter):
+    def _export_skymap_and_templates(self, region, filter):
         """Identify the skymap and templates to export from the central butler.
 
         Parameters
         ----------
-        center : `lsst.geom.SpherePoint`
-            Center of the region to load the skyamp tract/patches for.
-        detector : `lsst.afw.cameraGeom.Detector`
-            Detector we are loading data for.
-        wcs : `lsst.afw.geom.SkyWcs`
-            Rough WCS for the upcoming visit, to help finding patches.
+        region : `lsst.sphgeom.Region`
+            The region to load the skyamp and templates tract/patches for.
         filter : `str`
             Physical filter for which to export templates. May be empty to
             indicate no specific filter.
@@ -674,41 +672,29 @@ class MiddlewareInterface:
         """
         skymaps = set(_filter_datasets(
             self.central_butler, self.butler,
-            "skyMap",
+            ["skyMap"],
             skymap=self.skymap_name,
             collections=self._collection_skymap,
-            findFirst=True,
+            find_first=True,
             all_callback=self._mark_dataset_usage,
         ))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
-        # Getting only one tract should be safe: we're getting the
-        # tract closest to this detector, so we should be well within
-        # the tract bbox.
-        tract = self.skymap.findTract(center)
-        points = [center]
-        for corner in detector.getCorners(lsst.afw.cameraGeom.PIXELS):
-            points.append(wcs.pixelToSky(corner))
-        patches = tract.findPatchList(points)
-        patches_str = ','.join(str(p.sequential_index) for p in patches)
-        template_where = f"patch in ({patches_str})"
         data_id = {"instrument": self.instrument.getName(),
                    "skymap": self.skymap_name,
-                   "tract": tract.tract_id,
                    }
         if filter:
             data_id["physical_filter"] = filter
-        # TODO: do we need to have the coadd name used in the pipeline
-        # specified as a class kwarg, so that we only load one here?
-        # TODO: alternately, we need to extract it from the pipeline? (best?)
+
         try:
-            _log.debug("Searching for templates in tract %d, patches %s...", tract.tract_id, patches_str)
+            _log.debug("Searching for templates.")
             templates = set(_filter_datasets(
                 self.central_butler, self.butler,
-                "*Coadd",
+                self._get_template_types(),
                 collections=self._collection_template,
-                dataId=data_id,
-                where=template_where,
-                findFirst=True,
+                data_id=data_id,
+                where="patch.region OVERLAPS search_region",
+                bind={"search_region": region},
+                find_first=True,
                 all_callback=self._mark_dataset_usage,
             ))
         except _MissingDatasetError as err:
@@ -738,18 +724,23 @@ class MiddlewareInterface:
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
         # Querying by specific types is much faster than querying by ...
         # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
-        types = {t for t in self.central_butler.registry.queryDatasetTypes()
-                 if t.isCalibration() and "exposure" not in t.dimensions}
+        type_names = {t.name for t in self.central_butler.registry.queryDatasetTypes()
+                      if t.isCalibration() and "exposure" not in t.dimensions}
         data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
         if filter:
             data_id["physical_filter"] = filter
-        # TODO: we can't use findFirst=True yet because findFirst query
-        # in CALIBRATION-type collection is not supported currently.
+        # For now, filter down to the dataset types that exist in the specific calib collection.
+        # TODO: A new query API after DM-45873 may replace or improve this usage.
+        # TODO: DM-40245 to identify the datasets.
+        collections_info = self.central_butler.collections.query_info(
+            self.instrument.makeCalibrationCollectionName(), include_summary=True)
+        type_names = self.central_butler.collections._filter_dataset_types(type_names, collections_info)
         calibs = set(_filter_datasets(
             self.central_butler, self.butler,
-            types,
+            type_names,
             collections=self.instrument.makeCalibrationCollectionName(),
-            dataId=data_id,
+            data_id=data_id,
+            find_first=True,
             calib_date=calib_date,
             all_callback=self._mark_dataset_usage,
         ))
@@ -775,9 +766,9 @@ class MiddlewareInterface:
         try:
             models = set(_filter_datasets(
                 self.central_butler, self.butler,
-                "pretrainedModelPackage",
+                ["pretrainedModelPackage"],
                 collections=self._collection_ml_model,
-                findFirst=True,
+                find_first=True,
                 all_callback=self._mark_dataset_usage,
             ))
         except _MissingDatasetError as err:
@@ -942,19 +933,15 @@ class MiddlewareInterface:
         for k, g in itertools.groupby(ordered, key=get_key):
             yield k, len(list(g))
 
-    def _write_region_time(self):
-        """Store the approximate sky region and timespan for this
+    def _write_region_time(self, region):
+        """Store the preload sky region and timespan for this
         object's visit.
+
+        Parameters
+        ----------
+        region : `lsst.sphgeom.Region`
+            Region for preload.
         """
-        detector = self.camera[self.visit.detector]
-        wcs = self._predict_wcs(detector)
-
-        # TODO: unify with other region estimates on DM-43712
-        center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
-        corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
-        padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
-        region = lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
-
         # Assume a padded interval that's centered on the most probable time
         # TODO: replace with self.visit.startTime after DM-38635
         start = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
@@ -1668,6 +1655,26 @@ class MiddlewareInterface:
             detector=self.visit.detector,
         )
 
+    def _get_template_types(self) -> collections.abc.Set[str]:
+        """Identify the dataset types of possible templates in the main pipelines.
+
+        Returns
+        -------
+        template_types : set [`str`]
+            A set of template dataset types in the main pipelines.
+        """
+        template_types = set()
+        for pipeline_file in self._get_main_pipeline_files():
+            try:
+                pipeline = self._prep_pipeline(pipeline_file)
+            except FileNotFoundError as e:
+                raise RuntimeError from e
+            graph = pipeline.to_graph()
+            for dataset_type in graph.iter_overall_inputs():
+                if dataset_type[0].endswith("Coadd"):
+                    template_types.add(dataset_type[0])
+        return template_types
+
     def clean_local_repo(self, exposure_ids: set[int]) -> None:
         """Remove local repo content that is only needed for a single visit.
 
@@ -1734,6 +1741,7 @@ class _MissingDatasetError(RuntimeError):
 # properly separated.
 def _filter_datasets(src_repo: Butler,
                      dest_repo: Butler,
+                     dataset_types: collections.abc.Iterable[str | lsst.daf.butler.DatasetType],
                      *args,
                      calib_date: astropy.time.Time | None = None,
                      all_callback: typing.Callable[[collections.abc.Iterable[lsst.daf.butler.DatasetRef]],
@@ -1742,8 +1750,7 @@ def _filter_datasets(src_repo: Butler,
     """Identify datasets in a source repository, filtering out those already
     present in a destination.
 
-    Unlike Butler or database queries, this method raises if nothing in the
-    source repository matches the query criteria.
+    This method raises if nothing in the source repository matches the query criteria.
 
     Parameters
     ----------
@@ -1751,6 +1758,8 @@ def _filter_datasets(src_repo: Butler,
         The repository in which a dataset must be present.
     dest_repo : `lsst.daf.butler.Butler`
         The repository in which a dataset must not be present.
+    dataset_types : iterable [`str` | `lsst.daf.butler.DatasetType`]
+        Iterable of dataset type object or name to search for.
     calib_date : `astropy.time.Time`, optional
         If provided, also filter anything other than calibs valid at
         ``calib_date`` and check that at least one valid calib was found.
@@ -1760,7 +1769,7 @@ def _filter_datasets(src_repo: Butler,
         This callable is not called if the query returns no results.
     *args, **kwargs
         Parameters for describing the dataset query. They have the same
-        meanings as the parameters of `lsst.daf.butler.Registry.queryDatasets`.
+        meanings as the parameters of `lsst.daf.butler.query_datasets`
         The query must be valid for both ``src_repo`` and ``dest_repo``.
 
     Returns
@@ -1775,19 +1784,26 @@ def _filter_datasets(src_repo: Butler,
         Raised if the query on ``src_repo`` failed to find any datasets, or
         (if ``calib_date`` is set) if none of them are currently valid.
     """
-    formatted_args = "{}, {}".format(
+    formatted_args = "dataset_types={}, {}, {}".format(
+        dataset_types,
         ", ".join(repr(a) for a in args),
         ", ".join(f"{k}={v!r}" for k, v in kwargs.items()),
     )
-    try:
-        with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
-                                        level=logging.DEBUG):
-            known_datasets = set(dest_repo.registry.queryDatasets(*args, **kwargs))
-            _log_trace.debug("Known datasets: %s", known_datasets)
-    except lsst.daf.butler.registry.DataIdValueError as e:
-        _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
-        # If dimensions are invalid, then *any* such datasets are missing.
+    # time_this automatically escalates its log to ERROR level if the code raises.
+    # Some errors are expected to happen sometimes, and we don't want those to log
+    # at the ERROR level and cause confusion.
+    with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
+                                    level=logging.DEBUG):
         known_datasets = set()
+        for dataset_type in dataset_types:
+            try:
+                # Okay to have empty results.
+                known_datasets |= set(dest_repo.query_datasets(dataset_type, explain=False, *args, **kwargs))
+            except (DataIdValueError, MissingDatasetTypeError) as e:
+                # If dimensions are invalid or dataset type never registered locally,
+                # then *any* such datasets are missing.
+                _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
+        _log_trace.debug("Known datasets: %s", known_datasets)
 
     # Let exceptions from src_repo query raise: if it fails, that invalidates
     # this operation.
@@ -1795,7 +1811,10 @@ def _filter_datasets(src_repo: Butler,
     # comparison, so we only need them on src_datasets.
     with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (source datasets)",
                                     level=logging.DEBUG):
-        src_datasets = set(src_repo.registry.queryDatasets(*args, **kwargs).expanded())
+        src_datasets = set()
+        for dataset_type in dataset_types:
+            # explain=False because empty query result is ok here and we don't need it to raise an error.
+            src_datasets |= set(src_repo.query_datasets(dataset_type, explain=False, *args, **kwargs))
         # In many contexts, src_datasets is too large to print.
         _log_trace3.debug("Source datasets: %s", src_datasets)
     if calib_date:
@@ -1807,6 +1826,8 @@ def _filter_datasets(src_repo: Butler,
         ))
         _log_trace.debug("Sources filtered to %s: %s", calib_date.iso, src_datasets)
     if not src_datasets:
+        # The downstream method decides what to do with empty results.
+        # DM-40245 and DM-46178 may change this.
         raise _MissingDatasetError(
             "Source repo query with args '{}' found no matches.".format(formatted_args))
     if all_callback:

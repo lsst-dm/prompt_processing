@@ -47,6 +47,7 @@ import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 import lsst.resources
+import lsst.sphgeom
 
 from activator.caching import DatasetCache
 from activator.config import PipelinesConfig
@@ -269,9 +270,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the right templates are in the chained output collection.
         # Need to refresh the butler to get all the dimensions/collections.
         butler.registry.refresh()
-        for patch in (142, 143, 144, 158, 159, 160, 161, 175, 176, 177, 178,
-                      # TODO DM-43712: doesn't load 179 or 196
-                      179, 192, 193, 194, 195, 196, 210, 211,):
+        for patch in (142, 143, 158, 159, 160, 161, 175, 176, 177, 178,
+                      192, 193, 194, 195, 210, 211,):
             with self.subTest(tract=7445, patch=patch):
                 self.assertTrue(
                     butler.exists('goodSeeingCoadd', tract=7445, patch=patch, band="g",
@@ -302,8 +302,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           collections=preload_collection)
         )
 
-    # TODO: prep_butler doesn't grab all the refcats. Should be fixable on DM-43712
-    @unittest.expectedFailure
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """
@@ -338,8 +336,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
 
-    # TODO: prep_butler doesn't grab all the refcats. Should be fixable on DM-43712
-    @unittest.expectedFailure
     def test_prep_butler_nofilter(self):
         """Test that prep_butler can handle visits without a filter.
         """
@@ -380,8 +376,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         mock_pre.assert_not_called()
 
-    # TODO: prep_butler doesn't grab all the refcats. Should be fixable on DM-43712
-    @unittest.expectedFailure
     def test_prep_butler_twice(self):
         """prep_butler should have the correct calibs (and not raise an
         exception!) on a second run with the same, or a different detector.
@@ -814,6 +808,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         init_run = self.interface._get_init_output_run(filename, date)
         self.assertEqual(init_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
 
+    def test_get_template_types(self):
+        template_types = self.interface._get_template_types()
+        self.assertEqual(template_types, {"goodSeeingCoadd"})
+
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
         # Pass iff any dataset matches the query, no need to check them all.
         for dataset in butler.registry.queryDatasets(dataset_type, collections=collection, dataId=data_id):
@@ -922,17 +920,17 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Case where src is empty now covered in test_filter_datasets_nosrc.
         for src, existing in itertools.product(combinations, [set()] + combinations):
             diff = src - existing
-            src_butler = unittest.mock.Mock(
-                **{"registry.queryDatasets.return_value.expanded.return_value": src})
-            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+            src_butler = unittest.mock.Mock(**{"query_datasets.return_value": src})
+            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
 
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
                 result = set(_filter_datasets(src_butler, existing_butler,
-                                              "bias", instrument="LSSTComCamSim"))
-                src_butler.registry.queryDatasets.assert_called_once_with("bias", instrument="LSSTComCamSim")
-                existing_butler.registry.queryDatasets.assert_called_once_with("bias",
-                                                                               instrument="LSSTComCamSim")
+                                              ["bias"], instrument="LSSTComCamSim"))
+                src_butler.query_datasets.assert_called_once_with(
+                    "bias", instrument="LSSTComCamSim", explain=False)
+                existing_butler.query_datasets.assert_called_once_with(
+                    "bias", instrument="LSSTComCamSim", explain=False)
                 self.assertEqual(result, diff)
 
     def test_filter_datasets_nodim(self):
@@ -945,15 +943,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         data1 = self._make_expanded_ref(registry, "skyMap", {"skymap": skymap_name}, "dummy")
 
         src_butler = unittest.mock.Mock(
-            **{"registry.queryDatasets.return_value.expanded.return_value": {data1}})
+            **{"query_datasets.return_value": {data1}})
         existing_butler = unittest.mock.Mock(
-            **{"registry.queryDatasets.side_effect":
+            **{"query_datasets.side_effect":
                lsst.daf.butler.registry.DataIdValueError(
                    f"Unknown values specified for governor dimension skymap: {{{skymap_name}}}")
                })
 
-        result = set(_filter_datasets(src_butler, existing_butler, "skyMap", ..., skymap="mymap"))
-        src_butler.registry.queryDatasets.assert_called_once_with("skyMap", ..., skymap="mymap")
+        result = set(_filter_datasets(src_butler, existing_butler, ["skyMap"], ..., skymap="mymap"))
+        src_butler.query_datasets.assert_called_once_with("skyMap", ..., skymap="mymap", explain=False)
         self.assertEqual(result, {data1})
 
     def test_filter_datasets_nosrc(self):
@@ -967,13 +965,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         "dummy")
 
         src_butler = unittest.mock.Mock(
-            **{"registry.queryDatasets.return_value.expanded.return_value": set()})
+            **{"query_datasets.return_value": set()})
         for existing in [set(), {data1}]:
-            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
 
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
-                    _filter_datasets(src_butler, existing_butler, "bias", instrument="LSSTComCamSim")
+                    _filter_datasets(src_butler, existing_butler, ["bias"], instrument="LSSTComCamSim")
 
     def test_filter_datasets_all_callback(self):
         """Test that _filter_datasets passes the correct values to its callback.
@@ -994,12 +992,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Case where src is empty covered below.
         for src, existing in itertools.product(combinations, [set()] + combinations):
             src_butler = unittest.mock.Mock(
-                **{"registry.queryDatasets.return_value.expanded.return_value": src})
-            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+                **{"query_datasets.return_value": src})
+            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
 
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
-                _filter_datasets(src_butler, existing_butler, "bias", instrument="LSSTComCamSim",
+                _filter_datasets(src_butler, existing_butler, ["bias"], instrument="LSSTComCamSim",
                                  all_callback=functools.partial(test_function, src))
 
         # Should not call
@@ -1009,12 +1007,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         for existing in [set()] + combinations:
             src_butler = unittest.mock.Mock(
-                **{"registry.queryDatasets.return_value.expanded.return_value": set()})
-            existing_butler = unittest.mock.Mock(**{"registry.queryDatasets.return_value": existing})
+                **{"query_datasets.return_value": set()})
+            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
 
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
-                    _filter_datasets(src_butler, existing_butler, "bias", instrument="LSSTComCamSim",
+                    _filter_datasets(src_butler, existing_butler, ["bias"], instrument="LSSTComCamSim",
                                      all_callback=non_callable)
 
     def test_filter_calibs_by_date_valid(self):
@@ -1042,7 +1040,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
     def test_filter_calibs_by_date_unbounded(self):
         # _filter_calibs_by_date requires a collection, not merely an iterable
-        all_calibs = set(self.central_butler.registry.queryDatasets(["camera", "crosstalk"]))
+        all_calibs = set(self.central_butler.registry.queryDatasets(["camera", "transmission_filter"]))
         valid_calibs = set(_filter_calibs_by_date(
             self.central_butler, "LSSTComCamSim/calib", all_calibs,
             astropy.time.Time("2015-03-15 00:00:00", scale="utc")
@@ -1133,7 +1131,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          filters=filter,
                                          coordinateSystem=FannedOutVisit.CoordSys.ICRS,
                                          position=[ra, dec],
-                                         startTime=1424237500.0,
+                                         startTime=1718661950.0,
                                          rotationSystem=FannedOutVisit.RotSys.SKY,
                                          cameraAngle=rot,
                                          survey="SURVEY",
@@ -1142,7 +1140,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          dome=FannedOutVisit.Dome.OPEN,
                                          duration=35.0,
                                          totalCheckpoints=1,
-                                         private_sndStamp=1424237298.716517500,
+                                         private_sndStamp=1718661900.716517500,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
 
@@ -1330,3 +1328,14 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.assertEqual(
             self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
             0)
+
+    def test_compute_region(self):
+        """Test preload region computation."""
+        region = self.interface._compute_region()
+        self.assertTrue(isinstance(region, lsst.sphgeom.Region))
+        results = self.interface.butler.query_dimension_records(
+            "visit_detector_region", instrument=instname, group="1"
+        )
+        visit_detector_region = list(results)[0].region
+        # TODO: DM-47460 for a better test.
+        self.assertTrue(visit_detector_region.intersects(region))
