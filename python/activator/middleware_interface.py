@@ -561,7 +561,12 @@ class MiddlewareInterface:
                     self._transfer_data(all_datasets, calib_datasets)
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerPreprocessTime"):
-                    self._run_preprocessing()
+                    try:
+                        self._run_preprocessing()
+                    except NoGoodPipelinesError:
+                        _log.exception("Preprocessing pipelines not runnable, trying main pipelines anyway.")
+                    except (PipelinePreExecutionError, PipelineExecutionError):
+                        _log.exception("Preprocessing pipeline failed, trying main pipelines anyway.")
 
         # IMPORTANT: do not remove or rename entries in this list. New entries can be added as needed.
         enforce_schema(bundle, {action_id: ["prep_butlerTotalTime",
