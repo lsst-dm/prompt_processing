@@ -52,7 +52,8 @@ from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can'
 
 from .caching import DatasetCache
 from .config import PipelinesConfig
-from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError
+from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError, \
+    InvalidPipelineError, NoGoodPipelinesError, PipelinePreExecutionError, PipelineExecutionError
 from .visit import FannedOutVisit
 from .timer import enforce_schema, time_this_to_bundle
 
@@ -1226,17 +1227,21 @@ class MiddlewareInterface:
 
         Raises
         ------
-        RuntimeError
-            Raised if any pipeline could not be loaded/configured, or if graph
-            generation failed for all pipelines.
-            TODO: could be a good case for a custom exception here.
+        activator.exception.InvalidPipelineError
+            Raised if any pipeline could not be loaded/configured.
+        activator.exception.NoGoodPipelinesError
+            Raised if graph generation failed for all pipelines.
+        activator.exception.PipelinePreExecutionError
+            Raised if pipeline execution was attempted but pre-execution failed.
+        activator.exception.PipelineExecutionError
+            Raised if pipeline execution was attempted but failed.
         """
         # Try pipelines in order until one works.
         for pipeline_file in pipelines:
             try:
                 pipeline = self._prep_pipeline(pipeline_file)
             except FileNotFoundError as e:
-                raise RuntimeError from e
+                raise InvalidPipelineError(f"Could not load {pipeline_file}.") from e
             init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
             output_run = self._get_output_run(pipeline_file, self._day_obs)
             exec_butler = Butler(butler=self.butler,
@@ -1265,10 +1270,13 @@ class MiddlewareInterface:
             # Past this point, partial execution creates datasets.
             # Don't retry -- either fail (raise) or break.
 
-            # If this is a fresh (local) repo, then types like calexp,
-            # *Diff_diaSrcTable, etc. have not been registered.
-            # TODO: after DM-38041, move pre-execution to one-time repo setup.
-            executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
+            try:
+                # If this is a fresh (local) repo, then types like calexp,
+                # *Diff_diaSrcTable, etc. have not been registered.
+                # TODO: after DM-38041, move pre-execution to one-time repo setup.
+                executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
+            except Exception as e:
+                raise PipelinePreExecutionError(f"PreExecInit failed for {pipeline_file}.") from e
             _log.info(f"Running '{pipeline_file}' on {data_ids}")
             try:
                 with lsst.utils.timer.time_this(
@@ -1279,13 +1287,14 @@ class MiddlewareInterface:
                     )
                     _log.info(f"{label.capitalize()} pipeline successfully run.")
                     return init_output_run, output_run
+            except Exception as e:
+                raise PipelineExecutionError(f"Execution failed for {pipeline_file}.") from e
             finally:
                 # Refresh so that registry queries know the processed products.
                 self.butler.registry.refresh()
             break
         else:
-            # TODO: a good place for a custom exception?
-            raise RuntimeError(f"No {label} pipeline graph could be built.")
+            raise NoGoodPipelinesError(f"No {label} pipeline graph could be built.")
 
     def _run_preprocessing(self) -> None:
         """Preprocess a visit ahead of incoming image(s).
@@ -1295,10 +1304,14 @@ class MiddlewareInterface:
 
         Raises
         ------
-        RuntimeError
-            Raised if any pipeline could not be loaded/configured, or if graph
-            generation failed for all pipelines.
-            TODO: could be a good case for a custom exception here.
+        activator.exception.InvalidPipelineError
+            Raised if any pipeline could not be loaded/configured.
+        activator.exception.NoGoodPipelinesError
+            Raised if graph generation failed for all pipelines.
+        activator.exception.PipelinePreExecutionError
+            Raised if pipeline execution was attempted but pre-execution failed.
+        activator.exception.PipelineExecutionError
+            Raised if pipeline execution was attempted but failed.
         """
         pipeline_files = self._get_pre_pipeline_files()
         if not pipeline_files:
@@ -1357,16 +1370,22 @@ class MiddlewareInterface:
 
         Raises
         ------
-        RuntimeError
-            Raised if any pipeline could not be loaded/configured, or if graph
-            generation failed for all pipelines.
-            TODO: could be a good case for a custom exception here.
-        NonRetriableError
+        activator.exception.InvalidPipelineError
+            Raised if any pipeline could not be loaded/configured.
+        activator.exception.NoGoodPipelinesError
+            Raised if graph generation failed for all pipelines.
+        activator.exception.PipelinePreExecutionError
+            Raised if pipeline execution was attempted but pre-execution failed.
+        activator.exception.PipelineExecutionError
+            Raised if pipeline execution was attempted but failed, and neither
+            `~activator.exception.NonRetriableError` nor
+            `~activator.exception.RetriableError` apply.
+        activator.exception.NonRetriableError
             Raised if external resources (such as the APDB or alert stream)
             may have been left in a state that makes it unsafe to retry
             failures. This exception is always chained to another exception
             representing the original error.
-        RetriableError
+        activator.exception.RetriableError
             Raised if the conditions for NonRetriableError are not met, *and*
             the pipeline fails in a way that is expected to be transient. This
             exception is always chained to another exception representing the
@@ -1409,6 +1428,8 @@ class MiddlewareInterface:
                     raise NonRetriableError("APDB modified") from e
                 else:
                     raise RetriableError("External interrupt") from e
+        # Catch Exception just in case there's a surprise -- raising
+        # NonRetriableError on *all* irrevocable changes is important.
         except Exception as e:
             try:
                 state_changed = self._check_permanent_changes(where)
