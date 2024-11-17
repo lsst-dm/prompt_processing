@@ -4,3 +4,4 @@ imports:
   - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
     include:
       - processCcd
+      - initialPviCore
