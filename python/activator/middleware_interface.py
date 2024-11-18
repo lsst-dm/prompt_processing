@@ -518,10 +518,11 @@ class MiddlewareInterface:
             self.define_visits.config.computeVisitRegions["single-raw-wcs"].padding
             * wcs.getPixelScale().asArcseconds()
         )
-        if self.padding < visit_definition_padding:
+        preload_region_padding = self.padding.asArcseconds()
+        if preload_region_padding < visit_definition_padding:
             _log.warning("Preload padding (%.1f arcsec) is smaller than "
                          "visit definition's region padding (%.1f arcsec).",
-                         self.padding, visit_definition_padding)
+                         preload_region_padding, visit_definition_padding)
 
         center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
         corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
@@ -549,6 +550,8 @@ class MiddlewareInterface:
                     region = None
                 else:
                     region = self._compute_region()
+                    _log.debug(
+                        f"Preload region {region} including padding {self.padding.asArcseconds()} arcsec.")
                     self._write_region_time(region)  # Must be done before preprocessing pipeline
 
                 # repos may have been modified by other MWI instances.
