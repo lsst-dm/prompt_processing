@@ -519,7 +519,9 @@ class MiddlewareInterface:
             * wcs.getPixelScale().asArcseconds()
         )
         if self.padding < visit_definition_padding:
-            _log.warning("Preload padding is smaller than visit definition's region padding.")
+            _log.warning("Preload padding (%.1f arcsec) is smaller than "
+                         "visit definition's region padding (%.1f arcsec).",
+                         self.padding, visit_definition_padding)
 
         center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
         corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
