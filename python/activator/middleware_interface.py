@@ -1255,7 +1255,7 @@ class MiddlewareInterface:
                 with lsst.utils.timer.time_this(
                         _log, msg=f"executor.make_quantum_graph ({label})", level=logging.DEBUG):
                     qgraph = executor.make_quantum_graph(pipeline, where=data_ids)
-            except MissingDatasetTypeError as e:
+            except (FileNotFoundError, MissingDatasetTypeError) as e:
                 _log.error(f"Building quantum graph for {pipeline_file} failed ", exc_info=e)
                 continue
             if len(qgraph) == 0:
