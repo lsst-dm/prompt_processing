@@ -22,6 +22,8 @@
 
 __all__ = ["NonRetriableError", "RetriableError", "GracefulShutdownInterrupt",
            "InvalidVisitError", "IgnorableVisit",
+           "InvalidPipelineError", "NoGoodPipelinesError",
+           "PipelinePreExecutionError", "PipelineExecutionError",
            ]
 
 
@@ -106,4 +108,29 @@ class IgnorableVisit(ValueError):
     --------
     activator.visit.SummitVisit
     activator.visit.FannedOutVisit
+    """
+
+
+class InvalidPipelineError(ValueError):
+    """Exception raised if a pipeline cannot be loaded or configured.
+    """
+
+
+class NoGoodPipelinesError(RuntimeError):
+    """Exception raised if none of the configured pipelines could be run on
+    the data.
+    """
+
+
+class PipelinePreExecutionError(RuntimeError):
+    """Exception raised if a pipeline could not be prepared for execution.
+
+    Usually chained to an internal exception.
+    """
+
+
+class PipelineExecutionError(RuntimeError):
+    """Exception raised if a pipeline attempted to run, but failed.
+
+    Usually chained to an internal exception.
     """
