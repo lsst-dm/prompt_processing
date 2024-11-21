@@ -296,6 +296,7 @@ def keda_start():
                                                                            fan_out_message.topic(),
                                                                            MessageField.VALUE))
                 _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
+                _log.info("Message timestamp %r", fan_out_message.timestamp())
                 fan_out_consumer.commit(message=fan_out_message, asynchronous=False)
                 fan_out_consumer.close()
                 process_visit(deserialized_fan_out_visit)
