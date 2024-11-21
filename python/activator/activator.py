@@ -297,7 +297,8 @@ def keda_start():
                                                                            MessageField.VALUE))
                 _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
                 _log.info("Message timestamp %r", fan_out_message.timestamp())
-                fan_out_to_prompt_processing_time = int(time.time() * 1000) - fan_out_message.timestamp([1])
+                fan_out_kafka_msg_timestamp = fan_out_message.timestamp()
+                fan_out_to_prompt_processing_time = int(time.time() * 1000) - fan_out_kafka_msg_timestamp[1]
                 _log.info("Seconds since fan out message delivered %r", fan_out_to_prompt_processing_time)
                 fan_out_consumer.commit(message=fan_out_message, asynchronous=False)
                 fan_out_consumer.close()
