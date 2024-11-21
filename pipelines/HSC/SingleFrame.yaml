@@ -1,7 +1,9 @@
-description: Single-frame pipeline specialized for HSC
+description: >-
+  Single-frame pipeline for the case in which
+  no templates exist, specialized for HSC
 
 imports:
-  - location: $PROMPT_PROCESSING_DIR/pipelines/HSC/ApPipe.yaml
+  - location: $AP_PIPE_DIR/pipelines/HSC/SingleFrame.yaml
     include:
       - processCcd
       - initialPviCore

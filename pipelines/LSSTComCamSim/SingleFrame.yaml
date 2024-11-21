@@ -1,7 +1,9 @@
-description: Single-frame pipeline specialized for LSSTComCamSim
+description: >-
+  Single-frame pipeline for the case in which
+  no templates exist, specialized for LSSTComCamSim
 
 imports:
-  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
+  - location: $AP_PIPE_DIR/pipelines/LSSTComCamSim/SingleFrame.yaml
     include:
       - processCcd
       - initialPviCore
