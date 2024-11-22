@@ -7,3 +7,10 @@ imports:
     include:
       - processCcd
       - initialPviCore
+
+tasks:
+  isr:
+    class: lsst.ip.isr.IsrTaskLSST
+    config:
+      # Temporarily turn it off until it's done in ap_pipe (DM-47750).
+      doBrighterFatter: False
