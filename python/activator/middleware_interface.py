@@ -696,23 +696,27 @@ class MiddlewareInterface:
         if filter:
             data_id["physical_filter"] = filter
 
-        try:
-            _log.debug("Searching for templates.")
-            templates = set(_filter_datasets(
-                self.central_butler, self.butler,
-                self._get_template_types(),
-                collections=self._collection_template,
-                data_id=data_id,
-                where="patch.region OVERLAPS search_region",
-                bind={"search_region": region},
-                find_first=True,
-                all_callback=self._mark_dataset_usage,
-            ))
-        except _MissingDatasetError as err:
-            _log.error(err)
-            templates = set()
+        types = self._get_template_types()
+        if types:
+            try:
+                _log.debug("Searching for templates.")
+                templates = set(_filter_datasets(
+                    self.central_butler, self.butler,
+                    types,
+                    collections=self._collection_template,
+                    data_id=data_id,
+                    where="patch.region OVERLAPS search_region",
+                    bind={"search_region": region},
+                    find_first=True,
+                    all_callback=self._mark_dataset_usage,
+                ))
+            except _MissingDatasetError as err:
+                _log.error(err)
+                templates = set()
+            else:
+                _log.debug("Found %d new template datasets.", len(templates))
         else:
-            _log.debug("Found %d new template datasets.", len(templates))
+            templates = set()
         return skymaps | templates
 
     def _export_calibs(self, detector_id, filter):

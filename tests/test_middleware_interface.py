@@ -354,6 +354,18 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
 
+    def test_prep_butler_notemplates(self):
+        """Test that prep_butler can handle pipeline configs without templates.
+        """
+        self.interface.main_pipelines = pre_pipelines_empty
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre, \
+                self.assertNoLogs(level="ERROR"):
+            self.interface.prep_butler()
+
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
+
     # TODO: prep_butler doesn't know what kinds of calibs to expect, so can't
     # tell that there are specifically, e.g., no flats. This test should pass
     # as-is after DM-40245.
