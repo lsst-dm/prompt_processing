@@ -249,6 +249,12 @@ def parse_next_visit(http_request):
     if not event.data:
         raise ValueError("empty CloudEvent received")
 
+    # Calculate time to load knative and receive message based on time header from knative request
+    _log.info("Fan out send event at %s", event['time'])
+    fan_out_knative_msg_timestamp = int(event['time'])
+    fan_out_to_prompt_time = int(time.time() - fan_out_knative_msg_timestamp)
+    _log.info("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
+
     # Message format is determined by the nextvisit-start deployment.
     data = json.loads(event.data)
     visit = FannedOutVisit(**data)
