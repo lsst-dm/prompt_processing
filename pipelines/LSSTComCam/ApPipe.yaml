@@ -9,11 +9,6 @@ imports:
     include:
       - prompt
 tasks:
-  isr:
-    class: lsst.ip.isr.IsrTaskLSST
-    config:
-      # Temporarily turn it off until it's done in ap_pipe (DM-47750).
-      doBrighterFatter: False
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:
