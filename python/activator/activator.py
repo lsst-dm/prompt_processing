@@ -455,10 +455,10 @@ def process_visit(expected_visit: FannedOutVisit):
                         snap,
                         expected_visit.detector,
                     )
-                if oid:
-                    _log.debug("Found object %s already present", oid)
-                    exp_id = mwi.ingest_image(oid)
-                    expid_set.add(exp_id)
+                    if oid:
+                        _log.debug("Found object %s already present", oid)
+                        exp_id = mwi.ingest_image(oid)
+                        expid_set.add(exp_id)
 
                 _log.debug("Waiting for snaps...")
                 start = time.time()
