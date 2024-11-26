@@ -532,7 +532,6 @@ def process_visit(expected_visit: FannedOutVisit):
                     try:
                         mwi.run_pipeline(expid_set)
                         try:
-                            # TODO: broadcast alerts here
                             mwi.export_outputs(expid_set)
                         except Exception as e:
                             raise NonRetriableError("APDB and possibly alerts or central repo modified") \
