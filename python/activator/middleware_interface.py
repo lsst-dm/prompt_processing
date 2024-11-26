@@ -76,6 +76,8 @@ filter_floor = int(os.environ.get("FILTERS_WITH_CALIBS", 20))
 # VALIDITY-HACK: local-only calib collections break if calibs are not requested
 # in chronological order. Turn off for large development runs.
 cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
+# Whether or not to export to the central repo.
+do_export = bool(int(os.environ.get("DEBUG_EXPORT_OUTPUTS", '1')))
 # The number of arcseconds to pad the region in preloading spatial datasets.
 padding = float(os.environ.get("PRELOAD_PADDING", 30))
 
@@ -1466,6 +1468,10 @@ class MiddlewareInterface:
         exposure_ids : `set` [`int`]
             Identifiers of the exposures that were processed.
         """
+        if not do_export:
+            _log.info("Skipping central repo export for exposures %s.", exposure_ids)
+            return
+
         # Rather than determining which pipeline was run, just try to export all of them.
         output_runs = [self._get_preload_run(self._day_obs)]
         for f in self._get_all_pipeline_files():
