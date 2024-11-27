@@ -71,6 +71,9 @@ pipelines = PipelinesConfig([{"survey": "SURVEY",
                                             "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml",
                                             ],
                               }])
+pipelines_minimal = PipelinesConfig([{"survey": "SURVEY",
+                                      "pipelines": ["${PROMPT_PROCESSING_DIR}/tests/data/ISR.yaml", ],
+                                      }])
 pre_pipelines_empty = PipelinesConfig([{"survey": "SURVEY", "pipelines": None}])
 pre_pipelines_full = PipelinesConfig([{"survey": "SURVEY",
                                        "pipelines": ["${PROMPT_PROCESSING_DIR}/tests/data/Preprocess.yaml",
@@ -360,7 +363,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_prep_butler_notemplates(self):
         """Test that prep_butler can handle pipeline configs without templates.
         """
-        self.interface.main_pipelines = pre_pipelines_empty
+        self.interface.main_pipelines = pipelines_minimal
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
                 as mock_pre, \
                 self.assertNoLogs(level="ERROR"):
