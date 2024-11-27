@@ -1367,6 +1367,9 @@ class MiddlewareInterface:
             data_id = data_ids.pop()
             apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
             return apdb.containsVisitDetector(data_id["visit"], self.visit.detector)
+        elif not data_ids:
+            # Engineering exposures don't produce visits, but they also can't write to the APDB.
+            return False
         else:
             # Don't know how this could happen, so won't try to handle it gracefully.
             _log.warning("Unexpected visit ids: %s. Assuming APDB modified.", data_ids)

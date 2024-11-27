@@ -135,6 +135,60 @@ def fake_file_data(filename, dimensions, instrument, visit):
     return data_id, file_data
 
 
+# TODO: merge this into fake_file_data after DM-46152
+def fake_eng_data(filename, dimensions, instrument, visit):
+    """Return file data for a mock non-science file to be ingested.
+
+    Parameters
+    ----------
+    filename : `str`
+        Full path to the file to mock. Can be a non-existant file.
+    dimensions : `lsst.daf.butler.DimensionsUniverse`
+        The full set of dimensions for this butler.
+    instrument : `lsst.obs.base.Instrument`
+        The instrument the file is supposed to be from.
+    visit : `FannedOutVisit`
+        Group of snaps from one detector to be processed.
+
+    Returns
+    -------
+    data_id, file_data, : `DataCoordinate`, `RawFileData`
+        The id and descriptor for the mock file.
+    """
+    exposure_id = int(visit.groupId)
+    data_id = DataCoordinate.standardize({"exposure": exposure_id,
+                                          "detector": visit.detector,
+                                          "instrument": instrument.getName()},
+                                         universe=dimensions)
+
+    start_time = astropy.time.Time("2024-06-17T22:06:15", scale="tai")
+    day_obs = 20240617
+    obs_info = astro_metadata_translator.makeObservationInfo(
+        instrument=instrument.getName(),
+        datetime_begin=start_time,
+        datetime_end=start_time + 30*u.second,
+        exposure_id=exposure_id,
+        exposure_group=visit.groupId,
+        visit_id=None,
+        boresight_rotation_angle=None,
+        boresight_rotation_coord=None,
+        tracking_radec=None,
+        observation_id=visit.groupId,
+        physical_filter=filter,
+        exposure_time=30.0*u.second,
+        observation_type="goofing off",
+        observing_day=day_obs,
+        group_counter_start=exposure_id,
+        group_counter_end=exposure_id,
+    )
+    dataset_info = RawFileDatasetInfo(data_id, obs_info)
+    file_data = RawFileData([dataset_info],
+                            lsst.resources.ResourcePath(filename),
+                            FitsImageFormatter,
+                            instrument)
+    return data_id, file_data
+
+
 class MiddlewareInterfaceTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
     """
@@ -508,7 +562,22 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
-
+        # Dummy "engineering" visit to test non-science handling
+        eng_visit = dataclasses.replace(self.next_visit,
+                                        groupId="42",
+                                        coordinateSystem=FannedOutVisit.CoordSys.NONE,
+                                        position=[0.0, 0.0],
+                                        rotationSystem=FannedOutVisit.RotSys.NONE,
+                                        cameraAngle=0.0,
+                                        dome=FannedOutVisit.Dome.CLOSED,
+                                        )
+        _, eng_data = fake_eng_data(filepath,
+                                    self.interface.butler.dimensions,
+                                    self.interface.instrument,
+                                    eng_visit)
+        with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
+            mock.return_value = eng_data
+            self.interface.ingest_image(filename)
         # TODO: add any preprocessing outputs the main pipeline depends on (DM-43418?)
 
     def test_run_pipeline(self):
@@ -708,6 +777,23 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             mock_query.side_effect = psycopg2.OperationalError("Database? What database?")
             with self.assertRaises(NonRetriableError):
                 self.interface.run_pipeline({1})
+
+    def test_run_pipeline_early_exception_novisit(self):
+        """Test behavior when execution fails in ISR-only processing.
+        """
+        self._prepare_run_pipeline()
+
+        with unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
+                as mock_run, \
+             unittest.mock.patch.object(self.interface, "main_pipelines", pipelines_minimal), \
+             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
+            mock_run.side_effect = ValueError("Error: not computable")
+            mock_query.return_value = False
+            with self.assertRaises(PipelineExecutionError):
+                # Engineering run; see _prepare_run_pipeline
+                self.interface.run_pipeline({42})
 
     def test_run_preprocessing_empty(self):
         """Test that running the preprocessiing pipeline does nothing if no
