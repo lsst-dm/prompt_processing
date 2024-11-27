@@ -42,10 +42,12 @@ import lsst.pex.config
 import lsst.afw.image
 import lsst.afw.table
 from lsst.dax.apdb import ApdbSql
-from lsst.daf.butler import Butler, CollectionType, DataCoordinate
+from lsst.daf.butler import Butler, CollectionType, DataCoordinate, DimensionUniverse
 import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
+from lsst.pipe.base import QuantumGraph
+from lsst.pipe.base.tests.simpleQGraph import makeSimpleQGraph
 import lsst.resources
 import lsst.sphgeom
 
@@ -642,7 +644,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_run_pipeline_fallback_1failof2(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml')]
-        graph_list = [[], ["node1", "node2"]]
+        graph_list = [self._make_test_graph(0), self._make_test_graph(2)]
         expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
@@ -652,7 +654,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_run_pipeline_fallback_1failof2_inverse(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml')]
-        graph_list = [["node1", "node2"], []]
+        graph_list = [self._make_test_graph(2), self._make_test_graph(0)]
         expected = "ApPipe.yaml"
 
         self._prepare_run_pipeline()
@@ -662,7 +664,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_run_pipeline_fallback_2failof2(self):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml')]
-        graph_list = [[], []]
+        graph_list = [self._make_test_graph(0), self._make_test_graph(0)]
         expected = ""
 
         self._prepare_run_pipeline()
@@ -674,7 +676,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
-        graph_list = [["node1", "node2"], ["node3", "node4"], ["node5"]]
+        graph_list = [self._make_test_graph(2), self._make_test_graph(2), self._make_test_graph(0)]
         expected = "ApPipe.yaml"
 
         self._prepare_run_pipeline()
@@ -685,7 +687,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
-        graph_list = [[], ["node3", "node4"], ["node5"]]
+        graph_list = [self._make_test_graph(0), self._make_test_graph(2), self._make_test_graph(1)]
         expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
@@ -696,7 +698,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
-        graph_list = [[], [], ["node5"]]
+        graph_list = [self._make_test_graph(0), self._make_test_graph(0), self._make_test_graph(1)]
         expected = "ISR.yaml"
 
         self._prepare_run_pipeline()
@@ -707,7 +709,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'ApPipe.yaml'),
                      os.path.join(self.data_dir, 'SingleFrame.yaml'),
                      os.path.join(self.data_dir, 'ISR.yaml')]
-        graph_list = [[], ["node3", "node4"], []]
+        graph_list = [self._make_test_graph(0), self._make_test_graph(2), self._make_test_graph(0)]
         expected = "SingleFrame.yaml"
 
         self._prepare_run_pipeline()
@@ -834,7 +836,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_run_preprocessing_fallback_1failof2(self):
         pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
                      os.path.join(self.data_dir, 'MinPrep.yaml')]
-        graph_list = [[], ["node1", "node2"]]
+        graph_list = [self._make_test_graph(0), self._make_test_graph(2)]
         expected = "MinPrep.yaml"
 
         self._prepare_run_preprocessing()
@@ -843,7 +845,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_run_preprocessing_fallback_1failof2_inverse(self):
         pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
                      os.path.join(self.data_dir, 'MinPrep.yaml')]
-        graph_list = [["node1", "node2"], []]
+        graph_list = [self._make_test_graph(2), self._make_test_graph(0)]
         expected = "Preprocess.yaml"
 
         self._prepare_run_preprocessing()
@@ -852,7 +854,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_run_preprocessing_fallback_2failof2(self):
         pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
                      os.path.join(self.data_dir, 'MinPrep.yaml')]
-        graph_list = [[], []]
+        graph_list = [self._make_test_graph(0), self._make_test_graph(0)]
         expected = ""
 
         self._prepare_run_preprocessing()
@@ -864,7 +866,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
                      os.path.join(self.data_dir, 'MinPrep.yaml'),
                      os.path.join(self.data_dir, 'NoPrep.yaml')]
-        graph_list = [["node1", "node2"], ["node3", "node4"], ["node5"]]
+        graph_list = [self._make_test_graph(2), self._make_test_graph(2), self._make_test_graph(1)]
         expected = "Preprocess.yaml"
 
         self._prepare_run_preprocessing()
@@ -874,7 +876,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
                      os.path.join(self.data_dir, 'MinPrep.yaml'),
                      os.path.join(self.data_dir, 'NoPrep.yaml')]
-        graph_list = [[], ["node3", "node4"], ["node5"]]
+        graph_list = [self._make_test_graph(0), self._make_test_graph(2), self._make_test_graph(1)]
         expected = "MinPrep.yaml"
 
         self._prepare_run_preprocessing()
@@ -884,7 +886,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
                      os.path.join(self.data_dir, 'MinPrep.yaml'),
                      os.path.join(self.data_dir, 'NoPrep.yaml')]
-        graph_list = [[], [], ["node5"]]
+        graph_list = [self._make_test_graph(0), self._make_test_graph(0), self._make_test_graph(1)]
         expected = "NoPrep.yaml"
 
         self._prepare_run_preprocessing()
@@ -894,7 +896,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         pipe_list = [os.path.join(self.data_dir, 'Preprocess.yaml'),
                      os.path.join(self.data_dir, 'MinPrep.yaml'),
                      os.path.join(self.data_dir, 'NoPrep.yaml')]
-        graph_list = [[], ["node3", "node4"], []]
+        graph_list = [self._make_test_graph(0), self._make_test_graph(2), self._make_test_graph(0)]
         expected = "MinPrep.yaml"
 
         self._prepare_run_preprocessing()
@@ -1000,6 +1002,28 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         return lsst.daf.butler.DatasetRef(registry.getDatasetType(dtype), data_id, run=run) \
             .expanded(registry.expandDataId(data_id))
+
+    @staticmethod
+    def _make_test_graph(n_quanta):
+        """Make a `QuantumGraph` for tests.
+
+        Parameters
+        ----------
+        n_quanta : `int`
+            Number of quanta in a graph.
+
+        Returns
+        -------
+        qgraph : `QuantumGraph`
+            Quantum graph instance.
+        """
+        if n_quanta == 0:
+            return QuantumGraph({}, universe=DimensionUniverse())
+        elif n_quanta < 0:
+            raise RuntimeError("Invalid input")
+        else:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                return makeSimpleQGraph(n_quanta, root=tmpdir)[1]
 
     def test_get_sasquatch_dispatcher(self):
         self.assertIsNone(_get_sasquatch_dispatcher())
