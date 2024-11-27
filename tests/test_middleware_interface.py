@@ -51,7 +51,7 @@ import lsst.sphgeom
 
 from activator.caching import DatasetCache
 from activator.config import PipelinesConfig
-from activator.exception import NonRetriableError
+from activator.exception import NonRetriableError, NoGoodPipelinesError, PipelineExecutionError
 from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, flush_local_repo, make_local_repo, \
     _get_sasquatch_dispatcher, MiddlewareInterface, \
@@ -597,7 +597,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected = ""
 
         self._prepare_run_pipeline()
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(NoGoodPipelinesError):
             self._check_run_pipeline_fallback(lambda: self.interface.run_pipeline({1}),
                                               pipe_list, graph_list, expected)
 
@@ -674,9 +674,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
-            mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
+            mock_run.side_effect = ValueError("Error: not computable")
             mock_query.return_value = False
-            with self.assertRaises(RuntimeError):
+            with self.assertRaises(PipelineExecutionError):
                 self.interface.run_pipeline({1})
 
     def test_run_pipeline_late_exception(self):
@@ -689,7 +689,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
-            mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
+            mock_run.side_effect = ValueError("Error: not computable")
             mock_query.return_value = True
             with self.assertRaises(NonRetriableError):
                 self.interface.run_pipeline({1})
@@ -704,7 +704,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
-            mock_run.side_effect = RuntimeError("The pipeline doesn't like you.")
+            mock_run.side_effect = ValueError("Error: not computable")
             mock_query.side_effect = psycopg2.OperationalError("Database? What database?")
             with self.assertRaises(NonRetriableError):
                 self.interface.run_pipeline({1})
@@ -770,7 +770,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected = ""
 
         self._prepare_run_preprocessing()
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(NoGoodPipelinesError):
             self._check_run_pipeline_fallback(self.interface._run_preprocessing,
                                               pipe_list, graph_list, expected)
 
