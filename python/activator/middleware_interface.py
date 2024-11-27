@@ -50,7 +50,6 @@ from lsst.daf.butler import Config as dafButlerConfig
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
-from lsst.obs.base.utils import createInitialSkyWcsFromBoresight
 import lsst.pipe.base
 from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilderError
 import lsst.analysis.tools
@@ -514,57 +513,6 @@ class MiddlewareInterface:
         else:
             raise TypeError(f"Cannot pad region {initial_region!r}.")
 
-    def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector) -> lsst.afw.geom.SkyWcs:
-        """Calculate the expected detector WCS for an incoming observation.
-
-        Parameters
-        ----------
-        detector : `lsst.afw.cameraGeom.Detector`
-            The detector for which to generate a WCS.
-
-        Returns
-        -------
-        wcs : `lsst.afw.geom.SkyWcs`
-            An approximate WCS for this object's visit.
-
-        Raises
-        ------
-        _NoPositionError
-            Raised if the nextVisit message does not have coordinates
-            in a supported format.
-        """
-        try:
-            sky_position = self.visit.get_boresight_icrs()
-            boresight_center = lsst.geom.SpherePoint(sky_position.ra.degree, sky_position.dec.degree,
-                                                     lsst.geom.degrees)
-            orientation = self.visit.get_rotation_sky().degree * lsst.geom.degrees
-        except (AttributeError, TypeError) as e:
-            raise _NoPositionError("nextVisit does not have a position.") from e
-        except RuntimeError as e:
-            raise _NoPositionError(str(e)) from e
-
-        return createInitialSkyWcsFromBoresight(boresight_center, orientation, detector)
-
-    def _compute_region(self) -> lsst.sphgeom.Region:
-        """Compute the sky region of this visit for preload
-
-        Returns
-        -------
-        region : `lsst.sphgeom.Region`
-            Region for preload.
-
-        Raises
-        ------
-        _NoPositionError
-            Raised if the nextVisit message does not have coordinates
-            in a supported format.
-        """
-        detector = self.camera[self.visit.detector]
-        wcs = self._predict_wcs(detector)
-
-        corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
-        return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in corners])
-
     def prep_butler(self) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
 
@@ -582,15 +530,15 @@ class MiddlewareInterface:
             with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
                 _log.info(f"Preparing Butler for visit {self.visit!r}")
 
-                try:
-                    region = self._pad_region(self._compute_region(),
-                                              self._predict_wcs(self.camera[self.visit.detector]))
+                wcs = self.visit.predict_wcs(self.camera)
+                if wcs:
+                    region = self._pad_region(self.visit.get_detector_icrs_region(self.camera), wcs)
                     _log.debug(
                         f"Preload region {region} including padding {self.padding.asArcseconds()} arcsec.")
                     self._write_region_time(region)  # Must be done before preprocessing pipeline
-                except _NoPositionError as e:
-                    _log.warning("Could not get sky position from visit %s: %s. "
-                                 "Spatial datasets won't be loaded.", self.visit, e)
+                else:
+                    _log.warning("Could not get sky position from visit %s. "
+                                 "Spatial datasets won't be loaded.", self.visit)
                     region = None
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
@@ -1882,12 +1830,6 @@ class _MissingDatasetError(RuntimeError):
     where expected.
     """
     pass
-
-
-class _NoPositionError(RuntimeError):
-    """An exception flagging that the nextVisit does not have readable
-    position information.
-    """
 
 
 _DatasetResults: typing.TypeAlias = collections.abc.Iterable[lsst.daf.butler.DatasetRef]
