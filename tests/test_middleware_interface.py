@@ -478,10 +478,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface.prep_butler()  # Ensure raw collections exist.
         filename = "nonexistentImage.fits"
         filepath = os.path.join(self.input_data, filename)
-        data_id, file_data = fake_file_data(filepath,
-                                            self.interface.butler.dimensions,
-                                            self.interface.instrument,
-                                            self.next_visit)
+        _, file_data = fake_file_data(filepath,
+                                      self.interface.butler.dimensions,
+                                      self.interface.instrument,
+                                      self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
                 self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"):
             mock.return_value = file_data
@@ -501,10 +501,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
-        data_id, file_data = fake_file_data(filepath,
-                                            self.interface.butler.dimensions,
-                                            self.interface.instrument,
-                                            self.next_visit)
+        _, file_data = fake_file_data(filepath,
+                                      self.interface.butler.dimensions,
+                                      self.interface.instrument,
+                                      self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
@@ -653,10 +653,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface.prep_butler()
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
-        data_id, file_data = fake_file_data(filepath,
-                                            self.interface.butler.dimensions,
-                                            self.interface.instrument,
-                                            self.next_visit)
+        _, file_data = fake_file_data(filepath,
+                                      self.interface.butler.dimensions,
+                                      self.interface.instrument,
+                                      self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
