@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - 'releases/**'
+      - 'tickets/DM-43082-temp-build'
     paths:
       - '.github/workflows/build-service.yml'
       - 'config/**'
