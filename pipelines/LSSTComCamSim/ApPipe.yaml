@@ -9,6 +9,19 @@ imports:
     include:
       - prompt
 tasks:
+  # Turn on R/B analysis. This is a temporary patch until it is turned on
+  # in ap_pipe.
+  rbClassify:
+    class: lsst.meas.transiNet.RBTransiNetTask
+    config:
+      modelPackageStorageMode: butler
+      connections.science: initial_pvi
+      connections.coaddName: parameters.coaddName
+  transformDiaSrcCat:
+    class: lsst.ap.association.TransformDiaSourceCatalogTask
+    config:
+      # Turn on R/B analysis
+      doIncludeReliability: True
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:
