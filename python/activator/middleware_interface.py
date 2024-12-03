@@ -1294,6 +1294,8 @@ class MiddlewareInterface:
             except Exception as e:
                 raise PipelinePreExecutionError(f"PreExecInit failed for {pipeline_file}.") from e
             _log.info(f"Running '{pipeline_file}' on {data_ids}")
+            for quantum_node in qgraph.inputQuanta:
+                _log.debug(f"Running with input datasets {quantum_node.quantum.inputs.values()}")
             try:
                 with lsst.utils.timer.time_this(
                         _log, msg=f"executor.run_pipeline ({label})", level=logging.DEBUG):
