@@ -460,7 +460,7 @@ Then in the pod:
 
    source /opt/lsst/software/stack/loadLSST.bash
 
-The local repo is a directory of the form ``/tmp/butler-????????``.
+The local repo is a directory of the form ``/tmp-butler/butler-????????``.
 There should be only one local repo per ``MiddlewareInterface`` object, though each ready worker may have its own repo.
 If in doubt, check the logs first.
 
