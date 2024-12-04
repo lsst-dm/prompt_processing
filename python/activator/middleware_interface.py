@@ -71,8 +71,6 @@ base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))-1
 # Multipliers to base_keep_limit for refcats and templates.
 refcat_factor = int(os.environ.get("REFCATS_PER_IMAGE", 4))
 template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
-# Minimum number of datasets to keep for filter-dependent datasets.
-filter_floor = int(os.environ.get("FILTERS_WITH_CALIBS", 20))
 # VALIDITY-HACK: local-only calib collections break if calibs are not requested
 # in chronological order. Turn off for large development runs.
 cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
@@ -205,8 +203,8 @@ def make_local_cache():
         base_keep_limit,
         cache_sizes={
             # TODO: find an API that doesn't require explicit enumeration
-            "goodSeeingCoadd": template_factor * max(base_keep_limit, filter_floor),
-            "deepCoadd": template_factor * max(base_keep_limit, filter_floor),
+            "goodSeeingCoadd": template_factor * base_keep_limit,
+            "deepCoadd": template_factor * base_keep_limit,
             "uw_stars_20240524": refcat_factor * base_keep_limit,
             "uw_stars_20240228": refcat_factor * base_keep_limit,
             "uw_stars_20240130": refcat_factor * base_keep_limit,
@@ -215,11 +213,6 @@ def make_local_cache():
             "gaia_dr2_20200414": refcat_factor * base_keep_limit,
             "atlas_refcat2_20220201": refcat_factor * base_keep_limit,
             "the_monster_20240904": refcat_factor * base_keep_limit,
-            "eo_flat": max(base_keep_limit, filter_floor),
-            "flat": max(base_keep_limit, filter_floor),
-            "flatBootstrap": max(base_keep_limit, filter_floor),
-            "fringe": max(base_keep_limit, filter_floor),
-            "transmission_filter": max(base_keep_limit, filter_floor),
         },
     )
 
