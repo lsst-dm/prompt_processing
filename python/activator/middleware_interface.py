@@ -338,14 +338,14 @@ class MiddlewareInterface:
         self._skip_spatial_preload = False
         if self.visit.coordinateSystem != FannedOutVisit.CoordSys.ICRS:
             self._skip_spatial_preload = True
-            _log.error("Only ICRS coordinates are fully supported. "
-                       f"Got {self.visit.coordinateSystem!r} instead in {self.visit}. "
-                       "Spatial datasets won't be loaded.")
+            _log.warning("Only ICRS coordinates are fully supported. "
+                         f"Got {self.visit.coordinateSystem!r} instead in {self.visit}. "
+                         "Spatial datasets won't be loaded.")
         if self.visit.rotationSystem != FannedOutVisit.RotSys.SKY:
             self._skip_spatial_preload = True
-            _log.error("Only sky camera rotations are fully supported. "
-                       f"Got {self.visit.rotationSystem!r} instead in {self.visit}. "
-                       "Spatial datasets won't be loaded.")
+            _log.warning("Only sky camera rotations are fully supported. "
+                         f"Got {self.visit.rotationSystem!r} instead in {self.visit}. "
+                         "Spatial datasets won't be loaded.")
 
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
