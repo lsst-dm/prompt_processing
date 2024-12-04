@@ -692,12 +692,15 @@ class MiddlewareInterface:
             all_callback=self._mark_dataset_usage,
         ))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
+
+        if not filter:
+            _log.warning("Preloading templates is not supported for visits without a specific filter.")
+            return skymaps
+
         data_id = {"instrument": self.instrument.getName(),
                    "skymap": self.skymap_name,
+                   "physical_filter": filter,
                    }
-        if filter:
-            data_id["physical_filter"] = filter
-
         types = self._get_template_types()
         if types:
             try:
@@ -741,11 +744,17 @@ class MiddlewareInterface:
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
         # Querying by specific types is much faster than querying by ...
         # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
-        type_names = {t.name for t in self.central_butler.registry.queryDatasetTypes()
-                      if t.isCalibration() and "exposure" not in t.dimensions}
+        types = {t for t in self.central_butler.registry.queryDatasetTypes()
+                 if t.isCalibration() and "exposure" not in t.dimensions}
         data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
         if filter:
             data_id["physical_filter"] = filter
+        else:
+            _log.warning("Preloading filter-dependent calibs is not supported for visits "
+                         "without a specific filter.")
+            types = {t for t in types
+                     if "physical_filter" not in t.dimensions and "band" not in t.dimensions}
+        type_names = {t.name for t in types}
         # For now, filter down to the dataset types that exist in the specific calib collection.
         # TODO: A new query API after DM-45873 may replace or improve this usage.
         # TODO: DM-40245 to identify the datasets.
