@@ -79,9 +79,9 @@ class PipelinesConfig:
     A config that omits a pipeline for non-sky data:
 
     >>> PipelinesConfig([{"survey": "TestSurvey",
-                          "pipelines": ["/etc/pipelines/ApPipe.yaml"]},
-                         {"survey": "Dome Flats",
-                          "pipelines": None},
+    ...                   "pipelines": ["/etc/pipelines/ApPipe.yaml"]},
+    ...                  {"survey": "Dome Flats",
+    ...                   "pipelines": None},
     ...                  ])  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
     """
