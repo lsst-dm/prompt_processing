@@ -311,3 +311,24 @@ class PipelinesConfigTest(unittest.TestCase):
             PipelinesConfig([{"survey": "TestSurvey", "pipelines": [], "dec": {"max": -20.0}}])
         with self.assertRaises(ValueError):
             PipelinesConfig([{"survey": "TestSurvey", "pipelines": [], "dec": {"min": 80.0}}])
+
+    def test_galactic_map(self):
+        config = PipelinesConfig([{"binary-map": "${PROMPT_PROCESSING_DIR}/maps/crowding_mask_20k.fits",
+                                   "pipelines": None,
+                                   },
+                                  {"pipelines": ["ApPipe.yaml"]},
+                                  ])
+        self.assertEqual(
+            # Galactic center
+            config.get_pipeline_files(dataclasses.replace(self.visit, position=[266.40, -28.94])),
+            []
+        )
+        self.assertEqual(
+            # South Galactic pole
+            config.get_pipeline_files(dataclasses.replace(self.visit, position=[12.85, -27.13])),
+            [os.path.abspath("ApPipe.yaml")]
+        )
+
+    def test_map_invalid(self):
+        with self.assertRaises(ValueError):
+            PipelinesConfig([{"binary-map": "not/a/path/not_a_map.fits", "pipelines": []}])

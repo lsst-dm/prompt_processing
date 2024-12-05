@@ -29,6 +29,7 @@ import numbers
 import os
 import typing
 
+from .maps import PredicateMapHealpix
 from .visit import FannedOutVisit
 
 
@@ -52,6 +53,13 @@ class PipelinesConfig:
             dec range in degrees (mapping [`str`, `float`], optional). RA-only
             or dec-only constraints are allowed. RA wraparound is supported.
             Visits with no position *never* match a node with ra/dec
+            constraints.
+        ``"binary-map"``
+            The path to an integer or boolean Healpix map (`str`, optional).
+            Only all-sky maps with implicit indexing are supported.
+            16 is assumed to represent "unknown".
+            The node matches if the boresight position evaluates to `True`.
+            Visits with no position *never* match a node with map
             constraints.
         ``"pipelines"``
             A list of zero or more pipelines (sequence [`str`] or `None`). Each
@@ -99,6 +107,17 @@ class PipelinesConfig:
     ...                   "pipelines": ["/etc/pipelines/NearEquinox.yaml"]},
     ...                  ])  # doctest: +ELLIPSIS
     <config.PipelinesConfig object at 0x...>
+
+    A config that matches against two maps, and runs a third pipeline for
+    the rest:
+
+    >>> PipelinesConfig([{"binary-map": "best_mask.fits",
+    ...                   "pipelines": ["/etc/pipelines/BestPipe.yaml"]},
+    ...                  {"binary-map": "ok_mask.fits",
+    ...                   "pipelines": ["/etc/pipelines/OkPipe.yaml"]},
+    ...                  {"pipelines": ["/etc/pipelines/WorstPipe.yaml"]},
+    ...                  ])  # doctest: +ELLIPSIS
+    <config.PipelinesConfig object at 0x...>
     """
 
     class _Spec:
@@ -120,8 +139,9 @@ class PipelinesConfig:
 
                 self._ra = self._parse_minmax(specs.pop('ra', None), _WrapRange, wrap=360.0)
                 self._dec = self._parse_minmax(specs.pop('dec', None), _LinearRange)
+                self._map = self._parse_map(specs.pop('binary-map', None))
 
-                self._positions = self._ra is not None or self._dec is not None
+                self._positions = any(x is not None for x in [self._ra, self._dec, self._map])
 
                 self._survey = self._parse_survey(specs.pop('survey', None))
 
@@ -212,6 +232,33 @@ class PipelinesConfig:
             else:
                 return None
 
+        # TODO: generalize return type?
+        @staticmethod
+        def _parse_map(config: typing.Any) -> PredicateMapHealpix | None:
+            """Convert a map config snippet into a fully-initialized map.
+
+            Parameters
+            ----------
+            config : `str` or `None`
+                The map to load. Expected to be a valid file path, or `None` if
+                the constraint was omitted. This method is responsible for any
+                type checking.
+
+            Returns
+            -------
+            map : `activator.maps.PredicateMapHealpix` or `None`
+                The map.
+            """
+            if config is not None:
+                path = os.path.abspath(os.path.expandvars(config))
+                try:
+                    # TODO: find a clean way to optionally specify null in config
+                    return PredicateMapHealpix.from_fits(path, null=16)
+                except OSError as e:
+                    raise ValueError(f"Path {config} is not a valid map.") from e
+            else:
+                return None
+
         @staticmethod
         def _check_pipelines(pipelines: collections.abc.Sequence[str]):
             """Test the correctness of a list of pipelines.
@@ -265,6 +312,9 @@ class PipelinesConfig:
                 if self._ra is not None and visit_radec.ra.degree not in self._ra:
                     return False
                 if self._dec is not None and visit_radec.dec.degree not in self._dec:
+                    return False
+                if self._map is not None and not self._map.at(visit_radec):
+                    # at() may return False or None
                     return False
             return True
 
