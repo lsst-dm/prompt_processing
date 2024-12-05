@@ -71,8 +71,6 @@ base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))-1
 # Multipliers to base_keep_limit for refcats and templates.
 refcat_factor = int(os.environ.get("REFCATS_PER_IMAGE", 4))
 template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
-# Minimum number of datasets to keep for filter-dependent datasets.
-filter_floor = int(os.environ.get("FILTERS_WITH_CALIBS", 20))
 # VALIDITY-HACK: local-only calib collections break if calibs are not requested
 # in chronological order. Turn off for large development runs.
 cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
@@ -205,8 +203,8 @@ def make_local_cache():
         base_keep_limit,
         cache_sizes={
             # TODO: find an API that doesn't require explicit enumeration
-            "goodSeeingCoadd": template_factor * max(base_keep_limit, filter_floor),
-            "deepCoadd": template_factor * max(base_keep_limit, filter_floor),
+            "goodSeeingCoadd": template_factor * base_keep_limit,
+            "deepCoadd": template_factor * base_keep_limit,
             "uw_stars_20240524": refcat_factor * base_keep_limit,
             "uw_stars_20240228": refcat_factor * base_keep_limit,
             "uw_stars_20240130": refcat_factor * base_keep_limit,
@@ -215,11 +213,6 @@ def make_local_cache():
             "gaia_dr2_20200414": refcat_factor * base_keep_limit,
             "atlas_refcat2_20220201": refcat_factor * base_keep_limit,
             "the_monster_20240904": refcat_factor * base_keep_limit,
-            "eo_flat": max(base_keep_limit, filter_floor),
-            "flat": max(base_keep_limit, filter_floor),
-            "flatBootstrap": max(base_keep_limit, filter_floor),
-            "fringe": max(base_keep_limit, filter_floor),
-            "transmission_filter": max(base_keep_limit, filter_floor),
         },
     )
 
@@ -338,14 +331,14 @@ class MiddlewareInterface:
         self._skip_spatial_preload = False
         if self.visit.coordinateSystem != FannedOutVisit.CoordSys.ICRS:
             self._skip_spatial_preload = True
-            _log.error("Only ICRS coordinates are fully supported. "
-                       f"Got {self.visit.coordinateSystem!r} instead in {self.visit}. "
-                       "Spatial datasets won't be loaded.")
+            _log.warning("Only ICRS coordinates are fully supported. "
+                         f"Got {self.visit.coordinateSystem!r} instead in {self.visit}. "
+                         "Spatial datasets won't be loaded.")
         if self.visit.rotationSystem != FannedOutVisit.RotSys.SKY:
             self._skip_spatial_preload = True
-            _log.error("Only sky camera rotations are fully supported. "
-                       f"Got {self.visit.rotationSystem!r} instead in {self.visit}. "
-                       "Spatial datasets won't be loaded.")
+            _log.warning("Only sky camera rotations are fully supported. "
+                         f"Got {self.visit.rotationSystem!r} instead in {self.visit}. "
+                         "Spatial datasets won't be loaded.")
 
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
@@ -692,12 +685,15 @@ class MiddlewareInterface:
             all_callback=self._mark_dataset_usage,
         ))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
+
+        if not filter:
+            _log.warning("Preloading templates is not supported for visits without a specific filter.")
+            return skymaps
+
         data_id = {"instrument": self.instrument.getName(),
                    "skymap": self.skymap_name,
+                   "physical_filter": filter,
                    }
-        if filter:
-            data_id["physical_filter"] = filter
-
         types = self._get_template_types()
         if types:
             try:
@@ -741,11 +737,17 @@ class MiddlewareInterface:
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
         # Querying by specific types is much faster than querying by ...
         # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
-        type_names = {t.name for t in self.central_butler.registry.queryDatasetTypes()
-                      if t.isCalibration() and "exposure" not in t.dimensions}
+        types = {t for t in self.central_butler.registry.queryDatasetTypes()
+                 if t.isCalibration() and "exposure" not in t.dimensions}
         data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
         if filter:
             data_id["physical_filter"] = filter
+        else:
+            _log.warning("Preloading filter-dependent calibs is not supported for visits "
+                         "without a specific filter.")
+            types = {t for t in types
+                     if "physical_filter" not in t.dimensions and "band" not in t.dimensions}
+        type_names = {t.name for t in types}
         # For now, filter down to the dataset types that exist in the specific calib collection.
         # TODO: A new query API after DM-45873 may replace or improve this usage.
         # TODO: DM-40245 to identify the datasets.

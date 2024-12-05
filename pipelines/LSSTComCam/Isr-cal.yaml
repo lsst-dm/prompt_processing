@@ -1,8 +1,14 @@
 description: >-
-  ISR-only pipeline specialized for LSSTComCam. This is a seperate
-  pipeline from the other ISR-only pipeline just for it to use
-  on raw calibration data that prompt processing does not
-  usually process, so the outputs are kept seprately.
+  ISR-only pipeline specialized for LSSTComCam. This pipeline can be run on raw
+  calibration data such as biases, and does not require a known filter.
+  Its outputs are also kept separate from science visits.
 
 imports:
   - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTComCam/Isr.yaml
+tasks:
+  isr:
+    class: lsst.ip.isr.IsrTaskLSST
+    config:
+      # Can't (necessarily) preload filter-dependent calibs
+      doFlat = false
+      # TODO: need to turn off fringe support after DM-47959
