@@ -563,7 +563,7 @@ def request_retry(e: RetriableError):
     response = flask.make_response(
         f"The server could not process the request, but it can be retried: {error}",
         503,
-        {"Retry-After": 10})
+        {"Retry-After": 30})
     return response
 
 
