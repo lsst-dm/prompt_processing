@@ -285,7 +285,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
         self.assertEqual(self.interface.rawIngestTask.config.transfer, "copy")
 
-    def _check_imports(self, butler, group, detector, expected_shards):
+    def _check_imports(self, butler, group, detector, expected_shards, have_filter=True):
         """Test that the butler has the expected supporting data.
         """
         self.assertEqual(butler.get('camera',
@@ -313,13 +313,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           # TODO DM-46178: add query by validity range.
                           collections=self.umbrella)
         )
-        self.assertTrue(
-            butler.exists('flat', detector=detector, instrument='LSSTComCamSim',
-                          physical_filter=filter,
-                          full_check=True,
-                          # TODO DM-46178: add query by validity range.
-                          collections=self.umbrella)
-        )
+        if have_filter:
+            self.assertTrue(
+                butler.exists('flat', detector=detector, instrument='LSSTComCamSim',
+                              physical_filter=filter,
+                              full_check=True,
+                              # TODO DM-46178: add query by validity range.
+                              collections=self.umbrella)
+            )
         # Check that we got a model (only one in the test data)
         self.assertTrue(
             butler.exists('pretrainedModelPackage',
@@ -327,25 +328,26 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           collections=self.umbrella)
         )
 
-        # Check that the right templates are in the chained output collection.
-        # Need to refresh the butler to get all the dimensions/collections.
-        butler.registry.refresh()
-        for patch in (142, 143, 158, 159, 160, 161, 175, 176, 177, 178,
-                      192, 193, 194, 195, 210, 211,):
-            with self.subTest(tract=7445, patch=patch):
-                self.assertTrue(
-                    butler.exists('goodSeeingCoadd', tract=7445, patch=patch, band="g",
+        if have_filter:
+            # Check that the right templates are in the chained output collection.
+            # Need to refresh the butler to get all the dimensions/collections.
+            butler.registry.refresh()
+            for patch in (142, 143, 158, 159, 160, 161, 175, 176, 177, 178,
+                          192, 193, 194, 195, 210, 211,):
+                with self.subTest(tract=7445, patch=patch):
+                    self.assertTrue(
+                        butler.exists('goodSeeingCoadd', tract=7445, patch=patch, band="g",
+                                      skymap=skymap_name,
+                                      full_check=True,
+                                      collections=self.umbrella)
+                    )
+            with self.subTest(tract=7445, patch=0):
+                self.assertFalse(
+                    butler.exists('goodSeeingCoadd', tract=7445, patch=0, band="g",
                                   skymap=skymap_name,
                                   full_check=True,
                                   collections=self.umbrella)
                 )
-        with self.subTest(tract=7445, patch=0):
-            self.assertFalse(
-                butler.exists('goodSeeingCoadd', tract=7445, patch=0, band="g",
-                              skymap=skymap_name,
-                              full_check=True,
-                              collections=self.umbrella)
-            )
 
         # Check that preloaded datasets have been generated
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
@@ -409,7 +411,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         expected_shards = {166464, 177536}
         self._check_imports(self.interface.butler, group="1", detector=4,
-                            expected_shards=expected_shards)
+                            expected_shards=expected_shards, have_filter=False)
 
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
