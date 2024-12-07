@@ -21,16 +21,18 @@ Containers
 ==========
 
 The service consists of two containers.
-The first is a base container with the Science Pipelines "stack" code and networking utilities.
-The second is a service container made from the base that has the Prompt Processing service code.
+The first is a **base container** with the Science Pipelines "stack" code and networking utilities.
+The second is a **service container** made from the base that has the Prompt Processing service code.
 All containers are managed by `GitHub Container Registry <https://github.com/orgs/lsst-dm/packages?repo_name=prompt_processing>`_ and are built using GitHub Actions.
 
 To build the base container:
 
 * If there are changes to the container, push them to a branch, then open a PR.
-  The container should be built automatically.
-* If there are no changes (typically because you want to use an updated Science Pipelines container), go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-base.yml>`_ and select "Run workflow".
-  From the dropdown, select the branch whose container definition will be used, and the label of the Science Pipelines container.
+  This will build the container automatically.
+* If there are no changes (typically because you want to use an updated Science Pipelines container), go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-base.yml>`_ and select "**Run workflow**". From the dropdown menu, select:
+
+  #. The branch whose container definition will be used
+  #. The label of the Science Pipelines container.
 * New containers built from ``main`` are tagged with the corresponding Science Pipelines release (plus ``w_latest`` or ``d_latest`` if the release was requested by that name).
   For automatic ``main`` builds, or if the corresponding box in the manual build is checked, the new container also has the ``latest`` label.
   Containers built from a branch use the same scheme, but prefixed by the ticket number or, for user branches, the branch topic.
@@ -44,14 +46,16 @@ To build the base container:
 To build the service container:
 
 * If there are changes to the service, push them to a branch, then open a PR.
-  The container should be built automatically using the ``latest`` base container.
-* To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml>`_ and select "Run workflow".
+  This will build the container automatically using the ``latest`` base container.
+* To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml>`_ and select "**Run workflow**".
   From the dropdown, select the branch whose code should be built.
-  The container will be built using the ``latest`` base container, even if there is a branch build of the base.
-* To use a base other than ``latest``, edit ``.github/workflows/build-service.yml`` on the branch and override the ``BASE_TAG_LIST`` variable.
-  Be careful not to merge the temporary override to ``main``!
+  By default, the container is built using the ``latest`` base container, even if there is a branch build of the base.
+
+  *  If this is the desired base container, no action is necessary.
+  *  To use a base other than ``latest``, edit ``.github/workflows/build-service.yml`` on the branch and override the ``BASE_TAG_LIST`` variable.
+     Be careful not to merge the temporary override to ``main``!
 * New service containers built from ``main`` have the tags of their base container.
-  Containers built from a branch are prefixed by the ticket number or, for user branches, the branch topic.
+  Containers built from a branch should be prefixed by the ticket number or, for user branches, the branch topic.
 
 .. note::
 
@@ -110,6 +114,10 @@ Please note that the tag does not include a ``v`` at the beginning.
 
 #. Choosing the Version Number
 
+   The first step in making a release is choosing an appropriate version number to describe it. This subsection offers guidance on this choice, as well as on differentiating between major and minor releases.
+
+   **To see which changes have occurred since the last release:**
+
    On GitHub.com, navigate to the main page of the repository.
    To the right of the list of files, click the latest release.
    At the top of the page, click **## commits to main since this release**.
@@ -119,6 +127,8 @@ Please note that the tag does not include a ``v`` at the beginning.
    If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
    In practice, almost any Science Pipelines update is at least a minor version, because new features are added constantly.
    In the future, there may be "patched weekly" builds, which would justify a patch version of Prompt Processing.
+
+   **Guidance on designating major releases:**
 
    For the ``prompt_processing`` service, a new major version is triggered by any of the following:
 
@@ -142,7 +152,7 @@ Please note that the tag does not include a ``v`` at the beginning.
 
    Select **Generate Release Notes**.
    This will generate a list of commit summaries and of submitters.
-   Add text as follows.
+   Add text as follows:
 
    * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
    * Science Pipelines version and rubin-env version
