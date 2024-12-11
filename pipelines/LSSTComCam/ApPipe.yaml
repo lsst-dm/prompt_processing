@@ -14,3 +14,5 @@ tasks:
     config:
       # Alert distribution only runnable in PP environment.
       alertPackager.doProduceAlerts: True
+      # Associate sources from mpSkyEphemerisQuery. Safe to move to ap_pipe?
+      doSolarSystemAssociation: True
