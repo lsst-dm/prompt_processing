@@ -316,10 +316,10 @@ def keda_start():
                 except Exception as e:
                     _log.critical("Process visit failed; aborting.")
                     _log.exception(e)
-                    # TODO: Determine if needed
-                    registry.pop()
                 finally:
                     _log.info("Processing completed for %s", socket.gethostname())
+                    # Reset timer for fan out message polling.
+                    fan_out_listen_start_time = time.time()
 
     finally:
         # TODO Handle local registry unregistration on DM-47975
