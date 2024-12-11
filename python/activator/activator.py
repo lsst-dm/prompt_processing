@@ -307,9 +307,8 @@ def keda_start():
                 fan_out_to_prompt_time = int(time.time() * 1000) - fan_out_kafka_msg_timestamp[1]
                 _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time/1000)
 
-                # Commit message and close client
+                # Commit message
                 fan_out_consumer.commit(message=fan_out_message, asynchronous=False)
-                fan_out_consumer.close()
 
                 try:
                     # Process fan out visit
@@ -321,12 +320,11 @@ def keda_start():
                     registry.pop()
                 finally:
                     _log.info("Processing completed for %s", socket.gethostname())
-                    # Subscribe to topic for next message.
-                    fan_out_consumer.subscribe([fan_out_kafka_topic])
 
     finally:
         # TODO Handle local registry unregistration on DM-47975
         _log.info("Finished listening for fanned out messages")
+        fan_out_consumer.close()
 
 
 def _graceful_shutdown(signum: int, stack_frame):
