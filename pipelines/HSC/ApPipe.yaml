@@ -11,4 +11,6 @@ tasks:
   diaPipe:
     class: lsst.ap.association.DiaPipelineTask
     config:
-      doSolarSystemAssociation: false  # No "known objects" catalog for fake visits
+      # No "known objects" catalog for fake visits, but safe to run?
+      # TODO: safe to move to ap_pipe?
+      doSolarSystemAssociation: true
