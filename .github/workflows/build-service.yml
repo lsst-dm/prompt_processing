@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - 'releases/**'
+      - 'tickets/DM-47975'
     paths:
       - '.github/workflows/build-service.yml'
       - 'config/**'
@@ -12,7 +13,6 @@ on:
       - 'python/activator/**'
       - 'tests/**'
       - 'Dockerfile'
-      - 'tickets/DM-47975'
   pull_request:
     paths:
       - '.github/workflows/build-service.yml'
