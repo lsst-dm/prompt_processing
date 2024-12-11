@@ -10,5 +10,5 @@ tasks:
     class: lsst.ip.isr.IsrTaskLSST
     config:
       # Can't (necessarily) preload filter-dependent calibs
-      doFlat = false
+      doFlat: false
       # TODO: need to turn off fringe support after DM-47959
