@@ -7,8 +7,3 @@ imports:
 parameters:
   # Use dataset's specific templates
   coaddName: goodSeeing
-tasks:
-  diaPipe:
-    class: lsst.ap.association.DiaPipelineTask
-    config:
-      doSolarSystemAssociation: false  # No "known objects" catalog for fake visits
