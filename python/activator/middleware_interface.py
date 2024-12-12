@@ -382,14 +382,16 @@ class MiddlewareInterface:
         try:
             # Defined by Knative in containers, guaranteed to be unique for
             # each deployment. Currently of the form prompt-proto-service-#####.
-            return os.environ["K_REVISION"]
+            version = os.environ["K_REVISION"]
         except KeyError:
             # If not in a container, read the active Science Pipelines install.
             packages = lsst.utils.packages.Packages.fromSystem()  # Takes several seconds!
             h = hashlib.md5(usedforsecurity=False)
             for package, version in packages.items():
                 h.update(bytes(package + version, encoding="utf-8"))
-            return f"local-{h.hexdigest()}"
+            version = f"local-{h.hexdigest()}"
+        _log.debug("Deployment identified as %s.", version)
+        return version
 
     def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
         """Prepare the local butler to ingest into and process from.
