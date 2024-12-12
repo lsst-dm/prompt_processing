@@ -395,11 +395,16 @@ class MiddlewareInterface:
             A unique version identifier for the stack. Contains only
             word characters and "-", but not guaranteed to be human-readable.
         """
-        try:
+        # if-else chain is clumsy, but easiest to extend to more than 2 options
+        if "K_REVISION" in os.environ:
             # Defined by Knative in containers, guaranteed to be unique for
             # each deployment. Currently of the form prompt-proto-service-#####.
             version = os.environ["K_REVISION"]
-        except KeyError:
+        elif "MANAGED_REVISION" in os.environ:
+            # Passed in through config, guaranteed to be unique for each
+            # deployment. Short hexadecimal sequence.
+            version = f"revision-{os.environ.get['MANAGED_REVISION']}"
+        else:
             # If not in a container, read the active Science Pipelines install.
             packages = lsst.utils.packages.Packages.fromSystem()  # Takes several seconds!
             h = hashlib.md5(usedforsecurity=False)
