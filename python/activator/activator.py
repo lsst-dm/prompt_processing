@@ -278,7 +278,8 @@ def keda_start():
         "security.protocol": fan_out_kafka_security_protocol,
         "sasl.username": fan_out_kafka_sasl_username,
         "sasl.password": fan_out_kafka_sasl_password,
-        'enable.auto.commit': False
+        "enable.auto.commit": False,
+        "debug": "all"
     }
 
     _log.info("starting fan out consumer")
