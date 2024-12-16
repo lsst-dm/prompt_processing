@@ -14,6 +14,3 @@ tasks:
     config:
       # Alert distribution only runnable in PP environment.
       alertPackager.doProduceAlerts: True
-      # No "known objects" catalog for fake visits, but safe to run?
-      # TODO: safe to move to ap_pipe?
-      doSolarSystemAssociation: true
