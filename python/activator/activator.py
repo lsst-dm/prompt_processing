@@ -106,6 +106,8 @@ if platform == "keda":
     fan_out_kafka_sasl_password = os.environ["FAN_OUT_KAFKA_SASL_PASSWORD"]
     # Time to wait for fanned out messages before spawning new pod.
     fanned_out_msg_listen_timeout = int(os.environ.get("FANNED_OUT_MSG_LISTEN_TIMEOUT", 300))
+    # Fan Out Kafka Consumer debug level.  Defaults to none.
+    fan_out_consumer_debug_level = int(os.environ.get("fan_out_consumer_debug_level", ""))
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -279,7 +281,7 @@ def keda_start():
         "sasl.username": fan_out_kafka_sasl_username,
         "sasl.password": fan_out_kafka_sasl_password,
         "enable.auto.commit": False,
-        "debug": "all"
+        "debug": fan_out_consumer_debug_level
     }
 
     _log.info("starting fan out consumer")
@@ -329,7 +331,6 @@ def keda_start():
     finally:
         # TODO Handle local registry unregistration on DM-47975
         _log.info("Finished listening for fanned out messages")
-        fan_out_consumer.close()
 
 
 def _graceful_shutdown(signum: int, stack_frame):
