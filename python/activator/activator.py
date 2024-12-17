@@ -326,6 +326,7 @@ def keda_start():
                         socket.gethostname())
                     # Reset timer for fan out message polling.
                     fan_out_listen_start_time = time.time()
+                    fan_out_consumer = kafka.Consumer(fan_out_consumer_conf, logger=_log)
                     fan_out_consumer.subscribe([fan_out_kafka_topic])
 
     finally:
