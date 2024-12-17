@@ -107,7 +107,7 @@ if platform == "keda":
     # Time to wait for fanned out messages before spawning new pod.
     fanned_out_msg_listen_timeout = int(os.environ.get("FANNED_OUT_MSG_LISTEN_TIMEOUT", 300))
     # Fan Out Kafka Consumer debug level.  Defaults to none.
-    fan_out_consumer_debug_level = int(os.environ.get("fan_out_consumer_debug_level", ""))
+    fan_out_consumer_debug_level = os.environ.get("fan_out_consumer_debug_level", "")
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
