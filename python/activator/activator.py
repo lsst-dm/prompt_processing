@@ -346,7 +346,7 @@ def keda_start():
                     _log.info(
                         "Processing completed for %s.  Starting next fan out event consumer poll",
                         socket.gethostname())
-                    lsstcomcamsim_running_instances_keda.dec()
+                    lsstcomcamsim_running_instances_keda.dec(1)
                     # Reset timer for fan out message polling.
                     fan_out_listen_start_time = time.time()
                     fan_out_consumer = kafka.Consumer(fan_out_consumer_conf, logger=_log)
