@@ -289,24 +289,24 @@ def keda_start():
     fan_out_consumer.subscribe([fan_out_kafka_topic])
     fan_out_listen_start_time = time.time()
 
-    consumer_polls = 0
+    consumer_polls_with_message = 0
 
     try:
         while time.time() - fan_out_listen_start_time < fanned_out_msg_listen_timeout:
 
             fan_out_message = fan_out_consumer.poll(timeout=5)
-            consumer_polls += 1
 
             if fan_out_message is None:
                 continue
             if fan_out_message.error():
                 _log.warning("Fanned out consumer error: %s", fan_out_message.error())
             else:
-                if consumer_polls > 1:
+                consumer_polls_with_message += 1
+                if consumer_polls_with_message >= 1:
                     fan_out_listen_finish_time = time.time()
                     fan_out_listen_time = fan_out_listen_finish_time - fan_out_listen_start_time
                     _log.debug("Seconds since last message received %r for consumer poll %r",
-                               fan_out_listen_time, consumer_polls)
+                               fan_out_listen_time, consumer_polls_with_message)
                 deserialized_fan_out_visit = fan_out_avro_deserializer(fan_out_message.value(),
                                                                        SerializationContext(
                                                                        fan_out_message.topic(),
