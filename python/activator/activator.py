@@ -94,6 +94,8 @@ if platform == "keda":
     fan_out_kafka_cluster = os.environ["FAN_OUT_KAFKA_CLUSTER"]
     # Kafka group for next visit fan out messages.
     fan_out_kafka_group_id = os.environ["FAN_OUT_KAFKA_GROUP_ID"]
+    # Kafka consumer partition reassignment strategy
+    fan_out_partition_assignment_strategy = os.environ["FAN_OUT_PARTITION_REASSIGNMENT_STRATEGY"]
     # Kafka topic for next visit fan out messages.
     fan_out_kafka_topic = os.environ["FAN_OUT_KAFKA_TOPIC"]
     # Kafka topic offset for next visit fan out messages.
@@ -293,6 +295,7 @@ def keda_start():
     fan_out_consumer_conf = {
         "bootstrap.servers": fan_out_kafka_cluster,
         "group.id": fan_out_kafka_group_id,
+        "partition.assignment.strategy": fan_out_partition_assignment_strategy,
         "auto.offset.reset": fan_out_kafka_topic_offset,
         "sasl.mechanism": fan_out_kafka_sasl_mechanism,
         "security.protocol": fan_out_kafka_security_protocol,
