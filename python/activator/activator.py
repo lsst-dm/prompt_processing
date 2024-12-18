@@ -42,6 +42,8 @@ from confluent_kafka.serialization import SerializationContext, MessageField
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroDeserializer
 import flask
+from prometheus_client import start_http_server
+from prometheus_client import Gauge
 
 from .config import PipelinesConfig
 from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
@@ -259,6 +261,14 @@ def keda_start():
         _get_central_butler()
         _get_local_repo()
 
+        # Start Prometheus endpoint
+        start_http_server(8000)
+
+        # TODO handle multiple instruments
+        lsstcomcamsim_running_instances_keda = Gauge(
+            "lsstcomcamsim_running_instances_keda", "running keda instances with lsstcomcamsim as instrument"
+        )
+
         _log.info("Worker ready to handle requests.")
 
     except Exception as e:
@@ -301,6 +311,9 @@ def keda_start():
             if fan_out_message.error():
                 _log.warning("Fanned out consumer error: %s", fan_out_message.error())
             else:
+                # TODO consider moving into process visit to not increment for ignorable visits.
+                lsstcomcamsim_running_instances_keda.inc()
+
                 consumer_polls_with_message += 1
                 if consumer_polls_with_message >= 1:
                     fan_out_listen_finish_time = time.time()
@@ -333,6 +346,7 @@ def keda_start():
                     _log.info(
                         "Processing completed for %s.  Starting next fan out event consumer poll",
                         socket.gethostname())
+                    lsstcomcamsim_running_instances_keda.dec()
                     # Reset timer for fan out message polling.
                     fan_out_listen_start_time = time.time()
                     fan_out_consumer = kafka.Consumer(fan_out_consumer_conf, logger=_log)
