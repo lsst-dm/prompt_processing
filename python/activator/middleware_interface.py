@@ -396,10 +396,10 @@ class MiddlewareInterface:
             word characters and "-", but not guaranteed to be human-readable.
         """
         # if-else chain is clumsy, but easiest to extend to more than 2 options
-        if "K_REVISIUN" in os.environ:
+        if "K_REVISION" in os.environ:
             # Defined by Knative in containers, guaranteed to be unique for
             # each deployment. Currently of the form prompt-proto-service-#####.
-            version = os.environ["K_REVISIUN"]
+            version = os.environ["K_REVISION"]
         elif "MANAGED_REVISION" in os.environ:
             # Passed in through config, guaranteed to be unique for each
             # deployment. Short hexadecimal sequence.

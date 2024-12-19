@@ -214,7 +214,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         env_patcher = unittest.mock.patch.dict(os.environ,
                                                {"CONFIG_APDB": config_file.name,
-                                                "MANAGED_REVISION": "prompt-proto-service-042",
+                                                "K_REVISION": "prompt-proto-service-042",
                                                 })
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
@@ -354,7 +354,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that preloaded datasets have been generated
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         preload_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
-                             "Preload/revision-prompt-proto-service-042"
+                             "Preload/prompt-proto-service-042"
         self.assertTrue(
             butler.exists('promptPreload_metrics', instrument=instname, group=group, detector=detector,
                           full_check=True,
@@ -910,14 +910,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         out_chain = self.interface._get_output_chain(date)
         self.assertEqual(out_chain, f"{instname}/prompt/output-2023-01-22")
         preload_run = self.interface._get_preload_run(date)
-        self.assertEqual(preload_run, f"{instname}/prompt/output-2023-01-22/Preload/"
-                                      "revision-prompt-proto-service-042")
+        self.assertEqual(preload_run, f"{instname}/prompt/output-2023-01-22/Preload/prompt-proto-service-042")
         out_run = self.interface._get_output_run(filename, date)
-        self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/"
-                                  "revision-prompt-proto-service-042")
+        self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
         init_run = self.interface._get_init_output_run(filename, date)
-        self.assertEqual(init_run, f"{instname}/prompt/output-2023-01-22/ApPipe/"
-                                   "revision-prompt-proto-service-042")
+        self.assertEqual(init_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
 
     def test_get_template_types(self):
         template_types = self.interface._get_template_types()
@@ -1248,7 +1245,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         env_patcher = unittest.mock.patch.dict(os.environ,
                                                {"CONFIG_APDB": config_file.name,
-                                                "MANAGED_REVISION": "prompt-proto-service-042",
+                                                "K_REVISION": "prompt-proto-service-042",
                                                 })
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
@@ -1308,9 +1305,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
         self.preprocessing_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
-                                 "/Preprocess/revision-prompt-proto-service-042"
+                                 "/Preprocess/prompt-proto-service-042"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
-                          "/ApPipe/revision-prompt-proto-service-042"
+                          "/ApPipe/prompt-proto-service-042"
 
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
@@ -1378,7 +1375,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # collections to avoid transferring inputs.
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
-              "NoPipe/revision-prompt-proto-service-042"
+              "NoPipe/prompt-proto-service-042"
 
         dimension_config = central_butler.dimensions.dimensionConfig
         # Need to clean up the directory iff the method fails
