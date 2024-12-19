@@ -346,7 +346,7 @@ def keda_start():
                 _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
 
                 # Prometheus metric for fan out to prompt time
-                lsstcomcamsim_fan_out_to_prompt_summary(round(fan_out_to_prompt_time, 2))
+                lsstcomcamsim_fan_out_to_prompt_summary.observe(round(fan_out_to_prompt_time, 2))
 
                 # Commit message and close client
                 fan_out_consumer.commit(message=fan_out_message, asynchronous=False)
