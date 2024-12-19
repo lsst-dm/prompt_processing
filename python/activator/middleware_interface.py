@@ -403,7 +403,7 @@ class MiddlewareInterface:
         elif "MANAGED_REVISION" in os.environ:
             # Passed in through config, guaranteed to be unique for each
             # deployment. Short hexadecimal sequence.
-            version = f"revision-{os.environ.get['MANAGED_REVISION']}"
+            version = f"revision-{os.environ['MANAGED_REVISION']}"
         else:
             # If not in a container, read the active Science Pipelines install.
             packages = lsst.utils.packages.Packages.fromSystem()  # Takes several seconds!
