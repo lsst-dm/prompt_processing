@@ -328,12 +328,12 @@ def keda_start():
                                fan_out_listen_time, consumer_polls_with_message)
 
                 # Unpack fan out message from redis stream
-                fan_out_visit_binary = fan_out_message[0][1][0][1]
+                fan_out_visit_bytes = fan_out_message[0][1][0][1]
                 fan_out_visit_decoded = {value.decode("utf-8"):
-                                         fan_out_visit_binary.get(value).decode("utf-8")
-                                         for value in fan_out_visit_binary.keys()}
+                                         fan_out_visit_bytes.get(value).decode("utf-8")
+                                         for value in fan_out_visit_bytes.keys()}
                 _log.info("Unpacked message as %r.", fan_out_visit_decoded)
-                fan_out_visit = dict_to_fanned_out_visit(fan_out_visit_decoded)
+                expected_visit = FannedOutVisit(fan_out_visit_decoded)
 
                 # Calculate time to receive message based on timestamp in Redis Stream message
                 redis_streams_message_id = (fan_out_message[0][1][0][0]).decode("utf-8")
@@ -350,7 +350,7 @@ def keda_start():
 
                 try:
                     # Process fan out visit
-                    process_visit(fan_out_visit)
+                    process_visit(expected_visit)
                 except Exception as e:
                     _log.critical("Process visit failed; aborting.")
                     _log.exception(e)
