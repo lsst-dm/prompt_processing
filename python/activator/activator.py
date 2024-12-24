@@ -328,13 +328,13 @@ def keda_start():
                                fan_out_listen_time, consumer_polls_with_message)
 
                 # Unpack fan out message from redis stream
-                fan_out_visit_binary = fan_out_message[0][1][0]
-                _log.info("Unpacked message as %r.", fan_out_visit_binary)
+                fan_out_visit_binary = fan_out_message[0][1][0][1]
                 fan_out_visit = {value.decode("utf-8"): fan_out_visit_binary.get(value).decode("utf-8")
                                  for value in fan_out_visit_binary.keys()}
+                _log.info("Unpacked message as %r.", fan_out_visit)
 
                 # Calculate time to receive message based on timestamp in Redis Stream message
-                redis_streams_header = (fan_out_visit_binary[0]).decode("utf-8")
+                redis_streams_header = (fan_out_message[0][1][0][0]).decode("utf-8")
                 message_timestamp = float(redis_streams_header.split('-', 1)[0].strip())
                 fan_out_to_prompt_time = time.time() - message_timestamp/1000
                 _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
