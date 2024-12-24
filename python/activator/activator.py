@@ -333,7 +333,7 @@ def keda_start():
                                          fan_out_visit_bytes.get(value).decode("utf-8")
                                          for value in fan_out_visit_bytes.keys()}
                 _log.info("Unpacked message as %r.", fan_out_visit_decoded)
-                expected_visit = FannedOutVisit(fan_out_visit_decoded)
+                expected_visit = FannedOutVisit(**fan_out_visit_decoded)
 
                 # Calculate time to receive message based on timestamp in Redis Stream message
                 redis_streams_message_id = (fan_out_message[0][1][0][0]).decode("utf-8")
