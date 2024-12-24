@@ -329,20 +329,23 @@ def keda_start():
 
                 # Unpack fan out message from redis stream
                 fan_out_visit_binary = fan_out_message[0][1][0][1]
-                fan_out_visit = {value.decode("utf-8"): fan_out_visit_binary.get(value).decode("utf-8")
-                                 for value in fan_out_visit_binary.keys()}
-                _log.info("Unpacked message as %r.", fan_out_visit)
+                fan_out_visit_decoded = {value.decode("utf-8"):
+                                         fan_out_visit_binary.get(value).decode("utf-8")
+                                         for value in fan_out_visit_binary.keys()}
+                _log.info("Unpacked message as %r.", fan_out_visit_decoded)
+                fan_out_visit = dict_to_fanned_out_visit(fan_out_visit_decoded)
 
                 # Calculate time to receive message based on timestamp in Redis Stream message
-                redis_streams_header = (fan_out_message[0][1][0][0]).decode("utf-8")
-                message_timestamp = float(redis_streams_header.split('-', 1)[0].strip())
+                redis_streams_message_id = (fan_out_message[0][1][0][0]).decode("utf-8")
+                message_timestamp = float(redis_streams_message_id.split('-', 1)[0].strip())
                 fan_out_to_prompt_time = time.time() - message_timestamp/1000
                 _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
 
                 # Prometheus metric for fan out to prompt time
                 lsstcomcamsim_fan_out_to_prompt_summary.observe(round(fan_out_to_prompt_time, 2))
 
-                # Close redis stream client
+                # Ack the redis stream message and close redis stream client
+                redis_client.xack(redis_stream_name, redis_stream_consumer_group, redis_streams_message_id)
                 redis_client.close()
 
                 try:
