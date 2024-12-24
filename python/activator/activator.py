@@ -114,6 +114,12 @@ if platform == "keda":
     debug_fan_out_consumer = bool(int(os.environ.get("DEBUG_FAN_OUT_CONSUMER", '0')))
     # Fan Out Kafka Consumer debug level.  Defaults to none.
     debug_level_fan_out_consumer = os.environ.get("DEBUG_LEVEL_FAN_OUT_CONSUMER", "")
+    # Redis Stream Cluster
+    redis_stream_host = os.environ["REDIS_STREAM_HOST"]
+    # Redis stream name to receive messages
+    redis_stream_name = os.environ["REDIS_STREAM_NAME"]
+    # Redis stream consumer group
+    redis_stream_consumer_group = os.environ["REDIS_STREAM_CONSUMER_GROUP"]
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -289,7 +295,7 @@ def keda_start():
         sys.exit(1)
 
     _log.info("starting redis fan out consumer")
-    redis_host = "10.108.11.86"
+    redis_host = redis_stream_host
     redis_client = redis.Redis(host=redis_host)
     _log.info(f"Redis Ping successful: {redis_client.ping()}")
 
@@ -303,9 +309,9 @@ def keda_start():
         while time.time() - fan_out_listen_start_time < fanned_out_msg_listen_timeout:
 
             fan_out_message = redis_client.xreadgroup(
-                streams={"instrument:lsstcomcamsim": ">"},
+                streams={redis_stream_name: ">"},
                 consumername=redis_group_id,
-                groupname="lsstcomcam_consumer_group",
+                groupname=redis_stream_consumer_group,
                 count=1,)
 
             if not fan_out_message:
