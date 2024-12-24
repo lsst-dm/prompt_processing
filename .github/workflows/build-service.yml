@@ -5,7 +5,7 @@ on:
     branches:
       - main
       - 'releases/**'
-      - 'tickets/DM-47975'
+      - 'tickets/DM-47975-redis'
     paths:
       - '.github/workflows/build-service.yml'
       - 'config/**'
@@ -36,7 +36,7 @@ env:
   # relatively stable Pipelines containers that are needed to avoid issues with
   # the "latest" version; they would remain in this list until "latest" becomes
   # usable for all building and testing.
-  BASE_TAG_LIST: '["DM-47975-d_2024_12_17"]'
+  BASE_TAG_LIST: '["dm-47975-redis-d_2024_12_23"]'
 
 jobs:
   matrix-gen:
