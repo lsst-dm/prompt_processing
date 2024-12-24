@@ -343,7 +343,7 @@ def keda_start():
                 lsstcomcamsim_fan_out_to_prompt_summary.observe(round(fan_out_to_prompt_time, 2))
 
                 # Close redis stream client
-                redis_client.aclose()
+                redis_client.close()
 
                 try:
                     # Process fan out visit
