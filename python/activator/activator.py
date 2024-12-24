@@ -27,6 +27,7 @@ import functools
 import json
 import logging
 import os
+import redis
 import signal
 import socket
 import sys
@@ -38,9 +39,6 @@ import boto3
 from botocore.handlers import validate_bucket_name
 import cloudevents.http
 import confluent_kafka as kafka
-from confluent_kafka.serialization import SerializationContext, MessageField
-from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.avro import AvroDeserializer
 import flask
 from prometheus_client import start_http_server
 from prometheus_client import Gauge, Summary
@@ -81,6 +79,8 @@ local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
 kafka_cluster = os.environ["KAFKA_CLUSTER"]
 # Kafka group; must be worker-unique to keep workers from "stealing" messages for others.
 kafka_group_id = str(uuid.uuid4())
+# Redis streams group; must be worker-unique to keep workers from "stealing" messages for others.
+redis_group_id = str(uuid.uuid4())
 # The topic on which to listen to updates to image_bucket
 bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
 # Offset for Kafka bucket notification.
@@ -288,30 +288,11 @@ def keda_start():
         _log.exception(e)
         sys.exit(1)
 
-    # Initialize schema registry for fan out
-    fan_out_schema_registry_conf = {'url': fan_out_schema_registry_url}
-    fan_out_schema_registry_client = SchemaRegistryClient(fan_out_schema_registry_conf)
+    _log.info("starting redis fan out consumer")
+    redis_host = "10.108.11.86"
+    redis_client = redis.Redis(host=redis_host)
+    _log.info(f"Redis Ping successful: {redis_client.ping()}")
 
-    fan_out_avro_deserializer = AvroDeserializer(schema_registry_client=fan_out_schema_registry_client,
-                                                 from_dict=dict_to_fanned_out_visit)
-    fan_out_consumer_conf = {
-        "bootstrap.servers": fan_out_kafka_cluster,
-        "group.id": fan_out_kafka_group_id,
-        "partition.assignment.strategy": fan_out_partition_assignment_strategy,
-        "auto.offset.reset": fan_out_kafka_topic_offset,
-        "sasl.mechanism": fan_out_kafka_sasl_mechanism,
-        "security.protocol": fan_out_kafka_security_protocol,
-        "sasl.username": fan_out_kafka_sasl_username,
-        "sasl.password": fan_out_kafka_sasl_password,
-        "enable.auto.commit": False
-    }
-
-    if debug_fan_out_consumer:
-        fan_out_consumer_conf["debug"] = debug_level_fan_out_consumer
-
-    _log.info("starting fan out consumer")
-    fan_out_consumer = kafka.Consumer(fan_out_consumer_conf, logger=_log)
-    fan_out_consumer.subscribe([fan_out_kafka_topic])
     fan_out_listen_start_time = time.time()
 
     consumer_polls_with_message = 0
@@ -321,12 +302,14 @@ def keda_start():
     try:
         while time.time() - fan_out_listen_start_time < fanned_out_msg_listen_timeout:
 
-            fan_out_message = fan_out_consumer.poll(timeout=5)
+            fan_out_message = redis_client.xreadgroup(
+                streams={"instrument:lsstcomcamsim": ">"},
+                consumername=redis_group_id,
+                groupname="lsstcomcam_consumer_group",
+                count=1,)
 
-            if fan_out_message is None:
+            if not fan_out_message:
                 continue
-            if fan_out_message.error():
-                _log.warning("Fanned out consumer error: %s", fan_out_message.error())
             else:
                 # TODO consider moving into process visit to not increment for ignorable visits.
                 lsstcomcamsim_instances_processing_keda_gauge.inc()
@@ -337,28 +320,28 @@ def keda_start():
                     fan_out_listen_time = fan_out_listen_finish_time - fan_out_listen_start_time
                     _log.debug("Seconds since last message received %r for consumer poll %r",
                                fan_out_listen_time, consumer_polls_with_message)
-                deserialized_fan_out_visit = fan_out_avro_deserializer(fan_out_message.value(),
-                                                                       SerializationContext(
-                                                                       fan_out_message.topic(),
-                                                                       MessageField.VALUE))
-                _log.info("Unpacked message as %r.", deserialized_fan_out_visit)
 
-                # Calculate time to load knative and receive message based on timestamp in Kafka message
-                _log.debug("Message timestamp %r", fan_out_message.timestamp())
-                fan_out_kafka_msg_timestamp = fan_out_message.timestamp()
-                fan_out_to_prompt_time = time.time() - float(fan_out_kafka_msg_timestamp[1]/1000)
+                # Unpack fan out message from redis stream
+                fan_out_visit_binary = fan_out_message[0][1][0]
+                _log.info("Unpacked message as %r.", fan_out_visit_binary)
+                fan_out_visit = {value.decode("utf-8"): fan_out_visit_binary.get(value).decode("utf-8")
+                                 for value in fan_out_visit_binary.keys()}
+
+                # Calculate time to receive message based on timestamp in Redis Stream message
+                redis_streams_header = (fan_out_visit_binary[0]).decode("utf-8")
+                message_timestamp = float(redis_streams_header.split('-', 1)[0].strip())
+                fan_out_to_prompt_time = time.time() - message_timestamp/1000
                 _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
 
                 # Prometheus metric for fan out to prompt time
                 lsstcomcamsim_fan_out_to_prompt_summary.observe(round(fan_out_to_prompt_time, 2))
 
-                # Commit message and close client
-                fan_out_consumer.commit(message=fan_out_message, asynchronous=False)
-                fan_out_consumer.close()
+                # Close redis stream client
+                redis_client.aclose()
 
                 try:
                     # Process fan out visit
-                    process_visit(deserialized_fan_out_visit)
+                    process_visit(fan_out_visit)
                 except Exception as e:
                     _log.critical("Process visit failed; aborting.")
                     _log.exception(e)
@@ -369,8 +352,8 @@ def keda_start():
                     lsstcomcamsim_instances_processing_keda_gauge.dec(1)
                     # Reset timer for fan out message polling.
                     fan_out_listen_start_time = time.time()
-                    fan_out_consumer = kafka.Consumer(fan_out_consumer_conf, logger=_log)
-                    fan_out_consumer.subscribe([fan_out_kafka_topic])
+                    redis_client = redis.Redis(host=redis_host)
+                    _log.info(f"Redis Ping successful: {redis_client.ping()}")
 
     finally:
         # TODO Handle local registry unregistration on DM-47975
