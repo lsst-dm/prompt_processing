@@ -333,6 +333,25 @@ def keda_start():
                                          fan_out_visit_bytes.get(value).decode("utf-8")
                                          for value in fan_out_visit_bytes.keys()}
                 _log.info("Unpacked message as %r.", fan_out_visit_decoded)
+
+                # Set types as elements from Redis Streams are strings.
+                fan_out_visit_decoded["salIndex"] = int(fan_out_visit_decoded["salIndex"])
+                fan_out_visit_decoded["scriptSalIndex"] = int(fan_out_visit_decoded["scriptSalIndex"])
+                fan_out_visit_decoded["startTime"] = float(fan_out_visit_decoded["startTime"])
+                fan_out_visit_decoded["cameraAngle"] = float(fan_out_visit_decoded["cameraAngle"])
+                fan_out_visit_decoded["coordinateSystem"] = int(fan_out_visit_decoded["coordinateSystem"])
+                fan_out_visit_decoded["dome"] = int(fan_out_visit_decoded["dome"])
+                fan_out_visit_decoded["duration"] = float(fan_out_visit_decoded["duration"])
+                fan_out_visit_decoded["nimages"] = int(fan_out_visit_decoded["nimages"])
+                fan_out_visit_decoded["rotationSystem"] = int(fan_out_visit_decoded["rotationSystem"])
+                fan_out_visit_decoded["totalCheckpoints"] = float(fan_out_visit_decoded["totalCheckpoints"])
+                fan_out_visit_decoded["detector"] = int(fan_out_visit_decoded["detector"])
+                # Convert position string to list
+                position_string_list = (
+                    fan_out_visit_decoded["position"].replace("[", "").replace("]", "").split(",")
+                )
+                fan_out_visit_decoded["position"] = [float(i) for i in position_string_list]
+
                 expected_visit = FannedOutVisit(**fan_out_visit_decoded)
 
                 # Calculate time to receive message based on timestamp in Redis Stream message
