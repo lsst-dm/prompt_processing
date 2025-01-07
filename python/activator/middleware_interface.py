@@ -1511,8 +1511,12 @@ class MiddlewareInterface:
                     bundles = list(self._query_datasets_by_storage_class(
                         self.butler, exposure_ids, output_runs, "MetricMeasurementBundle"))
                     for bundle in bundles:
-                        _log_trace.debug("Uploading %s...", bundle)
-                        dispatcher.dispatchRef(self.butler.get(bundle), bundle)
+                        try:
+                            _log_trace.debug("Uploading %s...", bundle)
+                            dispatcher.dispatchRef(self.butler.get(bundle), bundle)
+                        except lsst.analysis.tools.interfaces.datastore._dispatcher.SasquatchDispatchFailure:
+                            # Retries can get messy with multiple bundles, so just abort.
+                            _log.exception("Failed to upload %s to Sasquatch: ", bundle)
                 _log.debug("Uploaded %d metrics to %s.", len(bundles), dispatcher.url)
 
     @staticmethod
