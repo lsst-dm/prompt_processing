@@ -467,6 +467,13 @@ def parse_next_visit(http_request):
     data = json.loads(event.data)
     visit = FannedOutVisit(**data)
     _log.debug("Unpacked message as %r.", visit)
+
+    # TODO cleanup before PR.  Added for comparison testing.
+    # Calculate time to load knative and receive message based on time header from knative request
+    _log.info("Fan out send event at %s", event['time'])
+    fan_out_knative_msg_timestamp = float(event['time'])
+    fan_out_to_prompt_time = time.time() - fan_out_knative_msg_timestamp
+    _log.info("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
     return visit
 
 
