@@ -230,7 +230,9 @@ def init_pipeline_imports(config):
         A config object defining the pipelines that may be run.
     """
     for pipeline_file in config.get_all_pipeline_files():
-        lsst.pipe.base.Pipeline.fromFile(pipeline_file).to_graph()
+        pipeline = lsst.pipe.base.Pipeline.fromFile(pipeline_file)
+        pipeline.addConfigOverride("parameters", "apdb_config", "dummy")
+        pipeline.to_graph()  # Called only for side effects
 
 
 def _get_sasquatch_dispatcher():
