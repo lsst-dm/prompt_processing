@@ -324,9 +324,9 @@ class MiddlewareInterface:
                  prefix: str = "s3://"):
         self.visit = visit
 
+        self._apdb_config = os.environ["CONFIG_APDB"]
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
-        self._apdb_config = os.environ["CONFIG_APDB"]
         self.central_butler = central_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
@@ -373,23 +373,28 @@ class MiddlewareInterface:
     def _get_deployment(self):
         """Get a unique version ID of the active stack and pipeline configuration(s).
 
+        ``self._apdb_config`` must have already been initialized.
+
         Returns
         -------
         version : `str`
             A unique version identifier for the stack. Contains only
             word characters and "-", but not guaranteed to be human-readable.
         """
-        try:
-            # Defined by Knative in containers, guaranteed to be unique for
-            # each deployment. Currently of the form prompt-proto-service-#####.
-            version = os.environ["K_REVISION"]
-        except KeyError:
-            # If not in a container, read the active Science Pipelines install.
-            packages = lsst.utils.packages.Packages.fromSystem()  # Takes several seconds!
-            h = hashlib.md5(usedforsecurity=False)
-            for package, version in packages.items():
-                h.update(bytes(package + version, encoding="utf-8"))
-            version = f"local-{h.hexdigest()}"
+        # To disambiguate all stack changes, read the active Science Pipelines install.
+        # getAllPythonDistributions misses non-Python Conda packages, but this should
+        # be fine since rubin-env updates many Conda packages at once.
+        packages = lsst.utils.packages.getAllPythonDistributions()
+        packagehash = hashlib.md5(usedforsecurity=False)
+        for package, version in sorted(packages.items()):
+            packagehash.update(bytes(package + version, encoding="utf-8"))
+
+        # APDB config is included in pipeline/task configs.
+        # Add other config fields as needed.
+        confighash = hashlib.md5(usedforsecurity=False)
+        confighash.update(bytes(self._apdb_config, encoding="utf-8"))
+
+        version = f"pipelines-{packagehash.hexdigest():.7}-config-{confighash.hexdigest():.7}"
         _log.debug("Deployment identified as %s.", version)
         return version
 
