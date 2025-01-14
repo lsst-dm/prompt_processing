@@ -417,7 +417,8 @@ class MiddlewareInterface:
         """
         with lsst.utils.timer.time_this(_log, msg="_get_deployment", level=logging.DEBUG):
             # To disambiguate all stack changes, read the active Science Pipelines install.
-            packages = lsst.utils.packages.Packages.fromSystem()
+            lsst.utils.packages.Packages.fromSystem()
+            packages = lsst.utils.packages.Packages.fromSystem()  # Picks up some missing packages.
             packagehash = hashlib.md5(usedforsecurity=False)
             # Package order is not completely deterministic.
             for package, version in sorted(packages.items()):
