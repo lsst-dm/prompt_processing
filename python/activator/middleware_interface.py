@@ -413,21 +413,22 @@ class MiddlewareInterface:
             A unique version identifier for the stack. Contains only
             word characters and "-", but not guaranteed to be human-readable.
         """
-        # To disambiguate all stack changes, read the active Science Pipelines install.
-        packages = lsst.utils.packages.Packages.fromSystem()
-        packagehash = hashlib.md5(usedforsecurity=False)
-        for package, version in packages.items():
-            _log_trace3.debug("Deployment includes %s %s.", package, version)
-            packagehash.update(bytes(package + version, encoding="utf-8"))
+        with lsst.utils.timer.time_this(_log, msg="_get_deployment", level=logging.DEBUG):
+            # To disambiguate all stack changes, read the active Science Pipelines install.
+            packages = lsst.utils.packages.Packages.fromSystem()
+            packagehash = hashlib.md5(usedforsecurity=False)
+            for package, version in packages.items():
+                _log_trace3.debug("Deployment includes %s %s.", package, version)
+                packagehash.update(bytes(package + version, encoding="utf-8"))
 
-        # APDB config is included in pipeline/task configs.
-        # Add other config fields as needed.
-        confighash = hashlib.md5(usedforsecurity=False)
-        confighash.update(bytes(self._apdb_config, encoding="utf-8"))
+            # APDB config is included in pipeline/task configs.
+            # Add other config fields as needed.
+            confighash = hashlib.md5(usedforsecurity=False)
+            confighash.update(bytes(self._apdb_config, encoding="utf-8"))
 
-        version = f"pipelines-{packagehash.hexdigest():.7}-config-{confighash.hexdigest():.7}"
-        _log.debug("Deployment identified as %s.", version)
-        return version
+            version = f"pipelines-{packagehash.hexdigest():.7}-config-{confighash.hexdigest():.7}"
+            _log.debug("Deployment identified as %s.", version)
+            return version
 
     def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
         """Prepare the local butler to ingest into and process from.
