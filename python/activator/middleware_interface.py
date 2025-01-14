@@ -217,6 +217,24 @@ def make_local_cache():
     )
 
 
+def init_pipeline_imports(config):
+    """Ensure that all packages used by pipelines are loaded.
+
+    While the Middleware framework supports just-in-time package loading,
+    importing the packages in advance provides some performance gains and
+    ensures queries against the runtime environment return consistent results.
+
+    Parameters
+    ----------
+    config : `activator.config.PipelineConfig`
+        A config object defining the pipelines that may be run.
+    """
+    for pipeline_file in config.get_all_pipeline_files():
+        pipeline = lsst.pipe.base.Pipeline.fromFile(pipeline_file)
+        pipeline.addConfigOverride("parameters", "apdb_config", "dummy")
+        pipeline.to_graph()  # Called only for side effects
+
+
 def _get_sasquatch_dispatcher():
     """Get a SasquatchDispatcher object ready for use by Prompt Processing.
 
@@ -340,9 +358,9 @@ class MiddlewareInterface:
                          f"Got {self.visit.rotationSystem!r} instead in {self.visit}. "
                          "Spatial datasets won't be loaded.")
 
+        self._apdb_config = os.environ["CONFIG_APDB"]
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = self._get_deployment()
-        self._apdb_config = os.environ["CONFIG_APDB"]
         self.central_butler = central_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
@@ -389,23 +407,32 @@ class MiddlewareInterface:
     def _get_deployment(self):
         """Get a unique version ID of the active stack and pipeline configuration(s).
 
+        ``self._apdb_config`` must have already been initialized.
+
         Returns
         -------
         version : `str`
             A unique version identifier for the stack. Contains only
             word characters and "-", but not guaranteed to be human-readable.
         """
-        try:
-            # Defined by Knative in containers, guaranteed to be unique for
-            # each deployment. Currently of the form prompt-proto-service-#####.
-            return os.environ["K_REVISION"]
-        except KeyError:
-            # If not in a container, read the active Science Pipelines install.
-            packages = lsst.utils.packages.Packages.fromSystem()  # Takes several seconds!
-            h = hashlib.md5(usedforsecurity=False)
-            for package, version in packages.items():
-                h.update(bytes(package + version, encoding="utf-8"))
-            return f"local-{h.hexdigest()}"
+        with lsst.utils.timer.time_this(_log, msg="_get_deployment", level=logging.DEBUG):
+            # To disambiguate all stack changes, read the active Science Pipelines install.
+            lsst.utils.packages.Packages.fromSystem()
+            packages = lsst.utils.packages.Packages.fromSystem()  # Picks up some missing packages.
+            packagehash = hashlib.md5(usedforsecurity=False)
+            # Package order is not completely deterministic.
+            for package, version in sorted(packages.items()):
+                _log_trace3.debug("Deployment includes %s %s.", package, version)
+                packagehash.update(bytes(package + version, encoding="utf-8"))
+
+            # APDB config is included in pipeline/task configs.
+            # Add other config fields as needed.
+            confighash = hashlib.md5(usedforsecurity=False)
+            confighash.update(bytes(self._apdb_config, encoding="utf-8"))
+
+            version = f"pipelines-{packagehash.hexdigest():.7}-config-{confighash.hexdigest():.7}"
+            _log.debug("Deployment identified as %s.", version)
+            return version
 
     def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
         """Prepare the local butler to ingest into and process from.
