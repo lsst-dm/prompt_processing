@@ -217,6 +217,22 @@ def make_local_cache():
     )
 
 
+def init_pipeline_imports(config):
+    """Ensure that all packages used by pipelines are loaded.
+
+    While the Middleware framework supports just-in-time package loading,
+    importing the packages in advance provides some performance gains and
+    ensures queries against the runtime environment return consistent results.
+
+    Parameters
+    ----------
+    config : `activator.config.PipelineConfig`
+        A config object defining the pipelines that may be run.
+    """
+    for pipeline_file in config.get_all_pipeline_files():
+        lsst.pipe.base.Pipeline.fromFile(pipeline_file).to_graph()
+
+
 def _get_sasquatch_dispatcher():
     """Get a SasquatchDispatcher object ready for use by Prompt Processing.
 

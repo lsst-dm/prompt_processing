@@ -47,7 +47,7 @@ from .config import PipelinesConfig
 from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
     NonRetriableError, RetriableError
 from .logger import setup_usdf_logger
-from .middleware_interface import get_central_butler, \
+from .middleware_interface import get_central_butler, init_pipeline_imports, \
     make_local_repo, make_local_cache, MiddlewareInterface
 from .raw import (
     check_for_snap,
@@ -151,6 +151,12 @@ def find_local_repos(base_path):
     return {d for d in subdirs if os.path.exists(os.path.join(d, "butler.yaml"))}
 
 
+def _init_pipeline_imports():
+    """Import all packages used by any configured pipeline."""
+    for config in [pre_pipelines, main_pipelines]:
+        init_pipeline_imports(config)
+
+
 @functools.cache
 def _get_consumer():
     """Lazy initialization of shared Kafka Consumer."""
@@ -204,6 +210,7 @@ def create_app():
         )
 
         # Check initialization and abort early
+        _init_pipeline_imports()
         _get_consumer()
         _get_storage_client()
         _get_central_butler()
