@@ -419,7 +419,8 @@ class MiddlewareInterface:
             # To disambiguate all stack changes, read the active Science Pipelines install.
             packages = lsst.utils.packages.Packages.fromSystem()
             packagehash = hashlib.md5(usedforsecurity=False)
-            for package, version in packages.items():
+            # Package order is not completely deterministic.
+            for package, version in sorted(packages.items()):
                 _log_trace3.debug("Deployment includes %s %s.", package, version)
                 packagehash.update(bytes(package + version, encoding="utf-8"))
 
