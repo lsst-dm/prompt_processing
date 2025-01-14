@@ -214,7 +214,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         env_patcher = unittest.mock.patch.dict(os.environ,
                                                {"CONFIG_APDB": config_file.name,
-                                                "K_REVISION": "prompt-proto-service-042",
                                                 })
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
@@ -247,6 +246,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                              pre_pipelines_empty, pipelines, skymap_name,
                                              self.local_repo.name, self.local_cache,
                                              prefix="file://")
+        self.deploy_id = self.interface._deployment
 
     def test_get_butler(self):
         for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstComCamSim"),
@@ -354,7 +354,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that preloaded datasets have been generated
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         preload_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
-                             "Preload/prompt-proto-service-042"
+                             f"Preload/{self.deploy_id}"
         self.assertTrue(
             butler.exists('promptPreload_metrics', instrument=instname, group=group, detector=detector,
                           full_check=True,
@@ -910,11 +910,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         out_chain = self.interface._get_output_chain(date)
         self.assertEqual(out_chain, f"{instname}/prompt/output-2023-01-22")
         preload_run = self.interface._get_preload_run(date)
-        self.assertEqual(preload_run, f"{instname}/prompt/output-2023-01-22/Preload/prompt-proto-service-042")
+        self.assertEqual(preload_run, f"{instname}/prompt/output-2023-01-22/Preload/{self.deploy_id}")
         out_run = self.interface._get_output_run(filename, date)
-        self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
+        self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/{self.deploy_id}")
         init_run = self.interface._get_init_output_run(filename, date)
-        self.assertEqual(init_run, f"{instname}/prompt/output-2023-01-22/ApPipe/prompt-proto-service-042")
+        self.assertEqual(init_run, f"{instname}/prompt/output-2023-01-22/ApPipe/{self.deploy_id}")
 
     def test_get_template_types(self):
         template_types = self.interface._get_template_types()
@@ -1245,7 +1245,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         env_patcher = unittest.mock.patch.dict(os.environ,
                                                {"CONFIG_APDB": config_file.name,
-                                                "K_REVISION": "prompt-proto-service-042",
                                                 })
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
@@ -1279,6 +1278,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                              pre_pipelines_full, pipelines, skymap_name, local_repo.name,
                                              self.local_cache,
                                              prefix="file://")
+        self.deploy_id = self.interface._deployment
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.interface.prep_butler()
         filename = "fakeRawImage.fits"
@@ -1305,9 +1305,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
         self.preprocessing_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
-                                 "/Preprocess/prompt-proto-service-042"
+                                 f"/Preprocess/{self.deploy_id}"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
-                          "/ApPipe/prompt-proto-service-042"
+                          f"/ApPipe/{self.deploy_id}"
 
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
@@ -1375,7 +1375,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # collections to avoid transferring inputs.
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
-              "NoPipe/prompt-proto-service-042"
+              f"NoPipe/{self.deploy_id}"
 
         dimension_config = central_butler.dimensions.dimensionConfig
         # Need to clean up the directory iff the method fails
