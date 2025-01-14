@@ -387,6 +387,7 @@ class MiddlewareInterface:
         packages = lsst.utils.packages.getAllPythonDistributions()
         packagehash = hashlib.md5(usedforsecurity=False)
         for package, version in sorted(packages.items()):
+            _log_trace3.debug("Deployment includes %s %s.", package, version)
             packagehash.update(bytes(package + version, encoding="utf-8"))
 
         # APDB config is included in pipeline/task configs.
