@@ -59,12 +59,14 @@ INSTRUMENTS = {
     "LATISS": Instrument(1, 1, 2),
     "DECam": Instrument(1, 62),
     "HSC": Instrument(1, 112, 999),
+    "LSSTCam-imSim": Instrument(1, 189, 999),
 }
 # The schema ID of the ``next_visit`` message in the Sasquatch REST Proxy.
 SCHEMA_ID = 99
 
 max_exposure = {
     "HSC": 21474800,
+    "LSSTCam-imSim": 9999999,
 }
 """A mapping of instrument to exposure_max (`dict` [`str`, `int`]).
 
@@ -184,7 +186,9 @@ def make_exposure_id(instrument, group_id, snap):
         The header key-value pairs to accompany with the exposure ID in the
         format for ``instrument``'s header.
     """
-    if instrument in _LSST_CAMERA_LIST:
+    if instrument == "LSSTCam-imSim":
+        return make_imsim_id(group_id, snap)
+    elif instrument in _LSST_CAMERA_LIST:
         abbrev = _CAMERA_ABBREV[instrument]
         return make_lsst_id(group_id, snap, abbrev)
     elif instrument == "HSC":
@@ -260,6 +264,49 @@ def make_lsst_id(group_id, snap, abbrev):
     }
 
 
+def make_imsim_id(group_id, snap):
+    """Generate an exposure ID that the Butler can parse as a valid LSSTCam-imSim ID.
+
+    Parameters
+    ----------
+    group_id : `str`
+        The mocked group ID.
+    snap : `int`
+        A snap ID.
+
+    Returns
+    -------
+    exposure_number :
+        An exposure ID in the format expected by Gen 3 Middleware.
+    headers : `dict`
+        Key-value pairs in the form to appear in LSST headers.
+
+    Notes
+    -----
+    The current implementation gives 7-digit exposure IDs without considering
+    the year; that is, duplicate IDs can be generated from a different year.
+    """
+    day_obs, seq_num = decode_group(group_id)
+    night_id = datetime.datetime.strptime(str(day_obs), "%Y%m%d").strftime("%j")
+    if seq_num > 9999:
+        raise RuntimeError(f"{group_id} translated to seq_num {seq_num}, "
+                           f"too large for the current implementation.")
+    exposure_num = int(f"{night_id:03}{seq_num:04}")
+    # Offset so the fake exposure numbers are always larger than any imsim raw
+    # in /repo/dc2, where the highest exposure ID is 5000580.
+    exposure_num += 6000000
+    if exposure_num > max_exposure["LSSTCam-imSim"]:
+        raise RuntimeError(f"{group_id} translated to expId {exposure_num}, "
+                           f"max allowed is { max_exposure['LSSTCam-imSim']}.")
+    return exposure_num, {
+        "OBSID": exposure_num,
+        # These headers do not exist in original imsim files, but are added for
+        # mocked exposure records.
+        "DAYOBS": day_obs,
+        "GROUPID": group_id,
+    }
+
+
 def send_next_visit(url, group, visit_infos):
     """Simulate the transmission of a ``next_visit`` message to Sasquatch.
 
@@ -287,7 +334,7 @@ def send_next_visit(url, group, visit_infos):
 
 
 def replace_header_key(file, key, value):
-    """Replace a header key in a FITS file with a new key-value pair.
+    """Replace or add a header key in a FITS file with a new key-value pair.
 
     The file is updated in place, and left open when the function returns,
     making this function safe to use with temporary files.
@@ -304,11 +351,16 @@ def replace_header_key(file, key, value):
     # Can't use astropy.io.fits.update, because that closes the underlying file.
     hdus = fits.open(file, mode="update")
     try:
+        updated = False
         # Don't know which header is supposed to contain the key.
         for header in (hdu.header for hdu in hdus):
             if key in header:
                 _log.debug("Setting %s to %s.", key, value)
                 header[key] = value
+                updated = True
+        if not updated:
+            _log.debug("Adding header %s: %s.", key, value)
+            hdus[0].header[key] = value
     finally:
         # Clean up HDUList object *without* closing ``file``.
         hdus.close(output_verify="warn", closed=False)
