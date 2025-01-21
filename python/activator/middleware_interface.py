@@ -72,9 +72,6 @@ base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))-1
 # Multipliers to base_keep_limit for refcats and templates.
 refcat_factor = int(os.environ.get("REFCATS_PER_IMAGE", 4))
 template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
-# VALIDITY-HACK: local-only calib collections break if calibs are not requested
-# in chronological order. Turn off for large development runs.
-cache_calibs = bool(int(os.environ.get("DEBUG_CACHE_CALIBS", '1')))
 # Whether or not to export to the central repo.
 do_export = bool(int(os.environ.get("DEBUG_EXPORT_OUTPUTS", '1')))
 # The number of arcseconds to pad the region in preloading spatial datasets.
@@ -1788,25 +1785,6 @@ class MiddlewareInterface:
             for pipeline_file in self._get_all_pipeline_files():
                 output_run = self._get_output_run(pipeline_file, self._day_obs)
                 _remove_run_completely(self.butler, output_run)
-            # VALIDITY-HACK: remove cached calibs to avoid future conflicts
-            if not cache_calibs:
-                calib_chain = self.instrument.makeCalibrationCollectionName()
-                calib_refs = self.butler.registry.queryDatasets(
-                    ...,
-                    collections=calib_chain)
-                calib_taggeds = self.butler.registry.queryCollections(
-                    calib_chain,
-                    flattenChains=True,
-                    collectionTypes={CollectionType.CALIBRATION, CollectionType.TAGGED})
-                calib_runs = self.butler.registry.queryCollections(
-                    calib_chain,
-                    flattenChains=True,
-                    collectionTypes=CollectionType.RUN)
-                self.butler.collections.redefine_chain(calib_chain, [])
-                self.butler.pruneDatasets(calib_refs, disassociate=True, unstore=True, purge=True)
-                for member in calib_taggeds:
-                    self.butler.registry.removeCollection(member)
-                self.butler.removeRuns(calib_runs, unstore=True)
 
             # Clean out calibs, templates, and other preloaded datasets
             excess_datasets = frozenset(self.butler.registry.queryDatasets(...)) - frozenset(self.cache)
