@@ -927,6 +927,18 @@ class MiddlewareInterface:
             certified in ``calib_collection`` in the central repo, and must
             exist in the local repo.
         """
+        dataset_types = {ref.datasetType for ref in datasets}
+        associations = {}
+        for dataset_type in dataset_types:
+            associations.update(
+                (a.ref, a) for a in self.central_butler.registry.queryDatasetAssociations(
+                    dataset_type,
+                    calib_collection,
+                    collectionTypes={CollectionType.CALIBRATION},
+                    flattenChains=True
+                )
+            )
+
         # VALIDITY-HACK: (re)define a calibration collection containing the
         # latest calibs as of today. Already-cached calibs are still available
         # from previous collections.
@@ -936,10 +948,12 @@ class MiddlewareInterface:
             if new:
                 self.butler.collections.prepend_chain(calib_collection, [calib_daily])
 
-            # VALIDITY-HACK: real associations are expensive to query. Just apply
-            # arbitrary ones and assume that the first collection in the chain is
-            # always the best.
-            self.butler.registry.certify(calib_daily, datasets, Timespan(None, None))
+        for dataset in datasets:
+            association = associations[dataset]
+            # certify is designed to work on groups of datasets; in practice,
+            # the total number of calibs (~1 of each type) is small enough that
+            # grouping by timespan isn't worth it.
+            self.butler.registry.certify(calib_daily, [dataset], association.timespan)
 
     @staticmethod
     def _count_by_type(refs):
