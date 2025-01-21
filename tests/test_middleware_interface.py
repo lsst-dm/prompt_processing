@@ -1057,10 +1057,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
                 result = set(_filter_datasets(src_butler, existing_butler,
                                               ["bias"], instrument="LSSTComCamSim"))
-                src_butler.query_datasets.assert_called_once_with(
-                    "bias", instrument="LSSTComCamSim", explain=False)
-                existing_butler.query_datasets.assert_called_once_with(
-                    "bias", instrument="LSSTComCamSim", explain=False)
+                src_butler.query_datasets.assert_called_once()
+                self.assertEqual(src_butler.query_datasets.call_args.args, ("bias", ))
+                # Implementation may add other kwargs.
+                self.assertEqual(src_butler.query_datasets.call_args.kwargs["instrument"], "LSSTComCamSim")
+                existing_butler.query_datasets.assert_called_once()
+                self.assertEqual(existing_butler.query_datasets.call_args.args, ("bias", ))
+                self.assertEqual(existing_butler.query_datasets.call_args.kwargs["instrument"],
+                                 "LSSTComCamSim")
                 self.assertEqual(result, diff)
 
     def test_filter_datasets_nodim(self):
@@ -1081,7 +1085,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                })
 
         result = set(_filter_datasets(src_butler, existing_butler, ["skyMap"], ..., skymap="mymap"))
-        src_butler.query_datasets.assert_called_once_with("skyMap", ..., skymap="mymap", explain=False)
+        src_butler.query_datasets.assert_called_once()
+        self.assertEqual(src_butler.query_datasets.call_args.args, ("skyMap", ...))
+        # Implementation may add other kwargs.
+        self.assertEqual(src_butler.query_datasets.call_args.kwargs["skymap"], "mymap")
         self.assertEqual(result, {data1})
 
     def test_filter_datasets_nosrc(self):

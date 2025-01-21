@@ -1848,7 +1848,8 @@ def _filter_datasets(src_repo: Butler,
         src_datasets = set()
         for dataset_type in dataset_types:
             # explain=False because empty query result is ok here and we don't need it to raise an error.
-            src_datasets |= set(src_repo.query_datasets(dataset_type, explain=False, *args, **kwargs))
+            src_datasets |= set(src_repo.query_datasets(dataset_type, explain=False,
+                                with_dimension_records=True, *args, **kwargs))
         # In many contexts, src_datasets is too large to print.
         _log_trace3.debug("Source datasets: %s", src_datasets)
     if calib_date:
