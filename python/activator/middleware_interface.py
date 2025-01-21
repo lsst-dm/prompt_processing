@@ -912,25 +912,6 @@ class MiddlewareInterface:
                     present.remove(missing)
             dest.setCollectionChain(chain, present)
 
-    # VALIDITY-HACK: used only for local "latest calibs" collection
-    def _get_local_calib_collection(self, parent):
-        """Generate a name for a local-only calib collection to store mock
-        associations.
-
-        Parameters
-        ----------
-        parent : `str`
-            The chain that serves as the calib interface for the rest of
-            this class.
-
-        Returns
-        -------
-        calib_collection : `str`
-            The calibration collection name to use. This method does *not*
-            create the collection itself.
-        """
-        return f"{parent}/{self._day_obs}"
-
     def _export_calib_associations(self, calib_collection, datasets):
         """Export the associations between a set of datasets and a
         calibration collection.
@@ -950,15 +931,15 @@ class MiddlewareInterface:
         # latest calibs as of today. Already-cached calibs are still available
         # from previous collections.
         if datasets:
-            calib_latest = self._get_local_calib_collection(calib_collection)
-            new = self.butler.registry.registerCollection(calib_latest, CollectionType.CALIBRATION)
+            calib_daily = f"{calib_collection}/{self._day_obs}"
+            new = self.butler.registry.registerCollection(calib_daily, CollectionType.CALIBRATION)
             if new:
-                self.butler.collections.prepend_chain(calib_collection, [calib_latest])
+                self.butler.collections.prepend_chain(calib_collection, [calib_daily])
 
             # VALIDITY-HACK: real associations are expensive to query. Just apply
             # arbitrary ones and assume that the first collection in the chain is
             # always the best.
-            self.butler.registry.certify(calib_latest, datasets, Timespan(None, None))
+            self.butler.registry.certify(calib_daily, datasets, Timespan(None, None))
 
     @staticmethod
     def _count_by_type(refs):
