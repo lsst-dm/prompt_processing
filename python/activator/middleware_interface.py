@@ -677,11 +677,12 @@ class MiddlewareInterface:
         _log.debug("Searching for refcats of types %s.", {t.name for t in possible_refcats})
         refcats = set(_filter_datasets(
                       self.central_butler, self.butler,
-                      possible_refcats,
-                      collections=self.instrument.makeRefCatCollectionName(),
-                      where="htm7.region OVERLAPS search_region",
-                      bind={"search_region": region},
-                      find_first=True,
+                      _generic_query(possible_refcats,
+                                     collections=self.instrument.makeRefCatCollectionName(),
+                                     where="htm7.region OVERLAPS search_region",
+                                     bind={"search_region": region},
+                                     find_first=True,
+                                     ),
                       all_callback=self._mark_dataset_usage,
                       ))
         if refcats:
@@ -709,10 +710,11 @@ class MiddlewareInterface:
         """
         skymaps = set(_filter_datasets(
             self.central_butler, self.butler,
-            ["skyMap"],
-            skymap=self.skymap_name,
-            collections=self._collection_skymap,
-            find_first=True,
+            _generic_query(["skyMap"],
+                           skymap=self.skymap_name,
+                           collections=self._collection_skymap,
+                           find_first=True,
+                           ),
             all_callback=self._mark_dataset_usage,
         ))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
@@ -731,12 +733,13 @@ class MiddlewareInterface:
                 _log.debug("Searching for templates.")
                 templates = set(_filter_datasets(
                     self.central_butler, self.butler,
-                    types,
-                    collections=self._collection_template,
-                    data_id=data_id,
-                    where="patch.region OVERLAPS search_region",
-                    bind={"search_region": region},
-                    find_first=True,
+                    _generic_query(types,
+                                   collections=self._collection_template,
+                                   data_id=data_id,
+                                   where="patch.region OVERLAPS search_region",
+                                   bind={"search_region": region},
+                                   find_first=True,
+                                   ),
                     all_callback=self._mark_dataset_usage,
                 ))
             except _MissingDatasetError as err:
@@ -787,11 +790,12 @@ class MiddlewareInterface:
         type_names = self.central_butler.collections._filter_dataset_types(type_names, collections_info)
         calibs = set(_filter_datasets(
             self.central_butler, self.butler,
-            type_names,
-            collections=self.instrument.makeCalibrationCollectionName(),
-            data_id=data_id,
-            find_first=True,
-            calib_date=calib_date,
+            _generic_query(type_names,
+                           collections=self.instrument.makeCalibrationCollectionName(),
+                           data_id=data_id,
+                           find_first=True,
+                           calib_date=calib_date,
+                           ),
             all_callback=self._mark_dataset_usage,
         ))
         if calibs:
@@ -816,9 +820,10 @@ class MiddlewareInterface:
         try:
             models = set(_filter_datasets(
                 self.central_butler, self.butler,
-                ["pretrainedModelPackage"],
-                collections=self._collection_ml_model,
-                find_first=True,
+                _generic_query(["pretrainedModelPackage"],
+                               collections=self._collection_ml_model,
+                               find_first=True,
+                               ),
                 all_callback=self._mark_dataset_usage,
             ))
         except _MissingDatasetError as err:
@@ -1770,21 +1775,20 @@ class _NoPositionError(RuntimeError):
     """
 
 
-# TODO: refactor this function so that querying the src repo (with timestamp),
-# querying the dest repo (without timestamp), and differencing the two are
-# properly separated.
+_DatasetResults = collections.abc.Iterable[lsst.daf.butler.DatasetRef]
+"""Type alias for dataset query results, to simplify annotations."""
+
+
 def _filter_datasets(src_repo: Butler,
                      dest_repo: Butler,
-                     dataset_types: collections.abc.Iterable[str | lsst.daf.butler.DatasetType],
-                     *args,
-                     calib_date: astropy.time.Time | None = None,
+                     query: collections.abc.Callable[[Butler, str], _DatasetResults],
                      all_callback: typing.Callable[[collections.abc.Iterable[lsst.daf.butler.DatasetRef]],
                                                    typing.Any] | None = None,
-                     **kwargs) -> collections.abc.Iterable[lsst.daf.butler.DatasetRef]:
+                     ) -> _DatasetResults:
     """Identify datasets in a source repository, filtering out those already
     present in a destination.
 
-    This method raises if nothing in the source repository matches the query criteria.
+    This function raises if nothing in the source repository matches the query criteria.
 
     Parameters
     ----------
@@ -1792,82 +1796,102 @@ def _filter_datasets(src_repo: Butler,
         The repository in which a dataset must be present.
     dest_repo : `lsst.daf.butler.Butler`
         The repository in which a dataset must not be present.
+    query : callable
+        A callable that takes a `~lsst.daf.butler.Butler` and a logging label
+        and returns matching datasets. The query must be valid for both
+        ``src_repo`` and ``dest_repo``.
+    all_callback: callable, optional
+        If provided, a callable that is called with *all* datasets picked up by
+        the query, before filtering out those already present in ``dest_repo``.
+        This callable is not called if the query returns no results.
+
+    Returns
+    -------
+    datasets : iterable [`lsst.daf.butler.DatasetRef`]
+        The datasets that exist in ``src_repo`` but not ``dest_repo``.
+        datasetRefs are guaranteed to be fully expanded if any only if
+        ``query`` guarantees it.
+
+    Raises
+    ------
+    _MissingDatasetError
+        Raised if the query on ``src_repo`` failed to find any datasets.
+    """
+    try:
+        known_datasets = query(dest_repo, "known datasets")
+    except (DataIdValueError, MissingDatasetTypeError) as e:
+        # If dimensions are invalid or dataset type never registered locally,
+        # then *any* such datasets are missing.
+        _log.debug("Known datasets query failed with %s", e)
+        known_datasets = set()
+
+    # Let exceptions from src_repo query raise: if it fails, that invalidates
+    # this operation.
+    src_datasets = set(query(src_repo, "source datasets"))
+    if not src_datasets:
+        # The downstream method decides what to do with empty results.
+        # DM-40245 and DM-46178 may change this.
+        raise _MissingDatasetError("Source repo query found no matches.")
+    if all_callback:
+        all_callback(src_datasets)
+    return itertools.filterfalse(lambda ref: ref in known_datasets, src_datasets)
+
+
+def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler.DatasetType],
+                   *args,
+                   calib_date: astropy.time.Time | None = None,
+                   **kwargs) -> collections.abc.Callable[[Butler, str], _DatasetResults]:
+    """Generate a parameterized Butler dataset query.
+
+    Parameters
+    ----------
     dataset_types : iterable [`str` | `lsst.daf.butler.DatasetType`]
         Iterable of dataset type object or name to search for.
     calib_date : `astropy.time.Time`, optional
         If provided, also filter anything other than calibs valid at
         ``calib_date`` and check that at least one valid calib was found.
-    all_callback: callable, optional
-        If provided, a callable that is called with *all* datasets picked up by
-        the query, before filtering out those already present in ``dest_repo``.
-        This callable is not called if the query returns no results.
     *args, **kwargs
         Parameters for describing the dataset query. They have the same
-        meanings as the parameters of `lsst.daf.butler.query_datasets`
-        The query must be valid for both ``src_repo`` and ``dest_repo``.
+        meanings as the parameters of `lsst.daf.butler.query_datasets`.
 
     Returns
     -------
-    datasets : iterable [`lsst.daf.butler.DatasetRef`]
-        The datasets that exist in ``src_repo`` but not ``dest_repo``. All
-        datasetRefs are fully expanded.
-
-    Raises
-    ------
-    _MissingDatasetError
-        Raised if the query on ``src_repo`` failed to find any datasets, or
-        (if ``calib_date`` is set) if none of them are currently valid.
+    query : callable
+        A callable that takes a `~lsst.daf.butler.Butler` and an optional
+        logging label and executes the dataset query, returning an iterable of
+        fully expanded `~lsst.daf.butler.DatasetRef`.
     """
     formatted_args = "dataset_types={}, {}, {}".format(
         dataset_types,
         ", ".join(repr(a) for a in args),
         ", ".join(f"{k}={v!r}" for k, v in kwargs.items()),
     )
-    # time_this automatically escalates its log to ERROR level if the code raises.
-    # Some errors are expected to happen sometimes, and we don't want those to log
-    # at the ERROR level and cause confusion.
-    with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (known datasets)",
-                                    level=logging.DEBUG):
-        known_datasets = set()
-        for dataset_type in dataset_types:
-            try:
-                # Okay to have empty results.
-                known_datasets |= set(dest_repo.query_datasets(dataset_type, explain=False, *args, **kwargs))
-            except (DataIdValueError, MissingDatasetTypeError) as e:
-                # If dimensions are invalid or dataset type never registered locally,
-                # then *any* such datasets are missing.
-                _log.debug("Pre-export query with args '%s' failed with %s", formatted_args, e)
-        _log_trace.debug("Known datasets: %s", known_datasets)
 
-    # Let exceptions from src_repo query raise: if it fails, that invalidates
-    # this operation.
-    # "expanded" dimension records are ignored for DataCoordinate equality
-    # comparison, so we only need them on src_datasets.
-    with lsst.utils.timer.time_this(_log, msg=f"_filter_datasets({formatted_args}) (source datasets)",
-                                    level=logging.DEBUG):
-        src_datasets = set()
-        for dataset_type in dataset_types:
-            # explain=False because empty query result is ok here and we don't need it to raise an error.
-            src_datasets |= set(src_repo.query_datasets(dataset_type, explain=False,
-                                with_dimension_records=True, *args, **kwargs))
-        # In many contexts, src_datasets is too large to print.
-        _log_trace3.debug("Source datasets: %s", src_datasets)
-    if calib_date:
-        src_datasets = set(_filter_calibs_by_date(
-            src_repo,
-            kwargs["collections"] if "collections" in kwargs else ...,
-            src_datasets,
-            calib_date,
-        ))
-        _log_trace.debug("Sources filtered to %s: %s", calib_date.iso, src_datasets)
-    if not src_datasets:
-        # The downstream method decides what to do with empty results.
-        # DM-40245 and DM-46178 may change this.
-        raise _MissingDatasetError(
-            "Source repo query with args '{}' found no matches.".format(formatted_args))
-    if all_callback:
-        all_callback(src_datasets)
-    return itertools.filterfalse(lambda ref: ref in known_datasets, src_datasets)
+    def query(butler: Butler, butler_name: str = ""):
+        # time_this automatically escalates its log to ERROR level if the code raises.
+        # Some errors are expected to happen sometimes, and we don't want those to log
+        # at the ERROR level and cause confusion.
+        label = butler_name or str(butler)
+        with lsst.utils.timer.time_this(_log, msg=f"_generic_query({formatted_args}) ({label})",
+                                        level=logging.DEBUG):
+            datasets = set()
+            for dataset_type in dataset_types:
+                datasets |= set(butler.query_datasets(
+                    # explain=False because empty query result is ok here.
+                    dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
+                ))
+            if calib_date:
+                datasets = set(_filter_calibs_by_date(
+                    butler,
+                    kwargs["collections"] if "collections" in kwargs else ...,
+                    datasets,
+                    calib_date,
+                ))
+            # Trace3 because, in many contexts, datasets is too large to print.
+            _log_trace3.debug("%s: %s", label, datasets)
+            return datasets
+
+    return query
 
 
 def _filter_calibs_by_date(butler: Butler,

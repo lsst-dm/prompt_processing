@@ -57,7 +57,7 @@ from activator.exception import NonRetriableError, NoGoodPipelinesError, Pipelin
 from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, flush_local_repo, make_local_repo, \
     _get_sasquatch_dispatcher, MiddlewareInterface, \
-    _filter_datasets, _filter_calibs_by_date, _MissingDatasetError
+    _filter_datasets, _generic_query, _filter_calibs_by_date, _MissingDatasetError
 
 # The short name of the instrument used in the test repo.
 instname = "LSSTComCamSim"
@@ -1047,24 +1047,23 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         "dummy")
 
         combinations = [{data1, data2}, {data1, data2, data3}]
+        src_butler = unittest.mock.Mock()
+        existing_butler = unittest.mock.Mock()
         # Case where src is empty now covered in test_filter_datasets_nosrc.
         for src, existing in itertools.product(combinations, [set()] + combinations):
             diff = src - existing
-            src_butler = unittest.mock.Mock(**{"query_datasets.return_value": src})
-            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
+
+            def query(butler, _label):
+                if butler is src_butler:
+                    return src
+                elif butler is existing_butler:
+                    return existing
+                else:
+                    raise ValueError("Unknown butler!")
 
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
-                result = set(_filter_datasets(src_butler, existing_butler,
-                                              ["bias"], instrument="LSSTComCamSim"))
-                src_butler.query_datasets.assert_called_once()
-                self.assertEqual(src_butler.query_datasets.call_args.args, ("bias", ))
-                # Implementation may add other kwargs.
-                self.assertEqual(src_butler.query_datasets.call_args.kwargs["instrument"], "LSSTComCamSim")
-                existing_butler.query_datasets.assert_called_once()
-                self.assertEqual(existing_butler.query_datasets.call_args.args, ("bias", ))
-                self.assertEqual(existing_butler.query_datasets.call_args.kwargs["instrument"],
-                                 "LSSTComCamSim")
+                result = set(_filter_datasets(src_butler, existing_butler, query))
                 self.assertEqual(result, diff)
 
     def test_filter_datasets_nodim(self):
@@ -1076,19 +1075,19 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         registry = self.central_butler.registry
         data1 = self._make_expanded_ref(registry, "skyMap", {"skymap": skymap_name}, "dummy")
 
-        src_butler = unittest.mock.Mock(
-            **{"query_datasets.return_value": {data1}})
-        existing_butler = unittest.mock.Mock(
-            **{"query_datasets.side_effect":
-               lsst.daf.butler.registry.DataIdValueError(
-                   f"Unknown values specified for governor dimension skymap: {{{skymap_name}}}")
-               })
+        src_butler = unittest.mock.Mock()
+        existing_butler = unittest.mock.Mock()
 
-        result = set(_filter_datasets(src_butler, existing_butler, ["skyMap"], ..., skymap="mymap"))
-        src_butler.query_datasets.assert_called_once()
-        self.assertEqual(src_butler.query_datasets.call_args.args, ("skyMap", ...))
-        # Implementation may add other kwargs.
-        self.assertEqual(src_butler.query_datasets.call_args.kwargs["skymap"], "mymap")
+        def query(butler, _label):
+            if butler is src_butler:
+                return {data1}
+            elif butler is existing_butler:
+                raise lsst.daf.butler.registry.DataIdValueError(
+                    f"Unknown values specified for governor dimension skymap: {skymap_name}")
+            else:
+                raise ValueError("Unknown butler!")
+
+        result = set(_filter_datasets(src_butler, existing_butler, query))
         self.assertEqual(result, {data1})
 
     def test_filter_datasets_nosrc(self):
@@ -1101,14 +1100,21 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 1},
                                         "dummy")
 
-        src_butler = unittest.mock.Mock(
-            **{"query_datasets.return_value": set()})
+        src_butler = unittest.mock.Mock()
+        existing_butler = unittest.mock.Mock()
         for existing in [set(), {data1}]:
-            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
+
+            def query(butler, _label):
+                if butler is src_butler:
+                    return set()
+                elif butler is existing_butler:
+                    return existing
+                else:
+                    raise ValueError("Unknown butler!")
 
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
-                    _filter_datasets(src_butler, existing_butler, ["bias"], instrument="LSSTComCamSim")
+                    _filter_datasets(src_butler, existing_butler, query)
 
     def test_filter_datasets_all_callback(self):
         """Test that _filter_datasets passes the correct values to its callback.
@@ -1126,15 +1132,21 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         "dummy")
 
         combinations = [{data1, data2}, {data1, data2, data3}]
+        src_butler = unittest.mock.Mock()
+        existing_butler = unittest.mock.Mock()
         # Case where src is empty covered below.
         for src, existing in itertools.product(combinations, [set()] + combinations):
-            src_butler = unittest.mock.Mock(
-                **{"query_datasets.return_value": src})
-            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
+            def query(butler, _label):
+                if butler is src_butler:
+                    return src
+                elif butler is existing_butler:
+                    return existing
+                else:
+                    raise ValueError("Unknown butler!")
 
             with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
                               existing=sorted(ref.dataId["detector"] for ref in existing)):
-                _filter_datasets(src_butler, existing_butler, ["bias"], instrument="LSSTComCamSim",
+                _filter_datasets(src_butler, existing_butler, query,
                                  all_callback=functools.partial(test_function, src))
 
         # Should not call
@@ -1143,14 +1155,37 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.fail("Callback called during _MissingDatasetError.")
 
         for existing in [set()] + combinations:
-            src_butler = unittest.mock.Mock(
-                **{"query_datasets.return_value": set()})
-            existing_butler = unittest.mock.Mock(**{"query_datasets.return_value": existing})
+            def query(butler, _label):
+                if butler is src_butler:
+                    return set()
+                elif butler is existing_butler:
+                    return existing
+                else:
+                    raise ValueError("Unknown butler!")
 
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
-                    _filter_datasets(src_butler, existing_butler, ["bias"], instrument="LSSTComCamSim",
-                                     all_callback=non_callable)
+                    _filter_datasets(src_butler, existing_butler, query, all_callback=non_callable)
+
+    def test_generic_query(self):
+        # Much easier to create DatasetRefs with a real repo.
+        registry = self.central_butler.registry
+        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 5},
+                                        "dummy")
+        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 0},
+                                        "dummy")
+        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 1},
+                                        "dummy")
+        refs = [data1, data2, data3]
+
+        butler = unittest.mock.Mock(**{"query_datasets.return_value": refs})
+        result = _generic_query(["bias"], instrument="LSSTComCamSim")(butler)
+
+        butler.query_datasets.assert_called_once()
+        self.assertEqual(butler.query_datasets.call_args.args, ("bias", ))
+        # Implementation may add other kwargs.
+        self.assertEqual(butler.query_datasets.call_args.kwargs["instrument"], "LSSTComCamSim")
+        self.assertEqual(set(result), set(refs))
 
     def test_filter_calibs_by_date_valid(self):
         # _filter_calibs_by_date requires a collection, not merely an iterable
