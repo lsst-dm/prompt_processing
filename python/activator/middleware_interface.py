@@ -751,6 +751,31 @@ class MiddlewareInterface:
             templates = set()
         return skymaps | templates
 
+    def _get_calib_types(self):
+        """Identify the specific calib types to query.
+
+        Returns
+        -------
+        type_names : collection [`str`]
+            The calib types of interest to Prompt Processing.
+        """
+        # Querying by specific types is much faster than querying by ...
+        # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
+        types = {t for t in self.central_butler.registry.queryDatasetTypes()
+                 if t.isCalibration() and "exposure" not in t.dimensions}
+        if not filter:
+            _log.warning("Preloading filter-dependent calibs is not supported for visits "
+                         "without a specific filter.")
+            types = {t for t in types
+                     if "physical_filter" not in t.dimensions and "band" not in t.dimensions}
+        type_names = {t.name for t in types}
+        # For now, filter down to the dataset types that exist in the specific calib collection.
+        # TODO: A new query API after DM-45873 may replace or improve this usage.
+        # TODO: DM-40245 to identify the datasets.
+        collections_info = self.central_butler.collections.query_info(
+            self.instrument.makeCalibrationCollectionName(), include_summary=True)
+        return self.central_butler.collections._filter_dataset_types(type_names, collections_info)
+
     def _export_calibs(self, detector_id, filter):
         """Identify the calibs to export from the central butler.
 
@@ -769,25 +794,11 @@ class MiddlewareInterface:
         """
         # TAI observation start time should be used for calib validity range.
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
-        # Querying by specific types is much faster than querying by ...
-        # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
-        types = {t for t in self.central_butler.registry.queryDatasetTypes()
-                 if t.isCalibration() and "exposure" not in t.dimensions}
         data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
         if filter:
             data_id["physical_filter"] = filter
-        else:
-            _log.warning("Preloading filter-dependent calibs is not supported for visits "
-                         "without a specific filter.")
-            types = {t for t in types
-                     if "physical_filter" not in t.dimensions and "band" not in t.dimensions}
-        type_names = {t.name for t in types}
-        # For now, filter down to the dataset types that exist in the specific calib collection.
-        # TODO: A new query API after DM-45873 may replace or improve this usage.
-        # TODO: DM-40245 to identify the datasets.
-        collections_info = self.central_butler.collections.query_info(
-            self.instrument.makeCalibrationCollectionName(), include_summary=True)
-        type_names = self.central_butler.collections._filter_dataset_types(type_names, collections_info)
+        type_names = self._get_calib_types()
+
         calibs = set(_filter_datasets(
             self.central_butler, self.butler,
             _generic_query(type_names,
