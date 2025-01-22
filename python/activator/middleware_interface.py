@@ -799,14 +799,28 @@ class MiddlewareInterface:
             data_id["physical_filter"] = filter
         type_names = self._get_calib_types()
 
+        def query_calibs_by_date(butler, label):
+            with lsst.utils.timer.time_this(_log, msg=f"Calib query ({label})", level=logging.DEBUG), \
+                    butler.query() as query:
+                expr = query.expression_factory
+                query = query.where(data_id)
+                datasets = set()
+                for dataset_type in type_names:
+                    datasets |= set(
+                        query.datasets(dataset_type,
+                                       self.instrument.makeCalibrationCollectionName(),
+                                       find_first=True)
+                        # where needs to come after datasets to pick up the type
+                        .where(expr[dataset_type].timespan.overlaps(calib_date))
+                        .with_dimension_records()
+                    )
+                # Trace3 because, in many contexts, datasets is too large to print.
+                _log_trace3.debug("%s: %s", label, datasets)
+                return datasets
+
         calibs = set(_filter_datasets(
             self.central_butler, self.butler,
-            _generic_query(type_names,
-                           collections=self.instrument.makeCalibrationCollectionName(),
-                           data_id=data_id,
-                           find_first=True,
-                           calib_date=calib_date,
-                           ),
+            query_calibs_by_date,
             all_callback=self._mark_dataset_usage,
         ))
         if calibs:
