@@ -1,7 +1,10 @@
 datasets:
 - collections: HSC/runs/RC2/w_2022_44/DM-36763
   datasetType: goodSeeingCoadd
+  find_first: false
 - collections: refcats*
+  find_first: false
+  limit:
 - collections: skymaps
   dataId:
     skymap: hsc_rings_v1
@@ -11,6 +14,7 @@ datasets:
 # to avoid MissingCollectionError when the collection does not
 # exist in the target repo.
 - collections: "*HSC/calib"
+  find_first: false
 collections:
 - expression: HSC/calib
   flattenChains: True
