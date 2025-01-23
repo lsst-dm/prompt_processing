@@ -936,23 +936,22 @@ class MiddlewareInterface:
             certified in ``calib_collection`` in the central repo, and must
             exist in the local repo.
         """
-        dataset_types = {ref.datasetType for ref in datasets}
-        associations = {}
-        for dataset_type in dataset_types:
-            associations.update(
-                (a.ref, a) for a in self.central_butler.registry.queryDatasetAssociations(
-                    dataset_type,
-                    calib_collection,
-                    collectionTypes={CollectionType.CALIBRATION},
-                    flattenChains=True
-                )
-            )
-        for dataset in datasets:
-            association = associations[dataset]
-            # certify is designed to work on groups of datasets; in practice,
-            # the total number of calibs (~1 of each type) is small enough that
-            # grouping by timespan isn't worth it.
-            self.butler.registry.certify(association.collection, [dataset], association.timespan)
+        with self.central_butler.query() as query:
+            for dataset in datasets:
+                dtype = dataset.datasetType
+                result = query.where(dataset.dataId) \
+                    .join_dataset_search(dtype, calib_collection) \
+                    .general(dtype.dimensions,
+                             dataset_fields={dtype.name: {"dataset_id", "run", "collection", "timespan"}},
+                             find_first=False,  # Required for timespan queries.
+                             )
+                # In theory, a dataset may be certified into multiple collections.
+                for association in lsst.daf.butler.DatasetAssociation.from_query_result(result, dtype):
+                    if association.ref == dataset:
+                        # certify is designed to work on groups of datasets; in practice,
+                        # the total number of calibs (~1 of each type) is small enough that
+                        # grouping by timespan isn't worth it.
+                        self.butler.registry.certify(association.collection, [dataset], association.timespan)
 
     @staticmethod
     def _count_by_type(refs):
