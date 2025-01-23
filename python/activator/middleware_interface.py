@@ -42,8 +42,8 @@ import lsst.sphgeom
 import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
-from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan
-from lsst.daf.butler import DataIdValueError, MissingDatasetTypeError
+from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan, \
+    DataIdValueError, MissingDatasetTypeError
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
