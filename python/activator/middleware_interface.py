@@ -936,6 +936,7 @@ class MiddlewareInterface:
             certified in ``calib_collection`` in the central repo, and must
             exist in the local repo.
         """
+        collections = self.central_repo.collections
         with self.central_butler.query() as query:
             for dataset in datasets:
                 dtype = dataset.datasetType
@@ -945,9 +946,10 @@ class MiddlewareInterface:
                              dataset_fields={dtype.name: {"dataset_id", "run", "collection", "timespan"}},
                              find_first=False,  # Required for timespan queries.
                              )
-                # In theory, a dataset may be certified into multiple collections.
+                # Associations include run membership, and possibly multiple calibration collections.
                 for association in lsst.daf.butler.DatasetAssociation.from_query_result(result, dtype):
-                    if association.ref == dataset:
+                    if collections.get_info(association.collection).type == CollectionType.CALIBRATION \
+                            and association.ref == dataset:
                         # certify is designed to work on groups of datasets; in practice,
                         # the total number of calibs (~1 of each type) is small enough that
                         # grouping by timespan isn't worth it.
