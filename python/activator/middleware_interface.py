@@ -936,7 +936,7 @@ class MiddlewareInterface:
             certified in ``calib_collection`` in the central repo, and must
             exist in the local repo.
         """
-        collections = self.central_repo.collections
+        collections = self.central_butler.collections
         with self.central_butler.query() as query:
             for dataset in datasets:
                 dtype = dataset.datasetType
