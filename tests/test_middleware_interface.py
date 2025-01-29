@@ -351,7 +351,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that preloaded datasets have been generated
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
         preload_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
-                             f"Preload/{self.deploy_id}"
+                             f"NoPipeline/{self.deploy_id}"
         self.assertTrue(
             butler.exists('promptPreload_metrics', instrument=instname, group=group, detector=detector,
                           full_check=True,
@@ -906,7 +906,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         out_chain = self.interface._get_output_chain(date)
         self.assertEqual(out_chain, f"{instname}/prompt/output-2023-01-22")
         preload_run = self.interface._get_preload_run(date)
-        self.assertEqual(preload_run, f"{instname}/prompt/output-2023-01-22/Preload/{self.deploy_id}")
+        self.assertEqual(preload_run, f"{instname}/prompt/output-2023-01-22/NoPipeline/{self.deploy_id}")
         out_run = self.interface._get_output_run(filename, date)
         self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/{self.deploy_id}")
         init_run = self.interface._get_init_output_run(filename, date)

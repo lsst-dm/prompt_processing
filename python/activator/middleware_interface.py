@@ -1050,7 +1050,7 @@ class MiddlewareInterface:
         run : `str`
             The run in which to place preload/pre-execution products.
         """
-        return self._get_output_run("Preload", date)
+        return self._get_output_run("NoPipeline", date)
 
     def _get_init_output_run(self,
                              pipeline_file: str,
