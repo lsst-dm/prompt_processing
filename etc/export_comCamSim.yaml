@@ -8,6 +8,7 @@ datasets:
 # to avoid MissingCollectionError when the collection does not
 # exist in the target repo.
 - collections: "*LSSTComCamSim/calib"
+  find_first: false
 
 collections:
 - expression: LSSTComCamSim/calib

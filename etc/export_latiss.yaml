@@ -3,8 +3,12 @@ datasets:
   datasetType: goodSeeingCoadd
 - collections: refcats*
   datasetType: atlas_refcat2_20220201
+  find_first: false
+  limit:
 - collections: refcats*
   datasetType: gaia_dr3_20230707
+  find_first: false
+  limit:
 - collections: skymaps
   datasetType: skyMap
 # Workaround for DM-43294: use a matching expression rather than
@@ -12,6 +16,7 @@ datasets:
 # to avoid MissingCollectionError when the collection does not
 # exist in the target repo.
 - collections: "*LATISS/calib"
+  find_first: false
 - collections: pretrained_models
   datasetType: pretrainedModelPackage
 collections:
