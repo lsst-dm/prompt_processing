@@ -5,7 +5,7 @@ description: Alert Production pipeline specialized for LSSTCam
 # prompt_processing build can't wait for the lsst_distrib
 # release schedule.
 imports:
-  - location: $AP_PIPE_DIR/pipelines/LSSTCam/ApPipe.yaml
+  - location: $AP_PIPE_DIR/pipelines/_ingredients/ApPipe.yaml
     include:
       - prompt
 tasks:
