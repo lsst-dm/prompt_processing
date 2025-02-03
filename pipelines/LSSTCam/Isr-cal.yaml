@@ -1,0 +1,22 @@
+description: >-
+  ISR-only pipeline specialized for LSSTCam. This is a seperate
+  pipeline from the other ISR-only pipeline because this config
+  is for cleanroom data.
+
+imports:
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/Isr.yaml
+
+tasks:
+  isr:
+    class: lsst.ip.isr.IsrTaskLSST
+    config:
+      defaultSaturationSource: CAMERAMODEL
+      doApplyGains: false
+      doBias: false
+      doBootstrap: true
+      doDark: false
+      doDefect: false
+      doDeferredCharge: false
+      doFlat: false
+      doLinearize: false
+      doSuspect: false
