@@ -155,13 +155,14 @@ class FannedOutVisit(BareVisit):
         return f"(groupId={self.groupId}, survey={self.survey}, " \
                f"detector={self.detector})"
 
-    def from_dict_to_fanned_out_visit(self, fan_out_visit_dict: dict):
+    @classmethod
+    def from_dict(cls, fan_out_visit_dict: dict):
         """Converts dict to fanned out visit.
 
         Parameters
         ----------
-        fan_out_visit_dict : `dict`
-        Fan out visit with string values.
+        fan_out_visit_dict : `dict` ['str']
+            Keys and values (possibly strings) representing the visit.
 
         Returns
         -------
@@ -169,28 +170,27 @@ class FannedOutVisit(BareVisit):
             FannedOutVisit with values converted to correct type.
         """
 
-        fan_out_visit_dict = asdict(self)
-
-        # Set type as elements from Redis Streams are strings.
-        fan_out_visit_dict["salIndex"] = int(fan_out_visit_dict["salIndex"])
-        fan_out_visit_dict["scriptSalIndex"] = int(fan_out_visit_dict["scriptSalIndex"])
-        fan_out_visit_dict["startTime"] = float(fan_out_visit_dict["startTime"])
-        fan_out_visit_dict["cameraAngle"] = float(fan_out_visit_dict["cameraAngle"])
-        fan_out_visit_dict["coordinateSystem"] = int(fan_out_visit_dict["coordinateSystem"])
-        fan_out_visit_dict["dome"] = int(fan_out_visit_dict["dome"])
-        fan_out_visit_dict["duration"] = float(fan_out_visit_dict["duration"])
-        fan_out_visit_dict["nimages"] = int(fan_out_visit_dict["nimages"])
-        fan_out_visit_dict["rotationSystem"] = int(fan_out_visit_dict["rotationSystem"])
-        fan_out_visit_dict["totalCheckpoints"] = float(fan_out_visit_dict["totalCheckpoints"])
-        fan_out_visit_dict["detector"] = int(fan_out_visit_dict["detector"])
-        # Convert position string to list
-        position_string_list = (
-            fan_out_visit_dict["position"].replace("[", "").replace("]", "").split(",")
+        return FannedOutVisit(
+            salIndex=int(fan_out_visit_dict["salIndex"]),
+            scriptSalIndex=int(fan_out_visit_dict["scriptSalIndex"]),
+            groupId=str(fan_out_visit_dict["groupId"]),
+            startTime=float(fan_out_visit_dict["startTime"]),
+            cameraAngle=float(fan_out_visit_dict["cameraAngle"]),
+            coordinateSystem=cls.CoordSys(int(fan_out_visit_dict["coordinateSystem"])),
+            filters=str(fan_out_visit_dict["filters"]),
+            dome=cls.Dome(int(fan_out_visit_dict["dome"])),
+            duration=float(fan_out_visit_dict["duration"]),
+            nimages=int(fan_out_visit_dict["nimages"]),
+            instrument=str(fan_out_visit_dict["instrument"]),
+            survey=str(fan_out_visit_dict["survey"]),
+            rotationSystem=cls.RotSys(int(fan_out_visit_dict["rotationSystem"])),
+            totalCheckpoints=int(fan_out_visit_dict["totalCheckpoints"]),
+            detector=int(fan_out_visit_dict["detector"]),
+            private_sndStamp=float(fan_out_visit_dict["private_sndStamp"]),
+            # Convert position string to list
+            position=[float(i) for i in fan_out_visit_dict["position"].replace(
+                "[", "").replace("]", "").split(",")],
         )
-        fan_out_visit_dict["position"] = [float(i) for i in position_string_list]
-
-        expected_visit = FannedOutVisit(**fan_out_visit_dict)
-        return expected_visit
 
     def get_bare_visit(self):
         """Return visit-level info as a dict"""

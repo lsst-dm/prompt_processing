@@ -23,7 +23,6 @@ __all__ = ["next_visit_handler"]
 
 import collections.abc
 import contextlib
-import copy
 import functools
 import json
 import logging
@@ -92,24 +91,13 @@ if platform == "keda":
     redis_stream_host = os.environ["REDIS_STREAM_HOST"]
     # Redis stream name to receive messages.
     redis_stream_name = os.environ["REDIS_STREAM_NAME"]
-    # Redis streams group; must be worker-unique to prevent pod from stealing messages for other pods.
+    # Redis streams group; must be worker-unique to keep workers from stealing messages for others.
     redis_group_id = str(uuid.uuid4())
     # Redis stream consumer group
     redis_stream_consumer_group = os.environ["REDIS_STREAM_CONSUMER_GROUP"]
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
-
-# Prometheus gauge setup
-instrument_name_gauge = instrument_name.lower()
-instances_started_gauge = prometheus.Gauge(
-    instrument_name_gauge + "_prompt_processing_instances_running",
-    "prompt processing instances running with " + instrument_name_gauge + " as instrument"
-)
-instances_processing_gauge = prometheus.Gauge(
-    instrument_name_gauge + "_prompt_processing_instances_processing",
-    "instances performing prompt processing with " + instrument_name_gauge + " as instrument"
-)
 
 
 def _config_from_yaml(yaml_string):
@@ -218,12 +206,13 @@ def _calculate_time_since_last_message(fan_out_listen_start_time):
     Parameters
     ----------
     fan_out_listen_start_time : `float`
-        Time when listening for redis stream message started.
+        Time when listening for redis stream message started.  The time is
+        since Unix epoch.
 
     Returns
     -------
     fan_out_listen_time : `float`
-        Time since last fan out message received by this pod.
+        Time in seconds since last fan out message received by this pod.
     """
     fan_out_listen_finish_time = time.time()
     fan_out_listen_time = fan_out_listen_finish_time - fan_out_listen_start_time
@@ -236,14 +225,14 @@ def _decode_redis_streams_message(fan_out_message):
 
     Parameters
     ----------
-    fan_out_message : `float`
+    fan_out_message : `dict`
         Fan out message.
 
     Returns
     -------
-    redis_streams_message_id : `string`
+    redis_streams_message_id : `str`
         Redis streams message id decoded from bytes.
-    fan_out_visit_decoded : `dict`
+    fan_out_visit_decoded : `dict` [`str`, `str`]
         Fan out visit message decoded from bytes.
     """
     # Decode redis streams message id
@@ -268,8 +257,8 @@ def _calculate_time_since_fan_out_message_delivered(redis_streams_message_id):
     Returns
     -------
     fan_out_to_prompt_time : `float`
-       Time in seconds from fan out message to when message is unpacked
-       in prompt processing.
+        Time in seconds from fan out message to when message is unpacked
+        in prompt processing.
     """
     message_timestamp = float(redis_streams_message_id.split('-', 1)[0].strip())
     fan_out_to_prompt_time = time.time() - message_timestamp/1000
@@ -304,13 +293,26 @@ def create_app():
         sys.exit(3)
 
 
-@instances_started_gauge.track_inprogress()
 def keda_start():
 
     try:
         setup_usdf_logger(
             labels={"instrument": instrument_name},
         )
+
+        # Prometheus gauge setup
+        instrument_name_gauge = instrument_name.lower()
+        instances_started_gauge = prometheus.Gauge(
+            instrument_name_gauge + "_prompt_processing_instances_running",
+            "prompt processing instances running with " + instrument_name_gauge + " as instrument"
+        )
+        instances_processing_gauge = prometheus.Gauge(
+            instrument_name_gauge + "_prompt_processing_instances_processing",
+            "instances performing prompt processing with " + instrument_name_gauge + " as instrument"
+        )
+
+        # Start Prometheus endpoint
+        prometheus.start_http_server(8000)
 
         # Initialize local registry
         registry = LocalRepoTracker.get()
@@ -325,7 +327,12 @@ def keda_start():
         # Setup redis client connection.  Setup before while loop to avoid performance
         # issues of constantly resetting up client connection
         redis_client = _get_redis_streams_client()
-        redis_client.ping()
+        try:
+            redis_client.ping()
+        except redis.exceptions.RedisError:
+            # Startup handler will quit; make sure the client is cleaned up for that.
+            redis_client.close()
+            raise
 
         _log.info("Worker ready to handle requests.")
 
@@ -338,78 +345,87 @@ def keda_start():
     fan_out_listen_start_time = time.time()
     consumer_polls_with_message = 0
 
-    try:
-        while time.time() - fan_out_listen_start_time < fanned_out_msg_listen_timeout:
+    with instances_started_gauge.track_inprogress():
+        try:
+            while time.time() - fan_out_listen_start_time < fanned_out_msg_listen_timeout:
 
-            try:
-                fan_out_message = redis_client.xreadgroup(
-                    streams={redis_stream_name: ">"},
-                    consumername=redis_group_id,
-                    groupname=redis_stream_consumer_group,
-                    count=1,)
+                try:
+                    fan_out_message = redis_client.xreadgroup(
+                        streams={redis_stream_name: ">"},  # Read new messages (">" for pending messages)
+                        consumername=redis_group_id,
+                        groupname=redis_stream_consumer_group,
+                        count=1  # Read one message at a time
+                    )
 
-                if not fan_out_message:
-                    continue
-                else:
-                    consumer_polls_with_message += 1
-                    if consumer_polls_with_message >= 1:
-                        fan_out_listen_time = _calculate_time_since_last_message(
-                            fan_out_listen_start_time)
-                        _log.debug(
-                            "Seconds since last redis streams message received %r for consumer poll %r",
-                            fan_out_listen_time, consumer_polls_with_message)
+                    if not fan_out_message:
+                        continue
+                    else:
 
-                    redis_streams_message_id, fan_out_visit_decoded = _decode_redis_streams_message(
-                        fan_out_message)
+                        redis_streams_message_id, fan_out_visit_decoded = _decode_redis_streams_message(
+                            fan_out_message)
 
-                    # Calculate time to receive message based on timestamp in Redis Stream message
-                    fan_out_to_prompt_time = _calculate_time_since_fan_out_message_delivered(
-                        redis_streams_message_id)
-                    _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
+                        # Ack the redis stream message and close redis stream client
+                        # TODO Consider moving xack after process visit completes for catch up processing.
+                        redis_client.xack(redis_stream_name,
+                                          redis_stream_consumer_group,
+                                          redis_streams_message_id)
+                        redis_client.close()
 
-                    # Copy fan out decoded message and type conversion to FannedOutVisit
-                    fan_out_visit_decoded_copy = copy.deepcopy(fan_out_visit_decoded)
-                    fan_out_visit_decoded_copy = FannedOutVisit(**fan_out_visit_decoded_copy)
-                    expected_visit = fan_out_visit_decoded_copy.from_dict_to_fanned_out_visit(
-                        fan_out_visit_decoded_copy)
-                    _log.debug("Unpacked message as %r.", expected_visit)
-
-                    # Ack the redis stream message and close redis stream client
-                    # TODO Consider moving xack after process visit completes for catch up processing.
-                    redis_client.xack(redis_stream_name,
-                                      redis_stream_consumer_group,
-                                      redis_streams_message_id)
+                        expected_visit = FannedOutVisit.from_dict(fan_out_visit_decoded)
+                        _log.debug("Unpacked message as %r.", expected_visit)
+                # TODO Review Redis Errors and determine what should be retriable.
+                except redis.exceptions.RedisError as e:
+                    _log.critical("Redis Streams error; aborting.")
+                    _log.exception(e)
                     redis_client.close()
-            except Exception as e:
-                _log.critical("Redis Streams unexpected error while unpacking message")
-                _log.exception(e)
+                    sys.exit(1)
 
-            try:
-                # Process fan out visit
-                process_visit(expected_visit)
-            except Exception as e:
-                _log.critical("Process visit failed; aborting.")
-                _log.exception(e)
-            finally:
-                _log.info(
-                    "Processing completed for %s.  Starting next fan out event consumer poll",
-                    socket.gethostname())
+                with instances_processing_gauge.track_inprogress():
+                    try:
 
-            # Reset timer for fan out message polling and start redis client for next poll
-            fan_out_listen_start_time = time.time()
-            try:
-                redis_client = _get_redis_streams_client()
-                redis_client.ping()
-                _log.info("Redis Streams client setup for continued polling")
-            except Exception as e:
-                _log.critical("Redis Streams client unexpected error in continued polling; aborting")
-                _log.exception(e)
-                redis_client.close()
-                sys.exit(1)
+                        consumer_polls_with_message += 1
+                        if consumer_polls_with_message >= 1:
+                            fan_out_listen_time = _calculate_time_since_last_message(
+                                fan_out_listen_start_time)
+                            _log.debug(
+                                "Seconds since last redis streams message received %r for consumer poll %r",
+                                fan_out_listen_time, consumer_polls_with_message)
 
-    finally:
-        # Assume only one worker per pod, don't need to remove local repo.
-        _log.info("Finished listening for fanned out messages")
+                        # Calculate time to receive message based on timestamp in Redis Stream message
+                        fan_out_to_prompt_time = _calculate_time_since_fan_out_message_delivered(
+                            redis_streams_message_id)
+                        _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
+
+                        # Process fan out visit
+                        process_visit(expected_visit)
+                    except GracefulShutdownInterrupt:
+                        _log.error(
+                            "Service interrupted.Shutting down *without* syncing to the central repo.")
+                        sys.exit(1)
+                    except IgnorableVisit as e:
+                        _log.info("Skipping visit: %s", e)
+                    except Exception:
+                        _log.exception("Processing failed:")
+                    finally:
+                        _log.info(
+                            "Processing completed for %s.  Starting next fan out event consumer poll",
+                            socket.gethostname())
+
+                # Reset timer for fan out message polling and start redis client for next poll
+                fan_out_listen_start_time = time.time()
+                try:
+                    redis_client = _get_redis_streams_client()
+                    redis_client.ping()
+                    _log.info("Redis Streams client setup for continued polling")
+                except Exception as e:
+                    _log.critical("Redis Streams client unexpected error in continued polling; aborting")
+                    _log.exception(e)
+                    redis_client.close()
+                    sys.exit(1)
+
+        finally:
+            # Assume only one worker per pod, don't need to remove local repo.
+            _log.info("Finished listening for fanned out messages")
 
 
 def _graceful_shutdown(signum: int, stack_frame):
@@ -604,7 +620,6 @@ def next_visit_handler() -> tuple[str, int]:
 
 @with_signal(signal.SIGHUP, _graceful_shutdown)
 @with_signal(signal.SIGTERM, _graceful_shutdown)
-@instances_processing_gauge.track_inprogress()
 def process_visit(expected_visit: FannedOutVisit):
     """Prepare and run a pipeline on a nextVisit message.
 
@@ -813,8 +828,6 @@ def main():
     # starts keda instance of the application
     elif platform == "keda":
         _log.info("starting keda instance")
-        # Start Prometheus endpoint
-        prometheus.start_http_server(8000)
         keda_start()
     else:
         _log.info("no platform defined")
