@@ -301,7 +301,7 @@ def keda_start():
         )
 
         # Prometheus gauge setup
-        instrument_name_gauge = instrument_name.lower()
+        instrument_name_gauge = instrument_name.lower().replace(" ", "_").replace("-", "_")
         instances_started_gauge = prometheus.Gauge(
             instrument_name_gauge + "_prompt_processing_instances_running",
             "prompt processing instances running with " + instrument_name_gauge + " as instrument"
@@ -339,7 +339,6 @@ def keda_start():
     except Exception as e:
         _log.critical("Failed to start worker; aborting.")
         _log.exception(e)
-        redis_client.close()
         sys.exit(1)
 
     fan_out_listen_start_time = time.time()
@@ -371,17 +370,22 @@ def keda_start():
                                           redis_streams_message_id)
                         redis_client.close()
 
-                        expected_visit = FannedOutVisit.from_dict(fan_out_visit_decoded)
-                        _log.debug("Unpacked message as %r.", expected_visit)
                 # TODO Review Redis Errors and determine what should be retriable.
                 except redis.exceptions.RedisError as e:
                     _log.critical("Redis Streams error; aborting.")
                     _log.exception(e)
                     redis_client.close()
                     sys.exit(1)
+                except (LookupError, UnicodeError) as e:
+                    _log.error("Invalid redis stream message %s", e)
+                    fan_out_listen_start_time = time.time()
+                    continue
 
                 with instances_processing_gauge.track_inprogress():
                     try:
+
+                        expected_visit = FannedOutVisit.from_dict(fan_out_visit_decoded)
+                        _log.debug("Unpacked message as %r.", expected_visit)
 
                         consumer_polls_with_message += 1
                         if consumer_polls_with_message >= 1:
