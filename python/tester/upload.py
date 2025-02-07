@@ -37,6 +37,7 @@ from lsst.resources import ResourcePath
 
 from shared.raw import (
     LSST_REGEXP,
+    IMSIM_REGEXP,
     OTHER_REGEXP,
     get_raw_path,
     _LSST_CAMERA_LIST,
@@ -277,7 +278,10 @@ def get_samples_lsst(bucket, instrument):
     for blob in blobs:
         # Assume that the unobserved bucket uses the same filename scheme as
         # the observed bucket.
-        m = re.match(LSST_REGEXP, blob.key)
+        if instrument == "LSSTCam-imSim":
+            m = re.match(IMSIM_REGEXP, blob.key)
+        else:
+            m = re.match(LSST_REGEXP, blob.key)
         if not m or m["extension"] == ".json":
             continue
 
