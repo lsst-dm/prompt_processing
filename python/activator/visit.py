@@ -155,6 +155,43 @@ class FannedOutVisit(BareVisit):
         return f"(groupId={self.groupId}, survey={self.survey}, " \
                f"detector={self.detector})"
 
+    @classmethod
+    def from_dict(cls, fan_out_visit_dict: dict):
+        """Converts dict to fanned out visit.
+
+        Parameters
+        ----------
+        fan_out_visit_dict : `dict` ['str']
+            Keys and values (possibly strings) representing the visit.
+
+        Returns
+        -------
+        expected_visit : `FannedOutVisit`
+            FannedOutVisit with values converted to correct type.
+        """
+
+        return FannedOutVisit(
+            salIndex=int(fan_out_visit_dict["salIndex"]),
+            scriptSalIndex=int(fan_out_visit_dict["scriptSalIndex"]),
+            groupId=str(fan_out_visit_dict["groupId"]),
+            startTime=float(fan_out_visit_dict["startTime"]),
+            cameraAngle=float(fan_out_visit_dict["cameraAngle"]),
+            coordinateSystem=cls.CoordSys(int(fan_out_visit_dict["coordinateSystem"])),
+            filters=str(fan_out_visit_dict["filters"]),
+            dome=cls.Dome(int(fan_out_visit_dict["dome"])),
+            duration=float(fan_out_visit_dict["duration"]),
+            nimages=int(fan_out_visit_dict["nimages"]),
+            instrument=str(fan_out_visit_dict["instrument"]),
+            survey=str(fan_out_visit_dict["survey"]),
+            rotationSystem=cls.RotSys(int(fan_out_visit_dict["rotationSystem"])),
+            totalCheckpoints=int(fan_out_visit_dict["totalCheckpoints"]),
+            detector=int(fan_out_visit_dict["detector"]),
+            private_sndStamp=float(fan_out_visit_dict["private_sndStamp"]),
+            # Convert position string to list
+            position=[float(i) for i in fan_out_visit_dict["position"].replace(
+                "[", "").replace("]", "").split(",")],
+        )
+
     def get_bare_visit(self):
         """Return visit-level info as a dict"""
         info = asdict(self)
