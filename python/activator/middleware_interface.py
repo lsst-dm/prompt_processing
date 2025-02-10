@@ -746,7 +746,7 @@ class MiddlewareInterface:
                     all_callback=self._mark_dataset_usage,
                 ))
             except _MissingDatasetError as err:
-                _log.error(err)
+                _log.error("Could not load templates: %s", err)
                 templates = set()
             else:
                 _log.debug("Found %d new template datasets.", len(templates))
@@ -861,7 +861,7 @@ class MiddlewareInterface:
                 all_callback=self._mark_dataset_usage,
             ))
         except _MissingDatasetError as err:
-            _log.error(err)
+            _log.error("Could not load ML models: %s", err)
             models = set()
         else:
             _log.debug("Found %d new ML model datasets.", len(models))
@@ -1536,7 +1536,8 @@ class MiddlewareInterface:
                     output_chain = self._get_output_chain(self._day_obs)
                     self._chain_exports(output_chain, populated_runs)
                 else:
-                    _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
+                    _log.warning("No output datasets match visit=%s and exposures=%s.",
+                                 self.visit, exposure_ids)
 
         finally:
             # TODO: can we use SasquatchDatastore to streamline this?
