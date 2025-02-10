@@ -35,8 +35,9 @@ from botocore.handlers import validate_bucket_name
 from lsst.utils.timer import time_this
 from lsst.daf.butler import Butler
 
-from activator.raw import get_raw_path, _LSST_CAMERA_LIST
-from activator.visit import SummitVisit
+from shared.raw import get_raw_path, _LSST_CAMERA_LIST
+from shared.visit import SummitVisit
+# Need explicit tester for command-line execution
 from tester.utils import (
     INSTRUMENTS,
     get_last_group,
