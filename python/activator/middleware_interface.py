@@ -142,9 +142,8 @@ def flush_local_repo(repo_dir: str, central_butler: Butler):
             # Don't try to chain the runs -- only way to get the correct chain
             # name is to parse the collection name(s), too brittle for the rare
             # case that the runs aren't already in central repo.
-    except Exception as e:
-        _log.error("Could not sync outputs from %s; they will be lost.", repo_dir)
-        _log.exception(e)
+    except Exception:
+        _log.exception("Could not sync outputs from %s; they will be lost.", repo_dir)
     finally:
         # If deletion fails, raise and let the activator handle it.
         shutil.rmtree(repo_dir)
@@ -747,7 +746,7 @@ class MiddlewareInterface:
                     all_callback=self._mark_dataset_usage,
                 ))
             except _MissingDatasetError as err:
-                _log.error(err)
+                _log.error("Could not load templates: %s", err)
                 templates = set()
             else:
                 _log.debug("Found %d new template datasets.", len(templates))
@@ -862,7 +861,7 @@ class MiddlewareInterface:
                 all_callback=self._mark_dataset_usage,
             ))
         except _MissingDatasetError as err:
-            _log.error(err)
+            _log.error("Could not load ML models: %s", err)
             models = set()
         else:
             _log.debug("Found %d new ML model datasets.", len(models))
@@ -1537,7 +1536,8 @@ class MiddlewareInterface:
                     output_chain = self._get_output_chain(self._day_obs)
                     self._chain_exports(output_chain, populated_runs)
                 else:
-                    _log.warning("No datasets match visit=%s and exposures=%s.", self.visit, exposure_ids)
+                    _log.warning("No output datasets match visit=%s and exposures=%s.",
+                                 self.visit, exposure_ids)
 
         finally:
             # TODO: can we use SasquatchDatastore to streamline this?
