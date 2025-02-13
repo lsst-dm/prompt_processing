@@ -52,12 +52,13 @@ import lsst.resources
 import lsst.sphgeom
 
 from activator.caching import DatasetCache
-from activator.config import PipelinesConfig
 from activator.exception import NonRetriableError, NoGoodPipelinesError, PipelineExecutionError
-from activator.visit import FannedOutVisit
 from activator.middleware_interface import get_central_butler, flush_local_repo, make_local_repo, \
     _get_sasquatch_dispatcher, MiddlewareInterface, \
     _filter_datasets, _generic_query, _MissingDatasetError
+from shared.config import PipelinesConfig
+from shared.run_utils import get_output_run, get_deployment
+from shared.visit import FannedOutVisit
 
 # The short name of the instrument used in the test repo.
 instname = "LSSTComCamSim"
@@ -217,6 +218,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                 })
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
+        self.deploy_id = get_deployment(apdb_config=config_file.name)
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -246,7 +248,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                              pre_pipelines_empty, pipelines, skymap_name,
                                              self.local_repo.name, self.local_cache,
                                              prefix="file://")
-        self.deploy_id = self.interface._deployment
 
     def test_get_butler(self):
         for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstComCamSim"),
@@ -900,18 +901,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self._prepare_run_preprocessing()
         self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
 
-    def test_get_output_run(self):
-        filename = "ApPipe.yaml"
-        date = "2023-01-22"
-        out_chain = self.interface._get_output_chain(date)
-        self.assertEqual(out_chain, f"{instname}/prompt/output-2023-01-22")
-        preload_run = self.interface._get_preload_run(date)
-        self.assertEqual(preload_run, f"{instname}/prompt/output-2023-01-22/NoPipeline/{self.deploy_id}")
-        out_run = self.interface._get_output_run(filename, date)
-        self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/{self.deploy_id}")
-        init_run = self.interface._get_init_output_run(filename, date)
-        self.assertEqual(init_run, f"{instname}/prompt/output-2023-01-22/ApPipe/{self.deploy_id}")
-
     def test_get_template_types(self):
         template_types = self.interface._get_template_types()
         self.assertEqual(template_types, {"goodSeeingCoadd"})
@@ -956,7 +945,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Since we're not calling prep_butler, need to set up the collections by hand
         raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
         butler.registry.registerCollection(raw_collection, CollectionType.RUN)
-        out_collection = self.interface._get_output_run("ApPipe.yaml", self.interface._day_obs)
+        out_collection = get_output_run(self.interface.instrument, self.deploy_id,
+                                        "ApPipe.yaml", self.interface._day_obs)
         butler.registry.registerCollection(out_collection, CollectionType.RUN)
         calib_collection = self.interface.instrument.makeCalibrationCollectionName()
         butler.registry.registerCollection(calib_collection, CollectionType.RUN)
@@ -1240,6 +1230,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                 })
         env_patcher.start()
         self.addCleanup(env_patcher.stop)
+        self.deploy_id = get_deployment(apdb_config=config_file.name)
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -1270,7 +1261,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                              pre_pipelines_full, pipelines, skymap_name, local_repo.name,
                                              self.local_cache,
                                              prefix="file://")
-        self.deploy_id = self.interface._deployment
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.interface.prep_butler()
         filename = "fakeRawImage.fits"

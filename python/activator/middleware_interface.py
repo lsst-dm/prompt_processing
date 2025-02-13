@@ -23,8 +23,6 @@ __all__ = ["get_central_butler", "make_local_repo", "flush_local_repo", "make_lo
            "MiddlewareInterface"]
 
 import collections.abc
-import glob
-import hashlib
 import itertools
 import logging
 import os
@@ -51,11 +49,12 @@ import lsst.pipe.base
 import lsst.analysis.tools
 from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can't use fully-qualified name
 
+from shared.config import PipelinesConfig
+import shared.run_utils as runs
+from shared.visit import FannedOutVisit
 from .caching import DatasetCache
-from .config import PipelinesConfig
 from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError, \
     InvalidPipelineError, NoGoodPipelinesError, PipelinePreExecutionError, PipelineExecutionError
-from .visit import FannedOutVisit
 from .timer import enforce_schema, time_this_to_bundle
 
 _log = logging.getLogger("lsst." + __name__)
@@ -236,10 +235,6 @@ def _get_sasquatch_dispatcher():
     return SasquatchDispatcher(url=url, token=token, namespace=namespace)
 
 
-# Offset used to define exposures' day_obs value.
-_DAY_OBS_DELTA = astropy.time.TimeDelta(-12.0 * astropy.units.hour, scale="tai")
-
-
 class MiddlewareInterface:
     """Interface layer between the Butler middleware and the prompt processing
     data handling system, to handle processing individual images.
@@ -327,7 +322,7 @@ class MiddlewareInterface:
 
         self._apdb_config = os.environ["CONFIG_APDB"]
         # Deployment/version ID -- potentially expensive to generate.
-        self._deployment = self._get_deployment()
+        self._deployment = runs.get_deployment(self._apdb_config)
         self.central_butler = central_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
@@ -340,7 +335,7 @@ class MiddlewareInterface:
         self.pre_pipelines = pre_pipelines
         self.main_pipelines = main_pipelines
 
-        self._day_obs = (astropy.time.Time.now() + _DAY_OBS_DELTA).tai.to_value("iso", "date")
+        self._day_obs = runs.get_day_obs(astropy.time.Time.now())
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self.cache = local_cache  # DO NOT copy -- we want to persist this state!
@@ -370,58 +365,6 @@ class MiddlewareInterface:
 
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
-
-    def _get_pp_hash(self):
-        """Get a unique ID for the Prompt Processing code.
-
-        Returns
-        ----------
-        hash : `hashlib.hash`
-            A hash of the contents of Prompt Processing.
-        """
-        root_dir = lsst.utils.getPackageDir("prompt_processing")
-        files = []
-        files.extend(sorted(glob.glob(os.path.join(root_dir, "maps", "**", "*.fits"), recursive=True)))
-        files.extend(sorted(glob.glob(os.path.join(root_dir, "pipelines", "**", "*.yaml"), recursive=True)))
-        # Source code has different paths in test environment and Docker container.
-        files.extend(sorted(glob.glob(os.path.join(root_dir, "python", "activator", "*.py"), recursive=True)))
-        files.extend(sorted(glob.glob(os.path.join(root_dir, "activator", "*.py"), recursive=True)))
-
-        filehash = hashlib.md5(usedforsecurity=False)
-        for file in files:
-            with open(file, "rb") as f:
-                filehash.update(f.read())  # Don't need to worry about OOM.
-        return filehash
-
-    def _get_deployment(self):
-        """Get a unique version ID of the active stack and pipeline configuration(s).
-
-        ``self._apdb_config`` must have already been initialized.
-
-        Returns
-        -------
-        version : `str`
-            A unique version identifier for the stack. Contains only
-            word characters and "-", but not guaranteed to be human-readable.
-        """
-        # To disambiguate all stack changes, read the active Science Pipelines install.
-        # getAllPythonDistributions misses non-Python Conda packages, but this should
-        # be fine since rubin-env updates many Conda packages at once.
-        packages = lsst.utils.packages.getAllPythonDistributions()
-        packagehash = hashlib.md5(usedforsecurity=False)
-        for package, version in sorted(packages.items()):
-            _log_trace3.debug("Deployment includes %s %s.", package, version)
-            packagehash.update(bytes(package + version, encoding="utf-8"))
-        packagehash.update(self._get_pp_hash().digest())
-
-        # APDB config is included in pipeline/task configs.
-        # Add other config fields as needed.
-        confighash = hashlib.md5(usedforsecurity=False)
-        confighash.update(bytes(self._apdb_config, encoding="utf-8"))
-
-        version = f"pipelines-{packagehash.hexdigest():.7}-config-{confighash.hexdigest():.7}"
-        _log.debug("Deployment identified as %s.", version)
-        return version
 
     def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
         """Prepare the local butler to ingest into and process from.
@@ -618,7 +561,7 @@ class MiddlewareInterface:
         ))
         self.butler.put(bundle,
                         "promptPreload_metrics",
-                        run=self._get_preload_run(self._day_obs),
+                        run=runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
                         instrument=self.instrument.getName(),
                         detector=self.visit.detector,
                         group=self.visit.groupId)
@@ -1011,103 +954,21 @@ class MiddlewareInterface:
         ))
         self.butler.put(lsst.pipe.base.utils.RegionTimeInfo(region=region, timespan=timespan),
                         "regionTimeInfo",
-                        run=self._get_preload_run(self._day_obs),
+                        run=runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
                         instrument=self.instrument.getName(),
                         detector=self.visit.detector,
                         group=self.visit.groupId)
-
-    def _get_output_chain(self,
-                          date: str) -> str:
-        """Generate a deterministic output chain name that avoids
-        configuration conflicts.
-
-        Parameters
-        ----------
-        date : `str`
-            Date of the processing run (not observation!).
-
-        Returns
-        -------
-        chain : `str`
-            The chain in which to place all output collections.
-        """
-        # Order optimized for S3 bucket -- filter out as many files as soon as possible.
-        return self.instrument.makeCollectionName("prompt", f"output-{date}")
-
-    def _get_preload_run(self,
-                         date: str) -> str:
-        """Generate a deterministic preload collection name that avoids
-        configuration conflicts.
-
-        Parameters
-        ----------
-        date : `str`
-            Date of the processing run (not observation!).
-
-        Returns
-        -------
-        run : `str`
-            The run in which to place preload/pre-execution products.
-        """
-        return self._get_output_run("NoPipeline", date)
-
-    def _get_init_output_run(self,
-                             pipeline_file: str,
-                             date: str) -> str:
-        """Generate a deterministic init-output collection name that avoids
-        configuration conflicts.
-
-        Parameters
-        ----------
-        pipeline_file : `str`
-            The pipeline file that the run will be used for.
-        date : `str`
-            Date of the processing run (not observation!).
-
-        Returns
-        -------
-        run : `str`
-            The run in which to place pipeline init-outputs.
-        """
-        # Current executor requires that init-outputs be in the same run as
-        # outputs. This can be changed once DM-36162 is done.
-        return self._get_output_run(pipeline_file, date)
-
-    def _get_output_run(self,
-                        pipeline_file: str,
-                        date: str) -> str:
-        """Generate a deterministic collection name that avoids version or
-        provenance conflicts.
-
-        Parameters
-        ----------
-        pipeline_file : `str`
-            The pipeline file that the run will be used for.
-        date : `str`
-            Date of the processing run (not observation!).
-
-        Returns
-        -------
-        run : `str`
-            The run in which to place processing outputs.
-        """
-        pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
-        # Order optimized for S3 bucket -- filter out as many files as soon as possible.
-        return "/".join([self._get_output_chain(date), pipeline_name, self._deployment])
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
         """
         self.butler.registry.refresh()
         self.butler.registry.registerCollection(
-            self._get_preload_run(self._day_obs),
+            runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
             CollectionType.RUN)
         for pipeline_file in self._get_all_pipeline_files():
             self.butler.registry.registerCollection(
-                self._get_init_output_run(pipeline_file, self._day_obs),
-                CollectionType.RUN)
-            self.butler.registry.registerCollection(
-                self._get_output_run(pipeline_file, self._day_obs),
+                runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
     def _get_all_pipeline_files(self) -> collections.abc.Iterable[str]:
@@ -1275,9 +1136,8 @@ class MiddlewareInterface:
 
         Returns
         -------
-        init_output_run, output_run : `str`
-            The runs to which the successful pipeline wrote its init-outputs
-            and outputs, respectively.
+        output_run : `str`
+            The run to which the successful pipeline wrote its outputs.
 
         Raises
         ------
@@ -1296,10 +1156,9 @@ class MiddlewareInterface:
                 pipeline = self._prep_pipeline(pipeline_file)
             except FileNotFoundError as e:
                 raise InvalidPipelineError(f"Could not load {pipeline_file}.") from e
-            init_output_run = self._get_init_output_run(pipeline_file, self._day_obs)
-            output_run = self._get_output_run(pipeline_file, self._day_obs)
+            output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
             exec_butler = Butler(butler=self.butler,
-                                 collections=[output_run, init_output_run]
+                                 collections=[output_run]
                                  + in_collections
                                  + list(self.butler.collections.defaults),
                                  run=output_run)
@@ -1342,7 +1201,7 @@ class MiddlewareInterface:
                         graph_executor=self._get_graph_executor(exec_butler, factory)
                     )
                     _log.info(f"{label.capitalize()} pipeline successfully run.")
-                    return init_output_run, output_run
+                    return output_run
             except Exception as e:
                 raise PipelineExecutionError(f"Execution failed for {pipeline_file}.") from e
             finally:
@@ -1379,7 +1238,7 @@ class MiddlewareInterface:
             f"instrument='{self.visit.instrument}' and detector={self.visit.detector} "
             f"and group='{self.visit.groupId}'"
         )
-        preload_run = self._get_preload_run(self._day_obs)
+        preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
 
         self._try_pipelines(self._get_pre_pipeline_files(),
                             in_collections=[preload_run],
@@ -1465,13 +1324,13 @@ class MiddlewareInterface:
             f"instrument='{self.visit.instrument}' and detector={self.visit.detector}"
             f" and exposure in ({','.join(str(x) for x in exposure_ids)})"
         )
-        preload_run = self._get_preload_run(self._day_obs)
-        init_pre_runs = [self._get_init_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
-        pre_runs = [self._get_output_run(f, self._day_obs) for f in self._get_pre_pipeline_files()]
+        preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
+        pre_runs = [runs.get_output_run(self.instrument, self._deployment, f, self._day_obs)
+                    for f in self._get_pre_pipeline_files()]
 
         try:
             self._try_pipelines(self._get_main_pipeline_files(),
-                                in_collections=pre_runs + init_pre_runs + [preload_run],
+                                in_collections=pre_runs + [preload_run],
                                 data_ids=where,
                                 label="main",
                                 )
@@ -1516,11 +1375,9 @@ class MiddlewareInterface:
             return
 
         # Rather than determining which pipeline was run, just try to export all of them.
-        output_runs = [self._get_preload_run(self._day_obs)]
+        output_runs = [runs.get_preload_run(self.instrument, self._deployment, self._day_obs)]
         for f in self._get_all_pipeline_files():
-            output_runs.extend([self._get_init_output_run(f, self._day_obs),
-                                self._get_output_run(f, self._day_obs),
-                                ])
+            output_runs.append(runs.get_output_run(self.instrument, self._deployment, f, self._day_obs))
         try:
             with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
                 exports = self._export_subset(exposure_ids,
@@ -1533,7 +1390,7 @@ class MiddlewareInterface:
                 if exports:
                     populated_runs = {ref.run for ref in exports}
                     _log.info(f"Pipeline products saved to collections {populated_runs}.")
-                    output_chain = self._get_output_chain(self._day_obs)
+                    output_chain = runs.get_output_chain(self.instrument, self._day_obs)
                     self._chain_exports(output_chain, populated_runs)
                 else:
                     _log.warning("No output datasets match visit=%s and exposures=%s.",
@@ -1792,10 +1649,11 @@ class MiddlewareInterface:
                 )
                 self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
             # Outputs are all in their own runs, so just drop them.
-            preload_run = self._get_preload_run(self._day_obs)
+            preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
             _remove_run_completely(self.butler, preload_run)
             for pipeline_file in self._get_all_pipeline_files():
-                output_run = self._get_output_run(pipeline_file, self._day_obs)
+                output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file,
+                                                 self._day_obs)
                 _remove_run_completely(self.butler, output_run)
 
             # Clean out calibs, templates, and other preloaded datasets
