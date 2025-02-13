@@ -10,6 +10,7 @@ on:
       - 'config/**'
       - 'pipelines/**'
       - 'python/activator/**'
+      - 'python/shared/**'
       - 'tests/**'
       - 'Dockerfile'
   pull_request:
@@ -18,6 +19,7 @@ on:
       - 'config/**'
       - 'pipelines/**'
       - 'python/activator/**'
+      - 'python/shared/**'
       - 'tests/**'
       - 'Dockerfile'
   workflow_dispatch:
