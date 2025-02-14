@@ -5,5 +5,5 @@ description: >-
 imports:
   - location: $AP_PIPE_DIR/pipelines/LATISS/SingleFrame.yaml
     include:
-      - processCcd
+      - apPipeSingleFrame
       - initialPviCore
