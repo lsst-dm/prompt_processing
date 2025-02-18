@@ -7,6 +7,7 @@ on:
       - 'releases/**'
     paths:
       - '.github/workflows/build-service.yml'
+      - '.github/actions/**'
       - 'config/**'
       - 'pipelines/**'
       - 'python/activator/**'
@@ -16,6 +17,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/build-service.yml'
+      - '.github/actions/**'
       - 'config/**'
       - 'pipelines/**'
       - 'python/activator/**'
@@ -58,31 +60,16 @@ jobs:
         baseTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
     name: Test service
     runs-on: ubuntu-latest
-    env:
-      BASE_TAG: ${{ matrix.baseTag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      - name: Fix permissions
-        run: chmod -R a+rwX $GITHUB_WORKSPACE
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
+      - name: "Test service against ${{ env.BASE_IMAGE }}:${{ matrix.baseTag }}"
+        uses: ./.github/actions/test-service
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Run tests
-        run: |
-          docker run \
-              -v $GITHUB_WORKSPACE:/home/lsst/prompt_processing \
-              "$BASE_IMAGE":"$BASE_TAG" \
-              bash -c '
-                  cd /home/lsst/prompt_processing
-                  source /opt/lsst/software/stack/loadLSST.bash
-                  setup -r .
-                  # Fix permissions; arg must be absolute path.
-                  git config --global --add safe.directory /home/lsst/prompt_processing
-                  scons'
+          baseImage: ${{ env.BASE_IMAGE }}
+          baseTag: ${{ matrix.baseTag }}
+          ghcr_user: ${{ github.actor }}
+          ghcr_token: ${{ secrets.GITHUB_TOKEN }}
 
   update-service-image:
     name: Update service image
