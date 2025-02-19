@@ -122,9 +122,8 @@ def main():
 
     _set_s3_bucket()
 
-    last_group = get_last_group(dest_bucket, instrument, date)
-    group = increment_group(instrument, last_group, random.randrange(10, 19))
-    _log.debug(f"Last group {last_group}; new group base {group}")
+    group = get_last_group(dest_bucket, instrument, date)
+    _log.debug(f"Last group {group}")
 
     butler = Butler(configs["repo"])
     visit_list = get_visit_list(
