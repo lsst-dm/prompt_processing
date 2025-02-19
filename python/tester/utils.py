@@ -222,7 +222,7 @@ def make_hsc_id(group_id, snap):
     exposure_id = int(group_id)
     if exposure_id > max_exposure["HSC"]:
         raise RuntimeError(f"{group_id} translated to expId {exposure_id}, "
-                           f"max allowed is { max_exposure['HSC']}.")
+                           f"max allowed is {max_exposure['HSC']}.")
     return exposure_id, {"EXP-ID": f"HSCE{exposure_id:08d}"}
 
 
