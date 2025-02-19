@@ -4,12 +4,14 @@ on:
   push:
     paths:
       - '.github/workflows/build-base.yml'
+      - '.github/actions/**'
       - 'base/Dockerfile'
     branches:
       - main
   pull_request:
     paths:
       - '.github/workflows/build-base.yml'
+      - '.github/actions/**'
       - 'base/Dockerfile'
   workflow_dispatch:
     inputs:
@@ -52,7 +54,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Determine base image eups tag
+      - id: resolve_tags
+        name: Resolve input tags
+        # Working-directory seeds files for build step
         working-directory: base
         run: |
           if [[ -n "$STACK_TAG" ]]; then
@@ -72,12 +76,21 @@ jobs:
             echo "d_latest" > stack.tag
           fi
           echo "Docker tag = $(< lsst.docker.tag)"
+          echo "docker_tag=$(< lsst.docker.tag)" >> "$GITHUB_OUTPUT"
           echo "Stack tag = $(< stack.tag)"
-          docker run "$PIPE_CONTAINER":"$(< lsst.docker.tag)" bash -c "cat conda/envs/lsst-scipipe-*/share/eups/ups_db/global.tags" > eups.tag || docker run "$PIPE_CONTAINER":"$(< lsst.docker.tag)" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag || echo "Unknown" > eups.tag
-          echo "Eups tag = $(< eups.tag)"
+      - id: eups
+        name: Determine base image eups tag
+        uses: ./.github/actions/get-eups-tag
+        with:
+          image: ${{ env.PIPE_CONTAINER }}
+          tag: ${{ steps.resolve_tags.outputs.docker_tag }}
+          ghcr_user: ${{ github.actor }}
+          ghcr_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build image
         # Context-free build
         working-directory: base
+        env:
+          EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
         run: |
           docker build - \
             --build-arg "PIPE_CONTAINER=${PIPE_CONTAINER}" \
@@ -85,10 +98,12 @@ jobs:
             --tag $IMAGE_NAME \
             --label "runnumber=${GITHUB_RUN_ID}" \
             --label "stacktag=$(< stack.tag)" \
-            --label "eupstag=$(< eups.tag)" \
+            --label "eupstag=${EUPS_TAG}" \
             < Dockerfile
       - name: Push image to registries
         working-directory: base
+        env:
+          EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
         run: |
           BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
           [ "$BRANCH" == "merge" ] && BRANCH=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
@@ -106,7 +121,6 @@ jobs:
             docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
             docker push $IMAGE_ID:$VERSION
 
-            EUPS_TAG=$(< eups.tag)
             if [ "$EUPS_TAG" != "Unknown" ] && [ "$STACK_TAG" != "$EUPS_TAG" ]; then
               # Also push actual eups tag if not the same (e.g. d_latest)
               if [ "$BRANCH" == "main" ]; then

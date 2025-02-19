@@ -1,0 +1,46 @@
+name: "Determine EUPS tag"
+inputs:
+  image:
+    description: The fully qualified name of the pipelines or base container.
+    required: true
+    type: string
+  tag:
+    description: The tag of the container; may be an abstract tag like "latest".
+    required: true
+    type: string
+  ghcr_user:
+    description: The user name for logging in to GHCR.
+    required: true
+    type: string
+  ghcr_token:
+    description: The token for logging in to GHCR.
+    required: true
+    type: string
+outputs:
+  eups_tag:
+    description: The fully resolved EUPS tag of the container.
+    value: ${{ steps.extract-eups-tag.outputs.tag }}
+
+runs:
+  using: composite
+  steps:
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ inputs.ghcr_user }}
+        password: ${{ inputs.ghcr_token }}
+    - id: extract-eups-tag
+      name: Determine eups tag
+      env:
+        BASE_IMAGE: ${{ inputs.image }}
+        BASE_TAG: ${{ inputs.tag }}
+      shell: bash
+      run: |
+        docker run "$BASE_IMAGE":"$BASE_TAG" bash \
+            -c "cat conda/envs/lsst-scipipe-*/share/eups/ups_db/global.tags" > eups.tag \
+        || docker run "$BASE_IMAGE":"$BASE_TAG" bash \
+            -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag \
+        || echo "Unknown" > eups.tag
+        echo "tag=$(< eups.tag)" >> $GITHUB_OUTPUT
+        echo "Eups tag = $(< eups.tag)"

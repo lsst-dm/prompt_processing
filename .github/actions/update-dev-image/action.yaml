@@ -39,19 +39,20 @@ runs:
         registry: ghcr.io
         username: ${{ inputs.ghcr_user }}
         password: ${{ inputs.ghcr_token }}
-    - name: Determine eups tag
-      env:
-        BASE_IMAGE: ${{ inputs.baseImage }}
-        BASE_TAG: ${{ inputs.baseTag }}
-      shell: bash
-      run: |
-        docker run "$BASE_IMAGE":"$BASE_TAG" bash -c "cat conda/envs/lsst-scipipe-*/share/eups/ups_db/global.tags" > eups.tag || docker run "$BASE_IMAGE":"$BASE_TAG" bash -c "cat stack/miniconda*/ups_db/global.tags" > eups.tag || echo "Unknown" > eups.tag
-        echo "Eups tag = $(< eups.tag)"
+    - id: eups
+      name: Determine eups tag
+      uses: ./.github/actions/get-eups-tag
+      with:
+        image: ${{ inputs.baseImage }}
+        tag: ${{ inputs.baseTag }}
+        ghcr_user: ${{ inputs.ghcr_user }}
+        ghcr_token: ${{ inputs.ghcr_token }}
     - name: Build image
       env:
         IMAGE_NAME: ${{ inputs.imageName }}
         BASE_IMAGE: ${{ inputs.baseImage }}
         BASE_TAG: ${{ inputs.baseTag }}
+        EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
       shell: bash
       run: |
         docker build . -f Dockerfile \
@@ -59,12 +60,13 @@ runs:
           --tag $IMAGE_NAME \
           --label "runnumber=${GITHUB_RUN_ID}" \
           --label "basetag=${BASE_TAG}" \
-          --label "eupstag=$(< eups.tag)"
+          --label "eupstag=${EUPS_TAG}"
     - name: Push image to container registries
       env:
         IMAGE_NAME: ${{ inputs.imageName }}
         BASE_IMAGE: ${{ inputs.baseImage }}
         BASE_TAG: ${{ inputs.baseTag }}
+        EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
       shell: bash
       run: |
         BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
@@ -80,7 +82,6 @@ runs:
           echo VERSION=$VERSION
           docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
           docker push $IMAGE_ID:$VERSION
-          EUPS_TAG=$(< eups.tag)
           if [ "$EUPS_TAG" != "Unknown" ] && [ "$BASE_TAG" != "$EUPS_TAG" ]; then
             if [ "$BRANCH" == "main" ]; then
               VERSION="$EUPS_TAG"
