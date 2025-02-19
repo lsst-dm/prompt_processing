@@ -112,15 +112,22 @@ def process_group(kafka_url, visit_infos, uploader):
 
 
 def main():
-    if len(sys.argv) < 3:
-        print(f"Usage: {sys.argv[0]} INSTRUMENT N_GROUPS")
+    if len(sys.argv) < 4:
+        print(f"Usage: {sys.argv[0]} INSTRUMENT N_GROUPS PLATFORM")
         sys.exit(1)
     instrument = sys.argv[1]
     n_groups = int(sys.argv[2])
+    platform = sys.argv[3].upper()
 
     date = time.strftime("%Y%m%d")
 
-    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
+    if platform == "KNATIVE":
+        _log.info("Running upload for Knative platform")
+        kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
+    elif platform == "KEDA":
+        _log.info("Running upload for Keda platform")
+        kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit-job"
+
     endpoint_url = "https://s3dfrgw.slac.stanford.edu"
     s3 = boto3.resource("s3", endpoint_url=endpoint_url)
     dest_bucket = s3.Bucket("rubin-pp-dev")
