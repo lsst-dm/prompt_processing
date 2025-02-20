@@ -483,16 +483,17 @@ Install the Prompt Processing code, and set it up before use:
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin-pp-dev`` S3 bucket, simulating incoming raw images.
 
-``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, LSSTComCamSim, and LSSTCam-imSim) and the number of groups of images to send.
+``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, LSSTComCamSim, and LSSTCam-imSim), number of groups
+ of images to send, and the platform (KNATIVE or KEDA).
 
 Sample command line:
 
 .. code-block:: sh
 
-   python upload.py HSC 3
-   python upload.py LATISS 3
-   python upload.py LSSTComCamSim 1
-   python upload.py LSSTCam-imSim 2
+   python upload.py HSC 3 KNATIVE
+   python upload.py LATISS 3 KEDA
+   python upload.py LSSTComCamSim 1 KNATIVE
+   python upload.py LSSTCam-imSim 2 KEDA
 
 This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 
@@ -504,15 +505,16 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 * For LSSTComCamSim, 2 groups, in total 18 raw fits files and their corresponding json metadata files, are curated.
 * For LSSTCam-imSim, 2 groups, in total 3 raw fits files and custom-made json metadata files, are curated.
 
-``python/tester/upload_from_repo.py``: Command line arguments are a configuration file and the number of groups of images to send.
+``python/tester/upload_from_repo.py``: Command line arguments are a configuration file, the number of groups of images to send, and the
+platform (KNATIVE or KEDA).
 
 Sample command line:
 
 .. code-block:: sh
 
-   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/HSC.yaml 3
-   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LATISS.yaml 4
-   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LSSTComCamSim.yaml 2 --ordered
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/HSC.yaml 3 KEDA
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LATISS.yaml 4 KNATIVE
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LSSTComCamSim.yaml 2 KEDA --ordered
 
 This scripts draws images from a butler repository as defined in the input configuration file.
 A butler query constrains the data selection.
