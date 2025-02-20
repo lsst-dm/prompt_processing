@@ -82,7 +82,7 @@ def _make_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "config",
-        help="URI to a YAML file contianing the configurations "
+        help="URI to a YAML file containing the configurations "
              "of the upload test, including the instrument name "
              "the data repo, and the dataset selection.",
     )
@@ -90,6 +90,11 @@ def _make_parser():
         "n_groups",
         type=int,
         help="The number of groups to upload.",
+    )
+    parser.add_argument(
+        "platform",
+        type=str,
+        help="KNATIVE or KEDA for the the platform",
     )
     parser.add_argument(
         "--ordered",
@@ -105,10 +110,15 @@ def main():
     with open(args.config) as file:
         configs = yaml.safe_load(file)
     instrument = configs["instrument"]
+    platform = args.platform.upper()
 
     date = time.strftime("%Y%m%d")
 
-    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
+    if platform == "KNATIVE":
+        kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
+    elif platform == "KEDA":
+        kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit-job"
+
     _set_s3_bucket()
 
     last_group = get_last_group(dest_bucket, instrument, date)
