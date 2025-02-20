@@ -1,9 +1,9 @@
 description: >-
   Single-frame pipeline for the case in which
-  no templates exist, specialized for LSSTComCam
+  no templates exist, specialized for LSSTCam-imSim
 
 imports:
-  - location: $AP_PIPE_DIR/pipelines/LSSTComCam/SingleFrame.yaml
+  - location: $AP_PIPE_DIR/pipelines/LSSTCam-imSim/SingleFrame.yaml
     include:
       - apPipeSingleFrame
       - initialPviCore
