@@ -7,3 +7,4 @@
 !pipelines
 !config/gunicorn.conf.py
 !maps
+!bin.src/write_init_outputs.py

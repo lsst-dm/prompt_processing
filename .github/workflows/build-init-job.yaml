@@ -1,0 +1,95 @@
+---
+name: "Build and test initializer"
+on:
+  push:
+    branches:
+      - main
+      - 'releases/**'
+    paths:
+      - '.github/workflows/build-init-job.yaml'
+      - '.github/actions/**'
+      - 'config/**'
+      - 'pipelines/**'
+      - 'python/initializer/**'
+      - 'python/shared/**'
+      - 'tests/**'
+      - 'init-output-run/Dockerfile'
+  pull_request:
+    paths:
+      - '.github/workflows/build-init-job.yaml'
+      - '.github/actions/**'
+      - 'config/**'
+      - 'pipelines/**'
+      - 'python/initializer/**'
+      - 'python/shared/**'
+      - 'tests/**'
+      - 'init-output-run/Dockerfile'
+  workflow_dispatch:
+
+permissions:
+  packages: write
+
+env:
+  IMAGE_NAME: prompt-init
+  IMAGE_DOCKERDIR: init-output-run
+  BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/prompt-base
+
+  # This is a bracketed, comma-separated list of double-quoted base container
+  # tags that will be used to build service containers on each branch
+  # (including "main").  Typically, any tags listed beyond "latest" would be
+  # relatively stable Pipelines containers that are needed to avoid issues with
+  # the "latest" version; they would remain in this list until "latest" becomes
+  # usable for all building and testing.
+  BASE_TAG_LIST: '["latest"]'
+
+jobs:
+  matrix-gen:
+    # This job exists solely because fromJSON() cannot directly accept
+    # env.BASE_TAG_LIST for some reason.
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: echo "matrix=${BASE_TAG_LIST}" >> $GITHUB_OUTPUT
+
+  # Do testing and building in separate jobs to keep total disk usage down
+  test-service:
+    needs: matrix-gen
+    strategy:
+      matrix:
+        baseTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
+    name: Test service
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: "Test service against ${{ env.BASE_IMAGE }}:${{ matrix.baseTag }}"
+        uses: ./.github/actions/test-service
+        with:
+          baseImage: ${{ env.BASE_IMAGE }}
+          baseTag: ${{ matrix.baseTag }}
+          ghcr_user: ${{ github.actor }}
+          ghcr_token: ${{ secrets.GITHUB_TOKEN }}
+
+  update-init-image:
+    name: Update init image
+    needs:
+      - matrix-gen
+      - test-service
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        baseTag: ${{ fromJSON(needs.matrix-gen.outputs.matrix) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Build and push image
+        uses: ./.github/actions/update-dev-image
+        with:
+          imageName: ${{ env.IMAGE_NAME }}
+          dockerDir: ${{ env.IMAGE_DOCKERDIR }}
+          baseImage: ${{ env.BASE_IMAGE }}
+          baseTag: ${{ matrix.baseTag }}
+          ghcr_user: ${{ github.actor }}
+          ghcr_token: ${{ secrets.GITHUB_TOKEN }}

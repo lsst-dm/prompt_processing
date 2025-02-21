@@ -328,8 +328,7 @@ To inspect table permissions:
    \dp
 
 Most tables should grant the SELECT (r) and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcomcamsim_prompt``).
-Some tables need INSERT (a).
-Table ``collection_chain`` also needs DELETE (d).
+Some tables also need INSERT (a) and DELETE (d).
 
 We need SELECT (r) and USAGE (U) permissions for the sequence ``collection_seq_collection_id``, but *not* for ``dataset_calibs_*_seq_id``, ``dataset_type_seq_id``, or ``dimension_graph_key_seq_id``.
 We expect that most future sequences will only be touched by repository maintenance and not by pipeline runs or data transfers.
@@ -375,25 +374,42 @@ See the `Phalanx`_ docs for information on working with Phalanx in general (incl
 
 There are two different ways to deploy a development release of the service:
 
-* If you will not be making permanent changes to the Phalanx config, go to the Argo UI, select the specific ``prompt-keda-<instrument>`` service, then select the "scaledjob" node.
-  Scroll down to the live manifest, click "edit", then update the ``template.spec.containers.image`` key to point to the new service container (likely a ticket branch instead of ``latest``).
-  The service will immediately redeploy with the new image.
-  To force an update of the Knative container without config changes, edit ``template.metadata.annotations.revision`` (this feature is not needed in Keda).
-  *Do not* click "SYNC" on the main screen, as that will undo all your edits.
-* If you will be making permanent changes of any kind, the above procedure would force you to re-enter your changes with each update of the ``phalanx`` branch.
-  Instead, clone the `lsst-sqre/phalanx`_ repo and navigate to the ``applications/prompt-keda-<instrument>`` directory.
-  Edit ``values-usdfdev-prompt-processing.yaml`` to point to the new service container (likely a ticket branch instead of ``latest``) and push the branch.
-  You do not need to create a PR.
-  Then, in the Argo UI, follow the instructions in `the Phalanx docs <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#switching-the-argo-cd-application-to-sync-the-branch>`_.
-  To force a container update without a corresponding ``phalanx`` update, you need to edit ``template.metadata.annotations.revision`` as described above -- `restarting a deployment <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#restarting-a-deployment>`_ that's part of a service does not check for a newer container, even with Always pull policy.
+**Argo patching**:
+If you will not be making permanent changes to the Phalanx config, go to the Argo UI, select the specific ``prompt-keda-<instrument>`` service, then select "Details" from the top bar.
+Open the "Parameters" tab, click "edit", then update the ``prompt-keda.image.tag`` key to point to the new service container (likely a ticket branch instead of ``latest``).
+The changes will not take effect until you click "SYNC" on the main screen.
+To force an update of the Knative container without config changes, edit ``prompt-proto-service.podAnnotations.revision`` (this feature is not needed in Keda).
+Changes made in the Parameters tab last indefinitely, so be sure to undo them by clicking "edit" followed by the "Remove override" link.
+
+.. important::
+
+   Never remove the overrides for ``global.host``, ``global.baseUrl``, or ``global.vaultSecretsPath``.
+
+.. note::
+
+   Changes to parameters do not show up in any Diff and aren't overwritten by syncing to a branch.
+   The only way to see if a parameter has been changed is to go to the Parameters tab; all overridden parameters are grouped at the top of the list.
+
+**Phalanx branch**:
+If you will be making permanent changes, clone the `lsst-sqre/phalanx`_ repo and navigate to the ``applications/prompt-keda-<instrument>`` directory.
+Edit ``values-usdfdev-prompt-processing.yaml`` to point to the new service container (likely a ticket branch instead of ``latest``) and push the branch.
+You do not need to create a PR.
+Then, in the Argo UI, follow the instructions in `the Phalanx docs <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#switching-the-argo-cd-application-to-sync-the-branch>`_.
+To force a container update without a corresponding ``phalanx`` update, you need to edit ``template.metadata.annotations.revision`` as described above -- `restarting a deployment <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#restarting-a-deployment>`_ that's part of a service does not check for a newer container, even with Always pull policy.
+
+.. note::
+
+   We used to be able to make changes in Argo by directly patching the Kubernetes config for specific Service/ScaledJob nodes.
+   This is no longer safe, because there are multiple components that need to share certain configs.
+   Always do your updates either in Argo's Parameters view or in ``values*.yaml`` files.
 
 .. _Phalanx: https://phalanx.lsst.io/developers/
 .. _lsst-sqre/phalanx: https://github.com/lsst-sqre/phalanx/
 
 The service configuration is in each instrument's ``values.yaml`` (for settings shared between development and production) and ``values-usdfdev-prompt-processing.yaml`` (for development-only settings).
 ``values.yaml`` and ``README.md`` provide documentation for all settings.
-The actual Kubernetes config (and the implementation of new config settings or secrets) is in ``charts/prompt-keda/templates/scaled-job.yaml``.
-This file fully supports the Go template syntax.
+The actual Kubernetes configs (and the implementation of new config settings or secrets) are in ``charts/prompt-keda/templates/``.
+These files fully support the Go template syntax.
 
 A few useful commands for managing the service:
 
