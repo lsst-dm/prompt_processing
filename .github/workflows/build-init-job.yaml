@@ -1,36 +1,37 @@
 ---
-name: "Build and test service"
+name: "Build and test initializer"
 on:
   push:
     branches:
       - main
       - 'releases/**'
     paths:
-      - '.github/workflows/build-service.yml'
+      - '.github/workflows/build-init-job.yaml'
       - '.github/actions/**'
       - 'config/**'
       - 'pipelines/**'
-      - 'python/activator/**'
+      - 'python/initializer/**'
       - 'python/shared/**'
       - 'tests/**'
-      - 'Dockerfile'
+      - 'init-output-run/Dockerfile'
   pull_request:
     paths:
-      - '.github/workflows/build-service.yml'
+      - '.github/workflows/build-init-job.yaml'
       - '.github/actions/**'
       - 'config/**'
       - 'pipelines/**'
-      - 'python/activator/**'
+      - 'python/initializer/**'
       - 'python/shared/**'
       - 'tests/**'
-      - 'Dockerfile'
+      - 'init-output-run/Dockerfile'
   workflow_dispatch:
 
 permissions:
   packages: write
 
 env:
-  IMAGE_NAME: prompt-service
+  IMAGE_NAME: prompt-init
+  IMAGE_DOCKERDIR: init-output-run
   BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/prompt-base
 
   # This is a bracketed, comma-separated list of double-quoted base container
@@ -71,8 +72,8 @@ jobs:
           ghcr_user: ${{ github.actor }}
           ghcr_token: ${{ secrets.GITHUB_TOKEN }}
 
-  update-service-image:
-    name: Update service image
+  update-init-image:
+    name: Update init image
     needs:
       - matrix-gen
       - test-service
@@ -87,6 +88,7 @@ jobs:
         uses: ./.github/actions/update-dev-image
         with:
           imageName: ${{ env.IMAGE_NAME }}
+          dockerDir: ${{ env.IMAGE_DOCKERDIR }}
           baseImage: ${{ env.BASE_IMAGE }}
           baseTag: ${{ matrix.baseTag }}
           ghcr_user: ${{ github.actor }}
