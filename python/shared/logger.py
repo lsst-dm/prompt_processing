@@ -28,7 +28,7 @@ import logging
 import os
 import threading
 
-import lsst.daf.butler
+import lsst.daf.butler.cli.cliLog
 
 try:
     import lsst.log as lsst_log
