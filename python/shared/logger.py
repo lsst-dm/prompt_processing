@@ -28,7 +28,7 @@ import logging
 import os
 import threading
 
-import lsst.daf.butler as daf_butler
+import lsst.daf.butler.cli.cliLog
 
 try:
     import lsst.log as lsst_log
@@ -68,7 +68,7 @@ def _set_lsst_logging_levels():
                       ]
 
     log_request = os.environ.get("SERVICE_LOG_LEVELS", "")
-    daf_butler.cli.cliLog.CliLog.setLogLevels(default_levels + _parse_log_levels(log_request))
+    lsst.daf.butler.cli.cliLog.CliLog.setLogLevels(default_levels + _parse_log_levels(log_request))
 
 
 def _channel_all_to_pylog():
