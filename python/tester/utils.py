@@ -300,7 +300,7 @@ def make_imsim_id(group_id, snap):
     exposure_num += 6000000
     if exposure_num > max_exposure["LSSTCam-imSim"]:
         raise RuntimeError(f"{group_id} translated to expId {exposure_num}, "
-                           f"max allowed is { max_exposure['LSSTCam-imSim']}.")
+                           f"max allowed is {max_exposure['LSSTCam-imSim']}.")
     return exposure_num, {
         "OBSID": exposure_num,
         # These headers do not exist in original imsim files, but are added for
