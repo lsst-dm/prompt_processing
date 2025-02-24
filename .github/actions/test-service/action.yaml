@@ -1,0 +1,53 @@
+# General pre-release tester. This is a composite action rather than a reusable
+# workflow to give the caller more flexibility in defining the inputs (e.g.,
+# using env).
+
+name: Test service
+inputs:
+  baseImage:
+    description: The fully qualified name of the PP base container to use for testing.
+    required: true
+    type: string
+  baseTag:
+    description: The tag of the PP base container to use for testing.
+    required: true
+    type: string
+  ghcr_user:
+    description: The user name for logging in to GHCR.
+    required: true
+    type: string
+  ghcr_token:
+    description: The token for logging in to GHCR.
+    required: true
+    type: string
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Fix permissions
+      shell: bash
+      run: chmod -R a+rwX $GITHUB_WORKSPACE
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ inputs.ghcr_user }}
+        password: ${{ inputs.ghcr_token }}
+    - name: Run tests
+      env:
+        BASE_IMAGE: ${{ inputs.baseImage }}
+        BASE_TAG: ${{ inputs.baseTag }}
+      shell: bash
+      run: |
+        docker run \
+            -v $GITHUB_WORKSPACE:/home/lsst/prompt_processing \
+            "$BASE_IMAGE":"$BASE_TAG" \
+            bash -c '
+                cd /home/lsst/prompt_processing
+                source /opt/lsst/software/stack/loadLSST.bash
+                setup -r .
+                # Fix permissions; arg must be absolute path.
+                git config --global --add safe.directory /home/lsst/prompt_processing
+                scons'

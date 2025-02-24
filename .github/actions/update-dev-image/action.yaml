@@ -1,0 +1,95 @@
+# General builder for (EUPS-labeled) dev containers. This is a composite action
+# rather than a reusable workflow to give the caller more flexibility in
+# defining the inputs (e.g., using env).
+
+name: "Update dev image"
+inputs:
+  imageName:
+    description: The container image to update.
+    required: true
+    type: string
+  baseImage:
+    description: The fully qualified name of the PP base container to build from.
+    required: true
+    type: string
+  baseTag:
+    description: The tag of the PP base container to build from.
+    required: true
+    type: string
+  ghcr_user:
+    description: The user name for logging in to GHCR.
+    required: true
+    type: string
+  ghcr_token:
+    description: The token for logging in to GHCR.
+    required: true
+    type: string
+
+permissions:
+  packages: write
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ inputs.ghcr_user }}
+        password: ${{ inputs.ghcr_token }}
+    - id: eups
+      name: Determine eups tag
+      uses: ./.github/actions/get-eups-tag
+      with:
+        image: ${{ inputs.baseImage }}
+        tag: ${{ inputs.baseTag }}
+        ghcr_user: ${{ inputs.ghcr_user }}
+        ghcr_token: ${{ inputs.ghcr_token }}
+    - name: Build image
+      env:
+        IMAGE_NAME: ${{ inputs.imageName }}
+        BASE_IMAGE: ${{ inputs.baseImage }}
+        BASE_TAG: ${{ inputs.baseTag }}
+        EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
+      shell: bash
+      run: |
+        docker build . -f Dockerfile \
+          --build-arg "BASE_TAG=$BASE_TAG" \
+          --tag $IMAGE_NAME \
+          --label "runnumber=${GITHUB_RUN_ID}" \
+          --label "basetag=${BASE_TAG}" \
+          --label "eupstag=${EUPS_TAG}"
+    - name: Push image to container registries
+      env:
+        IMAGE_NAME: ${{ inputs.imageName }}
+        BASE_IMAGE: ${{ inputs.baseImage }}
+        BASE_TAG: ${{ inputs.baseTag }}
+        EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
+      shell: bash
+      run: |
+        BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
+        [ "$BRANCH" == "merge" ] && BRANCH=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
+
+        for IMAGE_ID in "ghcr.io/${{ github.repository_owner }}/$IMAGE_NAME"; do
+          if [ "$BRANCH" == "main" ]; then
+            VERSION="$BASE_TAG"
+          else
+            VERSION="${BRANCH}-$BASE_TAG"
+          fi
+          echo IMAGE_ID=$IMAGE_ID
+          echo VERSION=$VERSION
+          docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+          docker push $IMAGE_ID:$VERSION
+          if [ "$EUPS_TAG" != "Unknown" ] && [ "$BASE_TAG" != "$EUPS_TAG" ]; then
+            if [ "$BRANCH" == "main" ]; then
+              VERSION="$EUPS_TAG"
+            else
+              VERSION="${BRANCH}-$EUPS_TAG"
+            fi
+            echo VERSION=$VERSION
+            docker tag $IMAGE_NAME $IMAGE_ID:$VERSION
+            docker push $IMAGE_ID:$VERSION
+          fi
+        done
