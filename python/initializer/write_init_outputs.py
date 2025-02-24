@@ -24,6 +24,7 @@ __all__ = ["main", "make_parser"]
 
 
 import argparse
+import collections.abc
 import logging
 import os
 import yaml
@@ -35,7 +36,7 @@ import lsst.pipe.base
 
 from shared.config import PipelinesConfig
 from shared.logger import setup_usdf_logger
-from shared.run_utils import get_output_run, get_day_obs, get_deployment
+from shared.run_utils import get_output_chain, get_output_run, get_day_obs, get_deployment
 
 
 _log = logging.getLogger("lsst." + __name__)
@@ -99,12 +100,15 @@ def main(args=None):
 
     instrument = lsst.obs.base.Instrument.from_string(instrument_name, butler.registry)
 
+    runs = []
     for pipeline in pre_pipelines.get_all_pipeline_files():
-        _make_init_outputs(butler, instrument, apdb, deploy_id, pipeline)
+        runs.append(_make_init_outputs(butler, instrument, apdb, deploy_id, pipeline))
     for pipeline in main_pipelines.get_all_pipeline_files():
-        _make_init_outputs(butler, instrument, apdb, deploy_id, pipeline)
-
+        runs.append(_make_init_outputs(butler, instrument, apdb, deploy_id, pipeline))
+    butler.registry.refresh()  # Ensure Butler reflects new collections
     _log.info("Registered init-outputs in %s.", repo)
+
+    _make_output_chain(butler, instrument, runs)
 
 
 def _get_current_day_obs() -> str:
@@ -169,3 +173,35 @@ def _make_init_outputs(base_butler: lsst.daf.butler.Butler,
 
     graph.init_output_run(output_butler)
     return run
+
+
+def _make_output_chain(butler: lsst.daf.butler.Butler,
+                       instrument: lsst.obs.base.Instrument,
+                       runs: collections.abc.Sequence[str],
+                       ) -> str:
+    """Set up a shared chained collection for the output runs.
+
+    If the chain already exists, the new runs are prepended to the existing
+    contents.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        A writeable Butler pointing to the target repository.
+    instrument : `lsst.obs.base.Instrument`
+        The instrument for which to generate init-outputs.
+    runs : sequence [`str`]
+        The runs to add to the chain, in search order.
+
+    Returns
+    -------
+    chain : `str`
+        The newly created chained collection.
+    """
+    chain = get_output_chain(instrument, _get_current_day_obs())
+    _log.info("Creating output chain %s...", chain)
+
+    butler.collections.register(chain, lsst.daf.butler.CollectionType.CHAINED)
+    butler.collections.prepend_chain(chain, runs)
+
+    return chain
