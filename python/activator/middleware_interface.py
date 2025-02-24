@@ -32,7 +32,6 @@ import tempfile
 import typing
 
 import astropy
-import sqlalchemy
 
 import lsst.utils.timer
 from lsst.resources import ResourcePath
@@ -1405,8 +1404,6 @@ class MiddlewareInterface:
                 if exports:
                     populated_runs = {ref.run for ref in exports}
                     _log.info(f"Pipeline products saved to collections {populated_runs}.")
-                    output_chain = runs.get_output_chain(self.instrument, self._day_obs)
-                    self._chain_exports(output_chain, populated_runs)
                 else:
                     _log.warning("No output datasets match visit=%s and exposures=%s.",
                                  self.visit, exposure_ids)
@@ -1553,31 +1550,6 @@ class MiddlewareInterface:
             records = src_butler.query_dimension_records(dimension, explain=False, **kwargs)
             # If records don't match, this is not an error, and central takes precedence.
             dest_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
-
-    def _chain_exports(self, output_chain: str, output_runs: collections.abc.Iterable[str]) -> None:
-        """Associate exported datasets with a chained collection in the
-        central Butler.
-
-        Parameters
-        ----------
-        output_chain : `str`
-            The chained collection with which to associate the outputs. Need not exist.
-        output_runs : iterable [`str`]
-            The run collection(s) containing the outputs. Assumed to exist.
-        """
-        with lsst.utils.timer.time_this(_log, msg="export_outputs (chain runs)", level=logging.DEBUG):
-            self.central_butler.registry.refresh()
-            self.central_butler.registry.registerCollection(output_chain, CollectionType.CHAINED)
-
-            try:
-                self.central_butler.collections.prepend_chain(output_chain, output_runs)
-            except sqlalchemy.exc.IntegrityError as e:
-                # HACK: I don't know of a better way to distinguish exceptions
-                # blended by SQLAlchemy. To be removed on DM-43316.
-                if 'duplicate key value violates unique constraint "collection_chain_pkey"' in str(e):
-                    _log.error("Failed to update output chain concurrently; continuing export without retry.")
-                else:
-                    raise
 
     def _query_datasets_by_storage_class(self, butler, exposure_ids, collections, storage_class):
         """Identify all datasets with a particular storage class, regardless of
