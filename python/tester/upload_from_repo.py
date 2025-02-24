@@ -77,9 +77,9 @@ def _set_s3_bucket():
     """
     with time_this(log=_log, msg="Bucket initialization", prefix=None):
         global dest_bucket
-        endpoint_url = "https://s3dfrgw.slac.stanford.edu"
+        endpoint_url = "https://sdfembs3.sdf.slac.stanford.edu"
         s3 = boto3.resource("s3", endpoint_url=endpoint_url)
-        dest_bucket = s3.Bucket("rubin-pp-dev")
+        dest_bucket = s3.Bucket("repo-test")  # Use or5-uploader aws profile to write there
         dest_bucket.meta.client.meta.events.unregister("before-parameter-build.s3", validate_bucket_name)
 
 
