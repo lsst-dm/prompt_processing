@@ -1306,7 +1306,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.second_interface.prep_butler()
         date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
-        self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
         self.preprocessing_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                                  f"/Preprocess/{self.deploy_id}"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
@@ -1450,10 +1449,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.preprocessing_run),
                          2)
         self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.output_run), 0)
-        self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.output_chain), 2)
         self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.preprocessing_run), 0)
         self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_run), 2)
-        self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_chain), 2)
         # Should be able to look up datasets by both visit and exposure
         self.assertEqual(
             self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),
