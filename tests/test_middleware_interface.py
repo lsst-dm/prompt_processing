@@ -57,7 +57,7 @@ from activator.middleware_interface import get_central_butler, flush_local_repo,
     _get_sasquatch_dispatcher, MiddlewareInterface, \
     _filter_datasets, _generic_query, _MissingDatasetError
 from shared.config import PipelinesConfig
-from shared.run_utils import get_output_run, get_deployment
+from shared.run_utils import get_output_run
 from shared.visit import FannedOutVisit
 from test_utils import MockTestCase
 
@@ -84,6 +84,10 @@ pre_pipelines_full = PipelinesConfig([{"survey": "SURVEY",
                                                      "${PROMPT_PROCESSING_DIR}/tests/data/MinPrep.yaml",
                                                      ],
                                        }])
+# The day_obs used for the init-output runs in the test repo.
+sim_date = astropy.time.Time("2025-02-26T00:00:00Z")
+# The deployment ID used in the test repo.
+sim_deployment = "pipelines-e174675-config-8acfde6"
 
 
 def fake_file_data(filename, dimensions, instrument, visit):
@@ -217,7 +221,10 @@ class MiddlewareInterfaceTest(MockTestCase):
         self.setup_patcher(unittest.mock.patch.dict(os.environ,
                                                     {"CONFIG_APDB": config_file.name,
                                                      }))
-        self.deploy_id = get_deployment(apdb_config=config_file.name)
+        self.setup_patcher(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
+        self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
+                                               return_value=sim_deployment))
+        self.deploy_id = sim_deployment
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -350,7 +357,7 @@ class MiddlewareInterfaceTest(MockTestCase):
                 )
 
         # Check that preloaded datasets have been generated
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         preload_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
                              f"NoPipeline/{self.deploy_id}"
         self.assertTrue(
@@ -609,18 +616,12 @@ class MiddlewareInterfaceTest(MockTestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
-                as mock_preexec, \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run:
             with self.assertLogs(self.logger_name, level="INFO") as logs:
                 self.interface.run_pipeline({1})
-        # Pre-execution and execution should only run once, even if graph
-        # generation is attempted for multiple pipelines.
-        mock_preexec.assert_called_once()
-        # Pre-execution may have other arguments as needed; no requirement either way.
-        self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
+        # Execution should only run once, even if graph generation is attempted for multiple pipelines.
         mock_run.assert_called_once()
         # Check that we configured the right pipeline.
         self.assertIn(os.path.join(self.data_dir, 'ApPipe.yaml'), "\n".join(logs.output))
@@ -650,8 +651,7 @@ class MiddlewareInterfaceTest(MockTestCase):
                 unittest.mock.patch(
                     "activator.middleware_interface.SeparablePipelineExecutor.make_quantum_graph",
                     side_effect=graphs), \
-                unittest.mock.patch(
-                    "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+                unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
                 unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
                 self.assertLogs(self.logger_name, level="INFO") as logs:
@@ -759,8 +759,7 @@ class MiddlewareInterfaceTest(MockTestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
@@ -774,8 +773,7 @@ class MiddlewareInterfaceTest(MockTestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
@@ -789,8 +787,7 @@ class MiddlewareInterfaceTest(MockTestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
@@ -804,8 +801,7 @@ class MiddlewareInterfaceTest(MockTestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch.object(self.interface, "main_pipelines", pipelines_minimal), \
@@ -835,19 +831,13 @@ class MiddlewareInterfaceTest(MockTestCase):
         """
         self._prepare_run_preprocessing()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
-                as mock_preexec, \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch.object(self.interface, "pre_pipelines", pre_pipelines_full):
             with self.assertLogs(self.logger_name, level="INFO") as logs:
                 self.interface._run_preprocessing()
-        # Pre-execution and execution should only run once, even if graph
-        # generation is attempted for multiple pipelines.
-        mock_preexec.assert_called_once()
-        # Pre-execution may have other arguments as needed; no requirement either way.
-        self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
+        # Execution should only run once, even if graph generation is attempted for multiple pipelines.
         mock_run.assert_called_once()
         # Check that we configured the right pipeline.
         self.assertIn(os.path.join(self.data_dir, 'Preprocess.yaml'), "\n".join(logs.output))
@@ -1248,7 +1238,10 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         self.setup_patcher(unittest.mock.patch.dict(os.environ,
                                                     {"CONFIG_APDB": config_file.name,
                                                      }))
-        self.deploy_id = get_deployment(apdb_config=config_file.name)
+        self.setup_patcher(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
+        self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
+                                               return_value=sim_deployment))
+        self.deploy_id = sim_deployment
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -1302,7 +1295,7 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
             skymap_name, second_local_repo.name, self.second_local_cache, prefix="file://")
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.second_interface.prep_butler()
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         self.preprocessing_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                                  f"/Preprocess/{self.deploy_id}"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
@@ -1387,7 +1380,7 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         butler_tests.addDatasetType(central_butler, "testData", {"instrument", "exposure", "detector"}, "int")
         # Implementation detail: flush_local_repo looks for output-like
         # collections to avoid transferring inputs.
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
               f"NoPipe/{self.deploy_id}"
 

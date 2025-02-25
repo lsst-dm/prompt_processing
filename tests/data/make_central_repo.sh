@@ -3,7 +3,7 @@
 # tests, making all the files be empty and adjusting the sqlite registry to
 # match.
 
-REPO="${PROMPT_PROCESSING_DIR}/tests/data/central_repo/:?Can't find prompt_processing repo; is it set up?"
+REPO="${PROMPT_PROCESSING_DIR:?Can\'t find prompt_processing repo; is it set up?}/tests/data/central_repo/"
 
 # Force version 6 repo for compatibility testing
 butler create "$REPO" --dimension-config "$DAF_BUTLER_DIR/python/lsst/daf/butler/configs/old_dimensions/daf_butler_universe6.yaml"
@@ -35,6 +35,27 @@ butler collection-chain "$REPO" LSSTComCamSim/calib LSSTComCamSim/calib/DM-46312
 butler collection-chain "$REPO" LSSTComCamSim/templates LSSTComCamSim/runs/OR4_templates/w_2024_23/DM-44718/20240610T044930Z
 butler collection-chain "$REPO" LSSTComCamSim/defaults LSSTComCamSim/calib skymaps refcats pretrained_models
 
+# Create init-outputs (and chain)
+# UI designed to be run from container, not command line
+export RUBIN_INSTRUMENT=LSSTComCamSim
+export CALIB_REPO="$REPO"
+export CONFIG_APDB=foo.yaml
+export PREPROCESSING_PIPELINES_CONFIG="- survey: SURVEY
+  pipelines:
+  - ${PROMPT_PROCESSING_DIR}/tests/data/Preprocess.yaml
+  - ${PROMPT_PROCESSING_DIR}/tests/data/MinPrep.yaml
+  - ${PROMPT_PROCESSING_DIR}/tests/data/NoPrep.yaml
+"
+export MAIN_PIPELINES_CONFIG="- survey: SURVEY
+  pipelines:
+  - ${PROMPT_PROCESSING_DIR}/tests/data/ApPipe.yaml
+  - ${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml
+  - ${PROMPT_PROCESSING_DIR}/tests/data/ISR.yaml
+"
+apdb-cli create-sql "sqlite://" "${CONFIG_APDB}"
+python "${PROMPT_PROCESSING_DIR}/bin/write_init_outputs.py"
+rm -f "${CONFIG_APDB}"
+
 # Empty out files and make them size 0 in the registry.
 # We do not empty the camera or skymap because we actually need to read them.
 for x in `find "$REPO/LSSTComCamSim/calib/curated/" -name "*.fits"`; do : > $x; done
@@ -44,3 +65,4 @@ for x in `find "$REPO/pretrained_models/" -name "*.zip"`; do : > $x; done
 for x in `find "$REPO/refcats/DM-42510/" -name "*.fits"`; do : > $x; done
 for x in `find "$REPO/u/abrought/" -name "*.fits"`; do : > $x; done
 for x in `find "$REPO/u/jchiang/" -name "*.fits"`; do : > $x; done
+for x in `find "$REPO/LSSTComCamSim/prompt/" -type f`; do : > $x; done

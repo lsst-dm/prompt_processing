@@ -593,6 +593,8 @@ class MiddlewareInterface:
             calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
 
         all_datasets = calib_datasets
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (find init-outputs)", level=logging.DEBUG):
+            all_datasets |= set(self._export_init_outputs())
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)", level=logging.DEBUG):
             all_datasets |= set(self._export_ml_models())
 
@@ -808,6 +810,47 @@ class MiddlewareInterface:
         else:
             _log.debug("Found %d new ML model datasets.", len(models))
         return models
+
+    def _get_init_output_types(self, run):
+        """Identify the specific init-output types to query.
+
+        Parameters
+        ----------
+        run : `str`
+            The name of an output run of the pipeline of interest. Different
+            pipelines may produce different sets of init-outputs.
+
+        Returns
+        -------
+        init_types : collection [`str`]
+            The init-output types of interest to Prompt Processing.
+        """
+        # Need to distinguish init-outputs from past visits' outputs.
+        all_names = self.central_butler.collections.get_info(run, include_summary=True).dataset_types
+        all_types = {self.central_butler.registry.getDatasetType(name) for name in all_names}
+        return {t.name for t in all_types if not t.dimensions}
+
+    def _export_init_outputs(self):
+        """Identify the init-output datasets to export from the central butler.
+
+        Returns
+        -------
+        init_outputs : iterable [`lsst.daf.butler.DatasetRef`]
+            The datasets to be exported.
+        """
+        datasets = set()
+        for pipeline_file in self._get_combined_pipeline_files():
+            run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
+            types = self._get_init_output_types(run)
+            # Output runs are always cleared after execution, so _filter_datasets would always warn.
+            # This also means the init-outputs don't need to be cached with _mark_dataset_usage.
+            datasets.update(_generic_query(types, collections=run)(self.central_butler, "source datasets"))
+        if not datasets:
+            raise _MissingDatasetError("Source repo query found no matches.")
+
+        for run, n_datasets in self._count_by_key(datasets, lambda ref: ref.run):
+            _log.debug("Found %d new init-output datasets from %s.", n_datasets, run)
+        return datasets
 
     def _transfer_data(self, datasets, calibs):
         """Transfer datasets and all associated collections from the central
@@ -1164,13 +1207,16 @@ class MiddlewareInterface:
             executor = SeparablePipelineExecutor(
                 exec_butler,
                 clobber_output=False,
-                skip_existing_in=None,
+                skip_existing_in=[output_run],
                 task_factory=factory,
             )
             try:
                 with lsst.utils.timer.time_this(
                         _log, msg=f"executor.make_quantum_graph ({label})", level=logging.DEBUG):
                     qgraph = executor.make_quantum_graph(pipeline, where=data_ids)
+                    # If this is a fresh (local) repo, then types like calexp,
+                    # *Diff_diaSrcTable, etc. have not been registered.
+                    qgraph.pipeline_graph.register_dataset_types(exec_butler)
             except (FileNotFoundError, MissingDatasetTypeError):
                 _log.exception(f"Building quantum graph for {pipeline_file} failed.")
                 continue
@@ -1181,13 +1227,6 @@ class MiddlewareInterface:
             # Past this point, partial execution creates datasets.
             # Don't retry -- either fail (raise) or break.
 
-            try:
-                # If this is a fresh (local) repo, then types like calexp,
-                # *Diff_diaSrcTable, etc. have not been registered.
-                # TODO: after DM-38041, move pre-execution to one-time repo setup.
-                executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
-            except Exception as e:
-                raise PipelinePreExecutionError(f"PreExecInit failed for {pipeline_file}.") from e
             _log.info(f"Running '{pipeline_file}' on {data_ids}")
             for quantum_node in qgraph.inputQuanta:
                 _log.debug(f"Running with input datasets {quantum_node.quantum.inputs.values()}")
