@@ -631,7 +631,7 @@ class MiddlewareInterface:
                       all_callback=self._mark_dataset_usage,
                       ))
         if refcats:
-            for dataset_type, n_datasets in self._count_by_type(refcats):
+            for dataset_type, n_datasets in self._count_by_key(refcats, lambda ref: ref.datasetType.name):
                 _log.debug("Found %d new refcat datasets from catalog '%s'.", n_datasets, dataset_type)
         else:
             _log.debug("Found 0 new refcat datasets.")
@@ -775,7 +775,7 @@ class MiddlewareInterface:
             all_callback=self._mark_dataset_usage,
         ))
         if calibs:
-            for dataset_type, n_datasets in self._count_by_type(calibs):
+            for dataset_type, n_datasets in self._count_by_key(calibs, lambda ref: ref.datasetType.name):
                 _log.debug("Found %d new calib datasets of type '%s'.", n_datasets, dataset_type)
         else:
             _log.debug("Found 0 new calib datasets.")
@@ -908,26 +908,25 @@ class MiddlewareInterface:
                         self.butler.registry.certify(association.collection, [dataset], association.timespan)
 
     @staticmethod
-    def _count_by_type(refs):
+    def _count_by_key(refs, keyfunc):
         """Count the number of dataset references of each type.
 
         Parameters
         ----------
         refs : iterable [`lsst.daf.butler.DatasetRef`]
             The references to classify.
+        keyfunc : callable [tuple[`lsst.daf.butler.DatasetRef`], `str`]
+            A callable that extracts the key to group and count by.
 
         Yields
         ------
-        type : `str`
-            The name of a dataset type in ``refs``.
+        key : `str`
+            A unique value returned by ``keyfunc`` from ``refs``.
         count : `int`
-            The number of elements of type ``type`` in ``refs``.
+            The number of elements having ``key`` in ``refs``.
         """
-        def get_key(ref):
-            return ref.datasetType.name
-
-        ordered = sorted(refs, key=get_key)
-        for k, g in itertools.groupby(ordered, key=get_key):
+        ordered = sorted(refs, key=keyfunc)
+        for k, g in itertools.groupby(ordered, key=keyfunc):
             yield k, len(list(g))
 
     def _write_region_time(self, region):
