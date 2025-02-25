@@ -39,6 +39,7 @@ from shared.raw import (
     get_raw_path,
 )
 from shared.visit import FannedOutVisit
+from test_utils import MockTestCase
 
 try:
     import boto3
@@ -62,8 +63,7 @@ class RawBase:
         super().setUp()
 
         self.enterContext(s3utils.clean_test_environment_for_s3())
-        self.mock_aws.start()
-        self.addCleanup(self.mock_aws.stop)
+        self.setup_patcher(self.mock_aws)
         s3 = boto3.resource("s3")
         self.bucket = "test-bucket-test"
         s3.create_bucket(Bucket=self.bucket)
@@ -210,7 +210,7 @@ class LsstBase(RawBase):
         self.assertTrue(any(error_msg in line for line in recorder.output))
 
 
-class LatissTest(LsstBase, unittest.TestCase):
+class LatissTest(LsstBase, MockTestCase):
     def setUp(self):
         self.instrument = "LATISS"
         self.detector = 0
@@ -228,7 +228,7 @@ class LatissTest(LsstBase, unittest.TestCase):
         )
 
 
-class LsstComCamTest(LsstBase, unittest.TestCase):
+class LsstComCamTest(LsstBase, MockTestCase):
     def setUp(self):
         self.instrument = "LSSTComCam"
         self.detector = 4
@@ -246,7 +246,7 @@ class LsstComCamTest(LsstBase, unittest.TestCase):
         )
 
 
-class LsstCamTest(LsstBase, unittest.TestCase):
+class LsstCamTest(LsstBase, MockTestCase):
     def setUp(self):
         self.instrument = "LSSTCam"
         self.detector = 42
@@ -264,7 +264,7 @@ class LsstCamTest(LsstBase, unittest.TestCase):
         )
 
 
-class LsstCamImSimTest(LsstBase, unittest.TestCase):
+class LsstCamImSimTest(LsstBase, MockTestCase):
     def setUp(self):
         self.instrument = "LSSTCam-imSim"
         self.group = "2022-03-21T00:00:00.000088"
@@ -294,7 +294,7 @@ class LsstCamImSimTest(LsstBase, unittest.TestCase):
 
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
-class HscTest(RawBase, unittest.TestCase):
+class HscTest(RawBase, MockTestCase):
     def setUp(self):
         self.instrument = "HSC"
         self.group = "2022032100001"

@@ -59,6 +59,7 @@ from activator.middleware_interface import get_central_butler, flush_local_repo,
 from shared.config import PipelinesConfig
 from shared.run_utils import get_output_run, get_deployment
 from shared.visit import FannedOutVisit
+from test_utils import MockTestCase
 
 # The short name of the instrument used in the test repo.
 instname = "LSSTComCamSim"
@@ -192,7 +193,7 @@ def fake_eng_data(filename, dimensions, instrument, visit):
     return data_id, file_data
 
 
-class MiddlewareInterfaceTest(unittest.TestCase):
+class MiddlewareInterfaceTest(MockTestCase):
     """Test the MiddlewareInterface class with faked data.
     """
     def setUp(self):
@@ -213,11 +214,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.addCleanup(config_file.close)
         config.save(config_file.name)
 
-        env_patcher = unittest.mock.patch.dict(os.environ,
-                                               {"CONFIG_APDB": config_file.name,
-                                                })
-        env_patcher.start()
-        self.addCleanup(env_patcher.stop)
+        self.setup_patcher(unittest.mock.patch.dict(os.environ,
+                                                    {"CONFIG_APDB": config_file.name,
+                                                     }))
         self.deploy_id = get_deployment(apdb_config=config_file.name)
 
         # coordinates from OR4 visit 7024061700046
@@ -1186,7 +1185,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(result, set())
 
 
-class MiddlewareInterfaceWriteableTest(unittest.TestCase):
+class MiddlewareInterfaceWriteableTest(MockTestCase):
     """Test the MiddlewareInterface class with faked data.
 
     This class creates a fresh test repository for writing to. This means test
@@ -1246,11 +1245,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.addCleanup(config_file.close)
         config.save(config_file.name)
 
-        env_patcher = unittest.mock.patch.dict(os.environ,
-                                               {"CONFIG_APDB": config_file.name,
-                                                })
-        env_patcher.start()
-        self.addCleanup(env_patcher.stop)
+        self.setup_patcher(unittest.mock.patch.dict(os.environ,
+                                                    {"CONFIG_APDB": config_file.name,
+                                                     }))
         self.deploy_id = get_deployment(apdb_config=config_file.name)
 
         # coordinates from OR4 visit 7024061700046
