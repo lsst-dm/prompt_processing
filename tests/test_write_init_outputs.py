@@ -31,8 +31,8 @@ from lsst.daf.butler import Butler, CollectionType
 import lsst.obs.base
 import lsst.obs.lsst
 
-from initializer.write_init_outputs import main, _make_init_outputs
-from shared.run_utils import get_output_run, get_preload_run
+from initializer.write_init_outputs import main, _make_init_outputs, _make_output_chain
+from shared.run_utils import get_output_chain, get_output_run, get_preload_run
 
 
 class InitOutputsTest(unittest.TestCase):
@@ -87,14 +87,14 @@ class InitOutputsTest(unittest.TestCase):
         graph = lsst.pipe.base.Pipeline.fromFile(pipeline_file).to_graph(self.base_butler.registry)
         graph.register_dataset_types(self.base_butler)
 
-    def test_not_registered(self):
+    def test_make_init_outputs_not_registered(self):
         pipe_file = "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml"
         instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstComCamSim")
 
         with self.assertRaises(lsst.daf.butler.MissingDatasetTypeError):
             _make_init_outputs(self.base_butler, instrument, self.config_file.name, self.deploy_id, pipe_file)
 
-    def test_empty_run(self):
+    def test_make_init_outputs_empty_run(self):
         pipe_file = "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml"
         instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstComCamSim")
         expected_run = get_output_run(instrument, self.deploy_id, pipe_file, "2024-09-24")
@@ -114,7 +114,7 @@ class InitOutputsTest(unittest.TestCase):
             configs = self.base_butler.query_datasets(t, expected_run)
             self.assertEqual(len(configs), 1)
 
-    def test_filled_run(self):
+    def test_make_init_ouputs_filled_run(self):
         pipe_file = "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml"
         instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstComCamSim")
         expected_run = get_output_run(instrument, self.deploy_id, pipe_file, "2024-09-24")
@@ -136,6 +136,36 @@ class InitOutputsTest(unittest.TestCase):
             configs = self.base_butler.query_datasets(t, expected_run)
             self.assertEqual(len(configs), 1)
 
+    def test_make_output_chain_new(self):
+        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstComCamSim")
+        expected_chain = get_output_chain(instrument, "2024-09-24")
+
+        self.base_butler.collections.register("run1", CollectionType.RUN)
+        self.base_butler.collections.register("run2", CollectionType.RUN)
+
+        with unittest.mock.patch("astropy.time.Time.now",
+                                 return_value=astropy.time.Time("2024-09-24T15:00")):
+            _make_output_chain(self.base_butler, instrument, ["run1", "run2"])
+
+        self.base_butler.registry.refresh()
+        self.assertEqual(self.base_butler.collections.get_info(expected_chain).children, ("run1", "run2"))
+
+    def test_make_output_chain_existing(self):
+        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstComCamSim")
+        expected_chain = get_output_chain(instrument, "2024-09-24")
+
+        self.base_butler.collections.register("run1", CollectionType.RUN)
+        self.base_butler.collections.register("run2", CollectionType.RUN)
+        self.base_butler.collections.register(expected_chain, CollectionType.CHAINED)
+        self.base_butler.collections.redefine_chain(expected_chain, ["run1"])
+
+        with unittest.mock.patch("astropy.time.Time.now",
+                                 return_value=astropy.time.Time("2024-09-24T15:00")):
+            _make_output_chain(self.base_butler, instrument, ["run1", "run2"])
+
+        self.base_butler.registry.refresh()
+        self.assertEqual(self.base_butler.collections.get_info(expected_chain).children, ("run1", "run2"))
+
     def test_main(self):
         # Main does its own parsing, so need the stringified configs.
         pipelines = \
@@ -151,13 +181,19 @@ class InitOutputsTest(unittest.TestCase):
   - ${PROMPT_PROCESSING_DIR}/tests/data/MinPrep.yaml
             '''
 
+        def _make_init_outputs(butler, instrument, apdb, deploy_id, pipeline):
+            run = os.path.basename(pipeline).replace(".", "_")
+            butler.registry.registerCollection(run)
+            return run
+
         with unittest.mock.patch.dict(os.environ, {"RUBIN_INSTRUMENT": "LSSTComCamSim",
                                                    "PREPROCESSING_PIPELINES_CONFIG": pre_pipelines,
                                                    "MAIN_PIPELINES_CONFIG": pipelines,
                                                    "CALIB_REPO": self.repo.name,
                                                    "CONFIG_APDB": self.config_file.name,
                                                    }), \
-                unittest.mock.patch("initializer.write_init_outputs._make_init_outputs") as mock_make, \
+                unittest.mock.patch("initializer.write_init_outputs._make_init_outputs",
+                                    side_effect=_make_init_outputs) as mock_make, \
                 unittest.mock.patch("initializer.write_init_outputs._get_current_day_obs",
                                     return_value=""):
             main(["--deploy-id", self.deploy_id])
