@@ -615,7 +615,7 @@ class MiddlewareInterface:
 
         Returns
         -------
-        refcats : iterable [`DatasetRef`]
+        refcats : iterable [`lsst.daf.butler.DatasetRef`]
             The refcats to be exported, after any filtering.
         """
         # Get shards from all refcats that overlap this region.
@@ -651,7 +651,7 @@ class MiddlewareInterface:
 
         Returns
         -------
-        skymap_templates : iterable [`DatasetRef`]
+        skymap_templates : iterable [`lsst.daf.butler.DatasetRef`]
             The datasets to be exported, after any filtering.
         """
         skymaps = set(_filter_datasets(
@@ -735,7 +735,7 @@ class MiddlewareInterface:
 
         Returns
         -------
-        calibs : iterable [`DatasetRef`]
+        calibs : iterable [`lsst.daf.butler.DatasetRef`]
             The calibs to be exported, after any filtering.
         """
         # TAI observation start time should be used for calib validity range.
@@ -788,7 +788,7 @@ class MiddlewareInterface:
 
         Returns
         -------
-        models : iterable [`DatasetRef`]
+        models : iterable [`lsst.daf.butler.DatasetRef`]
             The datasets to be exported, after any filtering.
         """
         # TODO: the dataset type name is subject to change (especially if more
