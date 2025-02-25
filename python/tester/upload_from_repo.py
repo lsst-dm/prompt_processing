@@ -29,6 +29,7 @@ import tempfile
 import time
 import yaml
 
+from astropy.io import fits
 import boto3
 from botocore.handlers import validate_bucket_name
 
@@ -121,9 +122,8 @@ def main():
 
     _set_s3_bucket()
 
-    last_group = get_last_group(dest_bucket, instrument, date)
-    group = increment_group(instrument, last_group, random.randrange(10, 19))
-    _log.debug(f"Last group {last_group}; new group base {group}")
+    group = get_last_group(dest_bucket, instrument, date)
+    _log.debug(f"Last group {group}")
 
     butler = Butler(configs["repo"])
     visit_list = get_visit_list(
@@ -317,15 +317,18 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
             ref.dataId["physical_filter"],
         )
 
+        sidecar_uploaded = False
         if instrument in _LSST_CAMERA_LIST:
             # Upload a corresponding sidecar json file
             sidecar = butler.getURI(ref).updatedExtension("json")
-            with sidecar.open("r") as f:
-                md = json.load(f)
-                md.update(headers)
-                dest_bucket.put_object(
-                    Body=json.dumps(md), Key=dest_key.removesuffix("fits") + "json"
-                )
+            if sidecar.exists():
+                with sidecar.open("r") as f:
+                    md = json.load(f)
+                    md.update(headers)
+                    dest_bucket.put_object(
+                        Body=json.dumps(md), Key=dest_key.removesuffix("fits") + "json"
+                    )
+                sidecar_uploaded = True
 
         # Each ref is done separately because butler.retrieveArtifacts does not preserve the order.
         transferred = butler.retrieveArtifacts(
@@ -347,6 +350,12 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
         with open(path, "r+b") as temp_file:
             for header_key in headers:
                 replace_header_key(temp_file, header_key, headers[header_key])
+            if not sidecar_uploaded:
+                with fits.open(temp_file, mode="update") as hdul:
+                    dest_bucket.put_object(
+                        Body=json.dumps(dict(hdul[0].header)),
+                        Key=dest_key.removesuffix("fits") + "json",
+                    )
         dest_bucket.upload_file(path, dest_key)
         _log.debug(f"{dest_key} was written at {dest_bucket}")
 
