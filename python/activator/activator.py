@@ -404,11 +404,10 @@ def keda_start():
                     except Exception:
                         _log.exception("Processing failed:")
                     finally:
-                        _log.info(
-                            "Processing completed for %s.  Starting next fan out event consumer poll",
-                            socket.gethostname())
+                        _log.info("Processing completed for %s.", socket.gethostname())
 
                 # Reset timer for fan out message polling and start redis client for next poll
+                _log.info("Starting next visit fan out event consumer poll")
                 fan_out_listen_start_time = time.time()
                 try:
                     redis_client = _make_redis_streams_client()
