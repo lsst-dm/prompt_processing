@@ -186,7 +186,7 @@ def _get_local_cache():
     return make_local_cache()
 
 
-def _get_redis_streams_client():
+def _make_redis_streams_client():
     """Create a new Redis client.
 
     Returns
@@ -320,7 +320,7 @@ def keda_start():
 
         # Setup redis client connection.  Setup before while loop to avoid performance
         # issues of constantly resetting up client connection
-        redis_client = _get_redis_streams_client()
+        redis_client = _make_redis_streams_client()
         try:
             redis_client.ping()
         except redis.exceptions.RedisError:
@@ -411,7 +411,7 @@ def keda_start():
                 # Reset timer for fan out message polling and start redis client for next poll
                 fan_out_listen_start_time = time.time()
                 try:
-                    redis_client = _get_redis_streams_client()
+                    redis_client = _make_redis_streams_client()
                     redis_client.ping()
                     _log.info("Redis Streams client setup for continued polling")
                 except Exception as e:
