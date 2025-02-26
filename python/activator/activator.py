@@ -111,7 +111,7 @@ def _config_from_yaml(yaml_string):
 
     Returns
     -------
-    config : `activator.config.PipelineConfig`
+    config : `shared.config.PipelineConfig`
         The corresponding config object.
     """
     return PipelinesConfig(yaml.safe_load(yaml_string))
@@ -187,12 +187,12 @@ def _get_local_cache():
 
 
 def _get_redis_streams_client():
-    """Setup of Redis Client.
+    """Create a new Redis client.
 
     Returns
     -------
-    redis_client : `Redis`
-        Initialized redis client.
+    redis_client : `redis.Redis`
+        Initialized Redis client.
     """
     redis_host = redis_stream_host
     redis_client = redis.Redis(host=redis_host)
@@ -216,13 +216,12 @@ def _time_diff(start_time):
 
 
 def _decode_redis_streams_message(fan_out_message):
-    """Decoded redis streams message from binary.  Redis Streams
-       returns a list of dicts.
+    """Decode redis streams message from binary.
 
     Parameters
     ----------
-    fan_out_message : `dict`
-        Fan out message.
+    fan_out_message
+        Fan out message, as a list of dicts.
 
     Returns
     -------
@@ -242,13 +241,13 @@ def _decode_redis_streams_message(fan_out_message):
 
 def _calculate_time_since_fan_out_message_delivered(redis_streams_message_id):
     """Calculates time from fan out message to when message is unpacked
-       in prompt processing.  The redis stream message ID includes
-       the timestamp in UTC suffixed with the message number.
+    in prompt processing.
 
     Parameters
     ----------
-    redis_streams_message_id : `string`
-        Fan out message.
+    redis_streams_message_id : `str`
+        Fan out message ID. It includes the timestamp in milliseconds since
+        Unix epoch suffixed with the message number.
 
     Returns
     -------
@@ -486,7 +485,7 @@ def parse_next_visit(http_request):
 
     Returns
     -------
-    next_visit : `activator.visit.FannedOutVisit`
+    next_visit : `shared.visit.FannedOutVisit`
         The next_visit message contained in the request.
 
     Raises
@@ -627,7 +626,7 @@ def process_visit(expected_visit: FannedOutVisit):
 
     Parameters
     ----------
-    expected_visit : `activator.visit.FannedOutVisit`
+    expected_visit : `shared.visit.FannedOutVisit`
         The visit to process.
 
     Raises

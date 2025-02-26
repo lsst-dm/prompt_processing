@@ -74,11 +74,11 @@ def process_group(kafka_url, visit_infos, uploader):
     ----------
     kafka_url : `str`
         The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
-    visit_infos : `set` [`activator.FannedOutVisit`]
+    visit_infos : `set` [`shared.visit.FannedOutVisit`]
         The visit-detector combinations to be observed; each object may
         represent multiple snaps. Assumed to represent a single group, and to
         share instrument, nimages, filters, and survey.
-    uploader : callable [`activator.FannedOutVisit`, int]
+    uploader : callable [`shared.visit.FannedOutVisit`, int]
         A callable that takes an exposure spec and a snap ID, and uploads the
         visit's data.
     """
@@ -158,12 +158,12 @@ def _add_to_raw_pool(raw_pool, snap_num, visit, blob):
 
     Parameters
     ----------
-    raw_pool : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
+    raw_pool : mapping [`str`, mapping [`int`, mapping [`shared.visit.FannedOutVisit`, `s3.ObjectSummary`]]]
         Available raws as a mapping from group IDs to a mapping of snap ID.
         The value of the innermost mapping is the observation metadata for
         each detector, and a Blob representing the image taken in that
         detector-snap.
-    visit : `activator.visit.FannedOutVisit`
+    visit : `shared.visit.FannedOutVisit`
         The visit-detector combination to be added with this raw.
     snap_num : `int`
         The snap number for this raw.
@@ -200,7 +200,7 @@ def get_samples_non_lsst(bucket, instrument):
 
     Returns
     -------
-    raws : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
+    raws : mapping [`str`, mapping [`int`, mapping [`shared.visit.FannedOutVisit`, `s3.ObjectSummary`]]]
         A mapping from group IDs to a mapping of snap ID. The value of the
         innermost mapping is the observation metadata for each detector,
         and a Blob representing the image taken in that detector-snap.
@@ -273,7 +273,7 @@ def get_samples_lsst(bucket, instrument):
 
     Returns
     -------
-    raws : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
+    raws : mapping [`str`, mapping [`int`, mapping [`shared.visit.FannedOutVisit`, `s3.ObjectSummary`]]]
         A mapping from group IDs to a mapping of snap ID. The value of the
         innermost mapping is the observation metadata for each detector,
         and a Blob representing the image taken in that detector-snap.
@@ -343,7 +343,7 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
         The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
     instrument : `str`
         The short name of the instrument carrying out the observation.
-    raw_pool : mapping [`str`, mapping [`int`, mapping [`activator.FannedOutVisit`, `s3.ObjectSummary`]]]
+    raw_pool : mapping [`str`, mapping [`int`, mapping [`shared.visit.FannedOutVisit`, `s3.ObjectSummary`]]]
         Available raws as a mapping from group IDs to a mapping of snap ID.
         The value of the innermost mapping is the observation metadata for
         each detector, and a Blob representing the image taken in that

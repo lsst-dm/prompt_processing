@@ -262,11 +262,11 @@ class MiddlewareInterface:
     image_bucket : `str`
         Storage bucket where images will be written to as they arrive.
         See also ``prefix``.
-    visit : `activator.visit.FannedOutVisit`
+    visit : `shared.visit.FannedOutVisit`
         The visit-detector combination to be processed by this object.
-    pre_pipelines : `activator.config.PipelinesConfig`
+    pre_pipelines : `shared.config.PipelinesConfig`
         Information about which pipelines to run before a visit arrives.
-    main_pipelines : `activator.config.PipelinesConfig`
+    main_pipelines : `shared.config.PipelinesConfig`
         Information about which pipelines to run on ``visit``'s raws.
     skymap : `str`
         Name of the skymap in the central repo for querying templates.
