@@ -349,6 +349,8 @@ def keda_start():
                         groupname=redis_stream_consumer_group,
                         count=1  # Read one message at a time
                     )
+                    processing_start = time.time()
+                    processing_result = "Unknown"
 
                     if not fan_out_message:
                         continue
@@ -395,15 +397,21 @@ def keda_start():
 
                         # Process fan out visit
                         process_visit(expected_visit)
+                        processing_result = "Success"
                     except GracefulShutdownInterrupt:
                         _log.error(
                             "Service interrupted.Shutting down *without* syncing to the central repo.")
+                        processing_result = "Interrupted"
                         sys.exit(1)
                     except IgnorableVisit as e:
                         _log.info("Skipping visit: %s", e)
+                        processing_result = "Ignore"
                     except Exception:
                         _log.exception("Processing failed:")
+                        processing_result = "Error"
                     finally:
+                        _log.debug("Request took %.3f s. Result: %s",
+                                   _time_diff(processing_start), processing_result)
                         _log.info("Processing completed for %s.", socket.gethostname())
 
                 # Reset timer for fan out message polling and start redis client for next poll
