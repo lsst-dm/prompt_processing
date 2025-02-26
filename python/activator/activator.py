@@ -199,24 +199,20 @@ def _get_redis_streams_client():
     return redis_client
 
 
-def _calculate_time_since_last_message(fan_out_listen_start_time):
-    """Calculates time since last redis streams message poll
-       received by this pod.
+def _time_diff(start_time):
+    """Calculates time since a reference timestamp.
 
     Parameters
     ----------
-    fan_out_listen_start_time : `float`
-        Time when listening for redis stream message started.  The time is
-        since Unix epoch.
+    start_time : `float`
+        Time since a reference point, in seconds since Unix epoch.
 
     Returns
     -------
-    fan_out_listen_time : `float`
-        Time in seconds since last fan out message received by this pod.
+    duration : `float`
+        Time in seconds since ``start_time``.
     """
-    fan_out_listen_finish_time = time.time()
-    fan_out_listen_time = fan_out_listen_finish_time - fan_out_listen_start_time
-    return fan_out_listen_time
+    return time.time() - start_time
 
 
 def _decode_redis_streams_message(fan_out_message):
@@ -261,8 +257,7 @@ def _calculate_time_since_fan_out_message_delivered(redis_streams_message_id):
         in prompt processing.
     """
     message_timestamp = float(redis_streams_message_id.split('-', 1)[0].strip())
-    fan_out_to_prompt_time = time.time() - message_timestamp/1000
-    return fan_out_to_prompt_time
+    return _time_diff(message_timestamp/1000.0)
 
 
 def create_app():
@@ -389,8 +384,7 @@ def keda_start():
 
                         consumer_polls_with_message += 1
                         if consumer_polls_with_message >= 1:
-                            fan_out_listen_time = _calculate_time_since_last_message(
-                                fan_out_listen_start_time)
+                            fan_out_listen_time = _time_diff(fan_out_listen_start_time)
                             _log.debug(
                                 "Seconds since last redis streams message received %r for consumer poll %r",
                                 fan_out_listen_time, consumer_polls_with_message)
