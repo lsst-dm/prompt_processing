@@ -15,6 +15,8 @@ Table of Contents
 * `Testers`_
 * `next_visit Events`_
 * `Databases`_
+* `KEDA`_
+* `REDIS`_
 
 
 Containers
@@ -686,3 +688,113 @@ For a PostgreSQL APDB, you can do the check without bucket access by running, e.
 
    psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin \
        -c 'select * from pp_apdb_latiss.metadata;'
+
+KEDA
+=====
+
+Kubernetes Event-driven Autoscaling (KEDA) is installed with the KEDA operator in the `keda` Kubernetes namespace.  The Prompt Processing instances for each instrument are deployed as Scaled Jobs.
+
+Reverting KEDA Scaled Job
+-------------------------
+
+If there are configuration errors or code crashes KEDA can be reverted to a previous ArgoCD revision.  Within ArgoCD select the Application.  In the top navigation menu select `HISTORY AND ROLLBACK`.  From here you can review
+the `PARAMETERS`.  For the Revision you want to restore click in the three dots in the top right corner for that Revision and then `Redeploy`.
+
+Deleting Scaled Job
+-------------------
+
+Scaled Jobs can be deleted to delete currently running pods and prevent new pods from spawning.  Within ArgoCD select the Application.  On the `scaledjob` panel select the three dots in the top right then `Delete`.  A `SYNC` can be perfomed later to restore the Scaled Job.  Scaled Jobs can also be deleted with Kubernetes.  An example for HSC is below.
+
+.. code-block:: sh
+
+   kubectl delete scaledjob prompt-keda-hsc -n prompt-keda-hsc
+
+Pausing Scaled Job Autoscaling
+-------------------
+
+ Autoscaling can be paused with the `autoscaling.keda.sh/paused: true` annotation to avoid resource starvation.  Once the current jobs finish no new jobs or pods willl be created until the annotation is removed or set to `false`.  To set  within ArgoCD select the Application.  Select the `scaledjob` and under `LIVE MANIFEST` select `Edit`. In the metadata section add annotaiton.  For example:
+
+.. code-block:: sh
+
+   apiVersion: keda.sh/v1alpha1
+   kind: ScaledJob
+   metadata:
+   annotations:
+      autoscaling.keda.sh/paused: 'true'
+
+To remove the pause and enabling scaling set annotation to ``false``.  The documentation on this feature from KEDA is `here <https://keda.sh/docs/2.16/concepts/scaling-jobs/#pausing-autoscaling>`_
+
+REDIS
+=====
+
+The Next Visit Fan Out Service KEDA sends fanned out events to Redis Streams.  Within Redis Streams a stream is configured for each instrument along with a corresponding consumer group.  Prompt Processing is configured with a consumer group to read pending messages.   The naming for the streams is ``instrument:<instrument_name>`` so HSC for example is `instrument:hsc`
+
+
+Redis CLI
+---------
+
+Redis has a CLI to view and manage Redis Streams.  From the appropriate dev or production Prompt Procesisng vCluster access the CLI with ``kubectl exec -it prompt-redis-0 -n prompt-redis -- redis-cli`` Below displays a successful connection validated with a ``ping``.
+
+.. code-block:: sh
+
+   kubectl exec -it prompt-redis-0 -n prompt-redis -- redis-cli
+   127.0.0.1:6379> ping
+   PONG
+
+
+
+Creating Redis Streams
+----------------------
+
+Redis Streams are created using the `Redis CLI`_.  The ``XGROUP CREATE`` command is used to create the Redis Stream and Consumer Group.  If the Redis Cluster is destroyed the streams need to be recrated with the below commands.  For Dev:
+
+.. code-block:: sh
+
+   XGROUP CREATE instrument:hsc hsc_consumer_group $ mkstream
+   XGROUP CREATE instrument:latiss latiss_consumer_group $ mkstream
+   XGROUP CREATE instrument:lsstcamimsim lsstcamimsim_consumer_group $ mkstream
+   XGROUP CREATE instrument:lsstcomcamsim lsstcomcamsim_consumer_group $ mkstream
+
+For Prod:
+
+.. code-block:: sh
+
+   XGROUP CREATE instrument:latiss latiss_consumer_group $ mkstream
+   XGROUP CREATE instrument:lsstcam lsstcam_consumer_group $ mkstream
+
+
+Viewing Pending Messages
+------------------------
+
+Prompt Processing is configured to read pending messages in Redis Streams and ignore messages that have already been read by another consumer.  Once a message is read by a consumer is it no longer pending.  To view pending messages enter ``XPENDING <stream_name> <consumer_group_name>`` the `Redis CLI`_.  An example below with ComCamSim.  From the output ``(integer) 18`` you can see there are 18 messages pending.
+
+.. code-block:: sh
+
+   127.0.0.1:6379> XPENDING instrument:lsstcomcamsim lsstcomcamsim_consumer_group
+   1) (integer) 18
+   2) "1738177997481-0"
+   3) "1738179973388-7"
+   4) 1) 1) "1ec0b8f0-aca4-4607-a476-369b6858497c"
+         2) "3"
+      2) 1) "219d4e6f-22ca-43d5-960c-bd4f247365c0"
+         2) "3"
+      3) 1) "4c27a7f2-51e6-4d75-b3a2-c2bdf1fa5fc9"
+         2) "3"
+      4) 1) "afc0c1bf-bbce-4092-b193-7f268ca57946"
+         2) "3"
+      5) 1) "d81a1f79-dfba-4b81-b749-d1e80d69fb4e"
+         2) "3"
+      6) 1) "d98d7473-89a4-40b7-beb4-c9fc18513d19"
+         2) "3
+
+
+Clear Redis Stream
+------------------------
+To delete all the events in a Redis stream the ``DEL`` command can be used.  Below is an example with ComCamSim to delete and recreate the Redis Stream.  Please note there will be errors generated by Keda any Scaled Jobs connected to the stream when the stream is deleted.
+
+.. code-block:: sh
+
+   127.0.0.1:6379> DEL instrument:lsstcomcamsim
+   (integer) 1
+   127.0.0.1:6379> XGROUP CREATE instrument:lsstcomcamsim lsstcomcamsim_consumer_group $ mkstream
+   OK
