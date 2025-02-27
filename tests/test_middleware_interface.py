@@ -57,8 +57,9 @@ from activator.middleware_interface import get_central_butler, flush_local_repo,
     _get_sasquatch_dispatcher, MiddlewareInterface, \
     _filter_datasets, _generic_query, _MissingDatasetError
 from shared.config import PipelinesConfig
-from shared.run_utils import get_output_run, get_deployment
+from shared.run_utils import get_output_run
 from shared.visit import FannedOutVisit
+from test_utils import MockTestCase
 
 # The short name of the instrument used in the test repo.
 instname = "LSSTComCamSim"
@@ -83,6 +84,10 @@ pre_pipelines_full = PipelinesConfig([{"survey": "SURVEY",
                                                      "${PROMPT_PROCESSING_DIR}/tests/data/MinPrep.yaml",
                                                      ],
                                        }])
+# The day_obs used for the init-output runs in the test repo.
+sim_date = astropy.time.Time("2025-02-26T00:00:00Z")
+# The deployment ID used in the test repo.
+sim_deployment = "pipelines-e174675-config-8acfde6"
 
 
 def fake_file_data(filename, dimensions, instrument, visit):
@@ -192,7 +197,7 @@ def fake_eng_data(filename, dimensions, instrument, visit):
     return data_id, file_data
 
 
-class MiddlewareInterfaceTest(unittest.TestCase):
+class MiddlewareInterfaceTest(MockTestCase):
     """Test the MiddlewareInterface class with faked data.
     """
     def setUp(self):
@@ -213,12 +218,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.addCleanup(config_file.close)
         config.save(config_file.name)
 
-        env_patcher = unittest.mock.patch.dict(os.environ,
-                                               {"CONFIG_APDB": config_file.name,
-                                                })
-        env_patcher.start()
-        self.addCleanup(env_patcher.stop)
-        self.deploy_id = get_deployment(apdb_config=config_file.name)
+        self.setup_patcher(unittest.mock.patch.dict(os.environ,
+                                                    {"CONFIG_APDB": config_file.name,
+                                                     }))
+        self.setup_patcher(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
+        self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
+                                               return_value=sim_deployment))
+        self.deploy_id = sim_deployment
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -350,7 +356,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 )
 
         # Check that preloaded datasets have been generated
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         preload_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
                              f"NoPipeline/{self.deploy_id}"
         self.assertTrue(
@@ -589,18 +595,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
-                as mock_preexec, \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run:
             with self.assertLogs(self.logger_name, level="INFO") as logs:
                 self.interface.run_pipeline({1})
-        # Pre-execution and execution should only run once, even if graph
-        # generation is attempted for multiple pipelines.
-        mock_preexec.assert_called_once()
-        # Pre-execution may have other arguments as needed; no requirement either way.
-        self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
+        # Execution should only run once, even if graph generation is attempted for multiple pipelines.
         mock_run.assert_called_once()
         # Check that we configured the right pipeline.
         self.assertIn(os.path.join(self.data_dir, 'ApPipe.yaml'), "\n".join(logs.output))
@@ -630,8 +630,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 unittest.mock.patch(
                     "activator.middleware_interface.SeparablePipelineExecutor.make_quantum_graph",
                     side_effect=graphs), \
-                unittest.mock.patch(
-                    "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+                unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
                 unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
                 self.assertLogs(self.logger_name, level="INFO") as logs:
@@ -739,8 +738,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
@@ -754,8 +752,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
@@ -769,8 +766,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
@@ -784,8 +780,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph"), \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch.object(self.interface, "main_pipelines", pipelines_minimal), \
@@ -815,19 +810,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         self._prepare_run_preprocessing()
 
-        with unittest.mock.patch(
-                "activator.middleware_interface.SeparablePipelineExecutor.pre_execute_qgraph") \
-                as mock_preexec, \
+        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
              unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
                 as mock_run, \
              unittest.mock.patch.object(self.interface, "pre_pipelines", pre_pipelines_full):
             with self.assertLogs(self.logger_name, level="INFO") as logs:
                 self.interface._run_preprocessing()
-        # Pre-execution and execution should only run once, even if graph
-        # generation is attempted for multiple pipelines.
-        mock_preexec.assert_called_once()
-        # Pre-execution may have other arguments as needed; no requirement either way.
-        self.assertEqual(mock_preexec.call_args.kwargs["register_dataset_types"], True)
+        # Execution should only run once, even if graph generation is attempted for multiple pipelines.
         mock_run.assert_called_once()
         # Check that we configured the right pipeline.
         self.assertIn(os.path.join(self.data_dir, 'Preprocess.yaml'), "\n".join(logs.output))
@@ -1165,7 +1154,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(result, set())
 
 
-class MiddlewareInterfaceWriteableTest(unittest.TestCase):
+class MiddlewareInterfaceWriteableTest(MockTestCase):
     """Test the MiddlewareInterface class with faked data.
 
     This class creates a fresh test repository for writing to. This means test
@@ -1225,12 +1214,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.addCleanup(config_file.close)
         config.save(config_file.name)
 
-        env_patcher = unittest.mock.patch.dict(os.environ,
-                                               {"CONFIG_APDB": config_file.name,
-                                                })
-        env_patcher.start()
-        self.addCleanup(env_patcher.stop)
-        self.deploy_id = get_deployment(apdb_config=config_file.name)
+        self.setup_patcher(unittest.mock.patch.dict(os.environ,
+                                                    {"CONFIG_APDB": config_file.name,
+                                                     }))
+        self.setup_patcher(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
+        self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
+                                               return_value=sim_deployment))
+        self.deploy_id = sim_deployment
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -1284,8 +1274,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             skymap_name, second_local_repo.name, self.second_local_cache, prefix="file://")
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.second_interface.prep_butler()
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
-        self.output_chain = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}"
+        date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         self.preprocessing_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                                  f"/Preprocess/{self.deploy_id}"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
@@ -1370,7 +1359,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(central_butler, "testData", {"instrument", "exposure", "detector"}, "int")
         # Implementation detail: flush_local_repo looks for output-like
         # collections to avoid transferring inputs.
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
               f"NoPipe/{self.deploy_id}"
 
@@ -1429,10 +1418,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.preprocessing_run),
                          2)
         self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.output_run), 0)
-        self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.output_chain), 2)
         self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.preprocessing_run), 0)
         self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_run), 2)
-        self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_chain), 2)
         # Should be able to look up datasets by both visit and exposure
         self.assertEqual(
             self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),

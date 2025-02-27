@@ -32,7 +32,6 @@ import tempfile
 import typing
 
 import astropy
-import sqlalchemy
 
 import lsst.utils.timer
 from lsst.resources import ResourcePath
@@ -602,7 +601,9 @@ class MiddlewareInterface:
                 region, self.visit.filters))
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)", level=logging.DEBUG):
             model_datasets = set(self._export_ml_models())
-        return (refcat_datasets | template_datasets | calib_datasets | model_datasets,
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (find init-outputs)", level=logging.DEBUG):
+            init_datasets = set(self._export_init_outputs())
+        return (refcat_datasets | template_datasets | calib_datasets | model_datasets | init_datasets,
                 calib_datasets,
                 )
 
@@ -616,7 +617,7 @@ class MiddlewareInterface:
 
         Returns
         -------
-        refcats : iterable [`DatasetRef`]
+        refcats : iterable [`lsst.daf.butler.DatasetRef`]
             The refcats to be exported, after any filtering.
         """
         # Get shards from all refcats that overlap this region.
@@ -633,7 +634,7 @@ class MiddlewareInterface:
                       all_callback=self._mark_dataset_usage,
                       ))
         if refcats:
-            for dataset_type, n_datasets in self._count_by_type(refcats):
+            for dataset_type, n_datasets in self._count_by_key(refcats, lambda ref: ref.datasetType.name):
                 _log.debug("Found %d new refcat datasets from catalog '%s'.", n_datasets, dataset_type)
         else:
             _log.debug("Found 0 new refcat datasets.")
@@ -652,7 +653,7 @@ class MiddlewareInterface:
 
         Returns
         -------
-        skymap_templates : iterable [`DatasetRef`]
+        skymap_templates : iterable [`lsst.daf.butler.DatasetRef`]
             The datasets to be exported, after any filtering.
         """
         skymaps = set(_filter_datasets(
@@ -736,7 +737,7 @@ class MiddlewareInterface:
 
         Returns
         -------
-        calibs : iterable [`DatasetRef`]
+        calibs : iterable [`lsst.daf.butler.DatasetRef`]
             The calibs to be exported, after any filtering.
         """
         # TAI observation start time should be used for calib validity range.
@@ -777,7 +778,7 @@ class MiddlewareInterface:
             all_callback=self._mark_dataset_usage,
         ))
         if calibs:
-            for dataset_type, n_datasets in self._count_by_type(calibs):
+            for dataset_type, n_datasets in self._count_by_key(calibs, lambda ref: ref.datasetType.name):
                 _log.debug("Found %d new calib datasets of type '%s'.", n_datasets, dataset_type)
         else:
             _log.debug("Found 0 new calib datasets.")
@@ -789,7 +790,7 @@ class MiddlewareInterface:
 
         Returns
         -------
-        models : iterable [`DatasetRef`]
+        models : iterable [`lsst.daf.butler.DatasetRef`]
             The datasets to be exported, after any filtering.
         """
         # TODO: the dataset type name is subject to change (especially if more
@@ -810,6 +811,47 @@ class MiddlewareInterface:
         else:
             _log.debug("Found %d new ML model datasets.", len(models))
         return models
+
+    def _get_init_output_types(self, run):
+        """Identify the specific init-output types to query.
+
+        Parameters
+        ----------
+        run : `str`
+            The name of an output run of the pipeline of interest. Different
+            pipelines may produce different sets of init-outputs.
+
+        Returns
+        -------
+        init_types : collection [`str`]
+            The init-output types of interest to Prompt Processing.
+        """
+        # Need to distinguish init-outputs from past visits' outputs.
+        all_names = self.central_butler.collections.get_info(run, include_summary=True).dataset_types
+        all_types = {self.central_butler.registry.getDatasetType(name) for name in all_names}
+        return {t.name for t in all_types if not t.dimensions}
+
+    def _export_init_outputs(self):
+        """Identify the init-output datasets to export from the central butler.
+
+        Returns
+        -------
+        init_outputs : iterable [`lsst.daf.butler.DatasetRef`]
+            The datasets to be exported.
+        """
+        datasets = set()
+        for pipeline_file in self._get_combined_pipeline_files():
+            run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
+            types = self._get_init_output_types(run)
+            # Output runs are always cleared after execution, so _filter_datasets would always warn.
+            # This also means the init-outputs don't need to be cached with _mark_dataset_usage.
+            datasets.update(_generic_query(types, collections=run)(self.central_butler, "source datasets"))
+        if not datasets:
+            raise _MissingDatasetError("Source repo query found no matches.")
+
+        for run, n_datasets in self._count_by_key(datasets, lambda ref: ref.run):
+            _log.debug("Found %d new init-output datasets from %s.", n_datasets, run)
+        return datasets
 
     def _transfer_data(self, datasets, calibs):
         """Transfer datasets and all associated collections from the central
@@ -910,26 +952,25 @@ class MiddlewareInterface:
                         self.butler.registry.certify(association.collection, [dataset], association.timespan)
 
     @staticmethod
-    def _count_by_type(refs):
+    def _count_by_key(refs, keyfunc):
         """Count the number of dataset references of each type.
 
         Parameters
         ----------
         refs : iterable [`lsst.daf.butler.DatasetRef`]
             The references to classify.
+        keyfunc : callable [tuple[`lsst.daf.butler.DatasetRef`], `str`]
+            A callable that extracts the key to group and count by.
 
         Yields
         ------
-        type : `str`
-            The name of a dataset type in ``refs``.
+        key : `str`
+            A unique value returned by ``keyfunc`` from ``refs``.
         count : `int`
-            The number of elements of type ``type`` in ``refs``.
+            The number of elements having ``key`` in ``refs``.
         """
-        def get_key(ref):
-            return ref.datasetType.name
-
-        ordered = sorted(refs, key=get_key)
-        for k, g in itertools.groupby(ordered, key=get_key):
+        ordered = sorted(refs, key=keyfunc)
+        for k, g in itertools.groupby(ordered, key=keyfunc):
             yield k, len(list(g))
 
     def _write_region_time(self, region):
@@ -967,23 +1008,23 @@ class MiddlewareInterface:
         self.butler.registry.registerCollection(
             runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
             CollectionType.RUN)
-        for pipeline_file in self._get_all_pipeline_files():
+        for pipeline_file in self._get_combined_pipeline_files():
             self.butler.registry.registerCollection(
                 runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
-    def _get_all_pipeline_files(self) -> collections.abc.Iterable[str]:
+    def _get_combined_pipeline_files(self) -> collections.abc.Collection[str]:
         """Identify the pipelines to be run at any point, based on the
         configured instrument and visit.
 
         Returns
         -------
-        pipeline : sequence [`str`]
-            A sequence of paths a configured pipeline file. The order
-            is undefined.
+        pipelines : collection [`str`]
+            The paths to a configured pipeline file. The order is undefined.
         """
-        all = list(self._get_pre_pipeline_files())
-        all.extend(self._get_main_pipeline_files())
+        # A pipeline appearing in both configs is unlikely, but not impossible.
+        all = set(self._get_pre_pipeline_files())
+        all.update(self._get_main_pipeline_files())
         return all
 
     def _get_pre_pipeline_files(self) -> collections.abc.Sequence[str]:
@@ -1167,13 +1208,16 @@ class MiddlewareInterface:
             executor = SeparablePipelineExecutor(
                 exec_butler,
                 clobber_output=False,
-                skip_existing_in=None,
+                skip_existing_in=[output_run],
                 task_factory=factory,
             )
             try:
                 with lsst.utils.timer.time_this(
                         _log, msg=f"executor.make_quantum_graph ({label})", level=logging.DEBUG):
                     qgraph = executor.make_quantum_graph(pipeline, where=data_ids)
+                    # If this is a fresh (local) repo, then types like calexp,
+                    # *Diff_diaSrcTable, etc. have not been registered.
+                    qgraph.pipeline_graph.register_dataset_types(exec_butler)
             except (FileNotFoundError, MissingDatasetTypeError):
                 _log.exception(f"Building quantum graph for {pipeline_file} failed.")
                 continue
@@ -1184,13 +1228,6 @@ class MiddlewareInterface:
             # Past this point, partial execution creates datasets.
             # Don't retry -- either fail (raise) or break.
 
-            try:
-                # If this is a fresh (local) repo, then types like calexp,
-                # *Diff_diaSrcTable, etc. have not been registered.
-                # TODO: after DM-38041, move pre-execution to one-time repo setup.
-                executor.pre_execute_qgraph(qgraph, register_dataset_types=True, save_init_outputs=True)
-            except Exception as e:
-                raise PipelinePreExecutionError(f"PreExecInit failed for {pipeline_file}.") from e
             _log.info(f"Running '{pipeline_file}' on {data_ids}")
             for quantum_node in qgraph.inputQuanta:
                 _log.debug(f"Running with input datasets {quantum_node.quantum.inputs.values()}")
@@ -1377,7 +1414,7 @@ class MiddlewareInterface:
 
         # Rather than determining which pipeline was run, just try to export all of them.
         output_runs = [runs.get_preload_run(self.instrument, self._deployment, self._day_obs)]
-        for f in self._get_all_pipeline_files():
+        for f in self._get_combined_pipeline_files():
             output_runs.append(runs.get_output_run(self.instrument, self._deployment, f, self._day_obs))
         try:
             with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
@@ -1391,8 +1428,6 @@ class MiddlewareInterface:
                 if exports:
                     populated_runs = {ref.run for ref in exports}
                     _log.info(f"Pipeline products saved to collections {populated_runs}.")
-                    output_chain = runs.get_output_chain(self.instrument, self._day_obs)
-                    self._chain_exports(output_chain, populated_runs)
                 else:
                     _log.warning("No output datasets match visit=%s and exposures=%s.",
                                  self.visit, exposure_ids)
@@ -1540,31 +1575,6 @@ class MiddlewareInterface:
             # If records don't match, this is not an error, and central takes precedence.
             dest_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
 
-    def _chain_exports(self, output_chain: str, output_runs: collections.abc.Iterable[str]) -> None:
-        """Associate exported datasets with a chained collection in the
-        central Butler.
-
-        Parameters
-        ----------
-        output_chain : `str`
-            The chained collection with which to associate the outputs. Need not exist.
-        output_runs : iterable [`str`]
-            The run collection(s) containing the outputs. Assumed to exist.
-        """
-        with lsst.utils.timer.time_this(_log, msg="export_outputs (chain runs)", level=logging.DEBUG):
-            self.central_butler.registry.refresh()
-            self.central_butler.registry.registerCollection(output_chain, CollectionType.CHAINED)
-
-            try:
-                self.central_butler.collections.prepend_chain(output_chain, output_runs)
-            except sqlalchemy.exc.IntegrityError as e:
-                # HACK: I don't know of a better way to distinguish exceptions
-                # blended by SQLAlchemy. To be removed on DM-43316.
-                if 'duplicate key value violates unique constraint "collection_chain_pkey"' in str(e):
-                    _log.error("Failed to update output chain concurrently; continuing export without retry.")
-                else:
-                    raise
-
     def _query_datasets_by_storage_class(self, butler, exposure_ids, collections, storage_class):
         """Identify all datasets with a particular storage class, regardless of
         dataset type.
@@ -1652,7 +1662,7 @@ class MiddlewareInterface:
             # Outputs are all in their own runs, so just drop them.
             preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
             _remove_run_completely(self.butler, preload_run)
-            for pipeline_file in self._get_all_pipeline_files():
+            for pipeline_file in self._get_combined_pipeline_files():
                 output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file,
                                                  self._day_obs)
                 _remove_run_completely(self.butler, output_run)
