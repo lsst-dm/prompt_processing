@@ -692,18 +692,18 @@ For a PostgreSQL APDB, you can do the check without bucket access by running, e.
 KEDA
 =====
 
-Kubernetes Event-driven Autoscaling (KEDA) is installed with the KEDA operator in the `keda` Kubernetes namespace.  The Prompt Processing instances for each instrument are deployed as Scaled Jobs.
+Kubernetes Event-driven Autoscaling (KEDA) is installed by the KEDA operator into the ``keda`` Kubernetes namespace.  The Prompt Processing instances for each instrument are deployed as KEDA Scaled Jobs.
 
 Reverting KEDA Scaled Job
 -------------------------
 
-If there are configuration errors or code crashes KEDA can be reverted to a previous ArgoCD revision.  Within ArgoCD select the Application.  In the top navigation menu select `HISTORY AND ROLLBACK`.  From here you can review
-the `PARAMETERS`.  For the Revision you want to restore click in the three dots in the top right corner for that Revision and then `Redeploy`.
+If there are configuration errors or code crashes KEDA can be reverted to a previous ArgoCD revision.  Within ArgoCD select the Application.  In the top navigation menu select ``HISTORY AND ROLLBACK``.  From here you can review
+the ``PARAMETERS`` to determine the appropriate revision to rollback to.  For the Revision you want to restore click on the three dots in the top right corner for that Revision and then ``Redeploy``.
 
 Deleting Scaled Job
 -------------------
 
-Scaled Jobs can be deleted to delete currently running pods and prevent new pods from spawning.  Within ArgoCD select the Application.  On the `scaledjob` panel select the three dots in the top right then `Delete`.  A `SYNC` can be perfomed later to restore the Scaled Job.  Scaled Jobs can also be deleted with Kubernetes.  An example for HSC is below.
+Scaled Jobs can be deleted to delete currently running pods and prevent new pods from spawning.  Within ArgoCD select the Application.  On the ``scaledjob`` panel select the three dots in the top right then ``Delete``.  A ``SYNC`` can be perfomed later to restore the Scaled Job.  Scaled Jobs can also be deleted with Kubernetes.  An example for HSC is below.
 
 .. code-block:: sh
 
@@ -712,7 +712,7 @@ Scaled Jobs can be deleted to delete currently running pods and prevent new pods
 Pausing Scaled Job Autoscaling
 -------------------
 
- Autoscaling can be paused with the `autoscaling.keda.sh/paused: true` annotation to avoid resource starvation.  Once the current jobs finish no new jobs or pods willl be created until the annotation is removed or set to `false`.  To set  within ArgoCD select the Application.  Select the `scaledjob` and under `LIVE MANIFEST` select `Edit`. In the metadata section add annotaiton.  For example:
+Autoscaling can be paused with the ``autoscaling.keda.sh/paused: true`` annotation to avoid resource starvation.  Once the current jobs finish no new jobs or pods willl be created until the annotation is removed or set to ``false``.  To set  within ArgoCD select the Application.  Select the ``scaledjob`` and under ``LIVE MANIFEST`` select ``Edit``. In the metadata section add the annotaiton.  For example:
 
 .. code-block:: sh
 
@@ -727,13 +727,13 @@ To remove the pause and enabling scaling set annotation to ``false``.  The docum
 REDIS
 =====
 
-The Next Visit Fan Out Service KEDA sends fanned out events to Redis Streams.  Within Redis Streams a stream is configured for each instrument along with a corresponding consumer group.  Prompt Processing is configured with a consumer group to read pending messages.   The naming for the streams is ``instrument:<instrument_name>`` so HSC for example is `instrument:hsc`
+The Next Visit Fan Out Service KEDA sends fanned out events to Redis Streams.  Within Redis Streams a stream is configured for each instrument along with a corresponding consumer group.  Prompt Processing is configured with a consumer group to read pending messages.   The naming for the streams is ``instrument:<instrument_name>`` so HSC for example is ``instrument:hsc``
 
 
 Redis CLI
 ---------
 
-Redis has a CLI to view and manage Redis Streams.  From the appropriate dev or production Prompt Procesisng vCluster access the CLI with ``kubectl exec -it prompt-redis-0 -n prompt-redis -- redis-cli`` Below displays a successful connection validated with a ``ping``.
+Redis has a CLI to view and manage Redis Streams.  From the appropriate dev or production Prompt Procesisng vCluster access the CLI with ``kubectl exec -it prompt-redis-0 -n prompt-redis -- redis-cli``.  Below displays a successful connection validated with a ``ping``.
 
 .. code-block:: sh
 
