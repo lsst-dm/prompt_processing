@@ -208,6 +208,7 @@ def make_local_cache():
             "uw_stars_20240524": refcat_factor * base_keep_limit,
             "uw_stars_20240228": refcat_factor * base_keep_limit,
             "uw_stars_20240130": refcat_factor * base_keep_limit,
+            "cal_ref_cat_2_2": refcat_factor * base_keep_limit,
             "ps1_pv3_3pi_20170110": refcat_factor * base_keep_limit,
             "gaia_dr3_20230707": refcat_factor * base_keep_limit,
             "gaia_dr2_20200414": refcat_factor * base_keep_limit,
