@@ -286,7 +286,7 @@ class PipelinesConfig:
 
             Parameters
             ----------
-            visit : `activator.visit.FannedOutVisit`
+            visit : `shared.visit.FannedOutVisit`
                 The visit to test against this spec.
 
             Returns
@@ -365,7 +365,7 @@ class PipelinesConfig:
 
         Parameters
         ----------
-        visit : `activator.visit.FannedOutVisit`
+        visit : `shared.visit.FannedOutVisit`
             The visit for which a pipeline must be selected.
 
         Returns

@@ -319,7 +319,7 @@ def send_next_visit(url, group, visit_infos):
         The URL of the Kafka REST Proxy to send ``next_visit`` messages to.
     group : `str`
         The group ID for the message to send.
-    visit_infos : `set` [`activator.SummitVisit`]
+    visit_infos : `set` [`shared.visit.SummitVisit`]
         The ``next_visit`` message to be sent; each object may
         represent multiple snaps.
     """

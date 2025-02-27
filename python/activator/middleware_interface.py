@@ -208,6 +208,7 @@ def make_local_cache():
             "uw_stars_20240524": refcat_factor * base_keep_limit,
             "uw_stars_20240228": refcat_factor * base_keep_limit,
             "uw_stars_20240130": refcat_factor * base_keep_limit,
+            "cal_ref_cat_2_2": refcat_factor * base_keep_limit,
             "ps1_pv3_3pi_20170110": refcat_factor * base_keep_limit,
             "gaia_dr3_20230707": refcat_factor * base_keep_limit,
             "gaia_dr2_20200414": refcat_factor * base_keep_limit,
@@ -262,11 +263,11 @@ class MiddlewareInterface:
     image_bucket : `str`
         Storage bucket where images will be written to as they arrive.
         See also ``prefix``.
-    visit : `activator.visit.FannedOutVisit`
+    visit : `shared.visit.FannedOutVisit`
         The visit-detector combination to be processed by this object.
-    pre_pipelines : `activator.config.PipelinesConfig`
+    pre_pipelines : `shared.config.PipelinesConfig`
         Information about which pipelines to run before a visit arrives.
-    main_pipelines : `activator.config.PipelinesConfig`
+    main_pipelines : `shared.config.PipelinesConfig`
         Information about which pipelines to run on ``visit``'s raws.
     skymap : `str`
         Name of the skymap in the central repo for querying templates.

@@ -147,7 +147,7 @@ def is_path_consistent(oid: str, visit: FannedOutVisit) -> bool:
     ----------
     oid : `str`
         The object store path to the snap image.
-    visit : `activator.visit.FannedOutVisit`
+    visit : `shared.visit.FannedOutVisit`
         The visit from which snaps were expected.
 
     Returns

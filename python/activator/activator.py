@@ -111,7 +111,7 @@ def _config_from_yaml(yaml_string):
 
     Returns
     -------
-    config : `activator.config.PipelineConfig`
+    config : `shared.config.PipelineConfig`
         The corresponding config object.
     """
     return PipelinesConfig(yaml.safe_load(yaml_string))
@@ -186,47 +186,42 @@ def _get_local_cache():
     return make_local_cache()
 
 
-def _get_redis_streams_client():
-    """Setup of Redis Client.
+def _make_redis_streams_client():
+    """Create a new Redis client.
 
     Returns
     -------
-    redis_client : `Redis`
-        Initialized redis client.
+    redis_client : `redis.Redis`
+        Initialized Redis client.
     """
     redis_host = redis_stream_host
     redis_client = redis.Redis(host=redis_host)
     return redis_client
 
 
-def _calculate_time_since_last_message(fan_out_listen_start_time):
-    """Calculates time since last redis streams message poll
-       received by this pod.
+def _time_diff(start_time):
+    """Calculates time since a reference timestamp.
 
     Parameters
     ----------
-    fan_out_listen_start_time : `float`
-        Time when listening for redis stream message started.  The time is
-        since Unix epoch.
+    start_time : `float`
+        Time since a reference point, in seconds since Unix epoch.
 
     Returns
     -------
-    fan_out_listen_time : `float`
-        Time in seconds since last fan out message received by this pod.
+    duration : `float`
+        Time in seconds since ``start_time``.
     """
-    fan_out_listen_finish_time = time.time()
-    fan_out_listen_time = fan_out_listen_finish_time - fan_out_listen_start_time
-    return fan_out_listen_time
+    return time.time() - start_time
 
 
 def _decode_redis_streams_message(fan_out_message):
-    """Decoded redis streams message from binary.  Redis Streams
-       returns a list of dicts.
+    """Decode redis streams message from binary.
 
     Parameters
     ----------
-    fan_out_message : `dict`
-        Fan out message.
+    fan_out_message
+        Fan out message, as a list of dicts.
 
     Returns
     -------
@@ -246,13 +241,13 @@ def _decode_redis_streams_message(fan_out_message):
 
 def _calculate_time_since_fan_out_message_delivered(redis_streams_message_id):
     """Calculates time from fan out message to when message is unpacked
-       in prompt processing.  The redis stream message ID includes
-       the timestamp in UTC suffixed with the message number.
+    in prompt processing.
 
     Parameters
     ----------
-    redis_streams_message_id : `string`
-        Fan out message.
+    redis_streams_message_id : `str`
+        Fan out message ID. It includes the timestamp in milliseconds since
+        Unix epoch suffixed with the message number.
 
     Returns
     -------
@@ -261,8 +256,7 @@ def _calculate_time_since_fan_out_message_delivered(redis_streams_message_id):
         in prompt processing.
     """
     message_timestamp = float(redis_streams_message_id.split('-', 1)[0].strip())
-    fan_out_to_prompt_time = time.time() - message_timestamp/1000
-    return fan_out_to_prompt_time
+    return _time_diff(message_timestamp/1000.0)
 
 
 def create_app():
@@ -326,7 +320,7 @@ def keda_start():
 
         # Setup redis client connection.  Setup before while loop to avoid performance
         # issues of constantly resetting up client connection
-        redis_client = _get_redis_streams_client()
+        redis_client = _make_redis_streams_client()
         try:
             redis_client.ping()
         except redis.exceptions.RedisError:
@@ -355,6 +349,8 @@ def keda_start():
                         groupname=redis_stream_consumer_group,
                         count=1  # Read one message at a time
                     )
+                    processing_start = time.time()
+                    processing_result = "Unknown"
 
                     if not fan_out_message:
                         continue
@@ -389,8 +385,7 @@ def keda_start():
 
                         consumer_polls_with_message += 1
                         if consumer_polls_with_message >= 1:
-                            fan_out_listen_time = _calculate_time_since_last_message(
-                                fan_out_listen_start_time)
+                            fan_out_listen_time = _time_diff(fan_out_listen_start_time)
                             _log.debug(
                                 "Seconds since last redis streams message received %r for consumer poll %r",
                                 fan_out_listen_time, consumer_polls_with_message)
@@ -402,23 +397,28 @@ def keda_start():
 
                         # Process fan out visit
                         process_visit(expected_visit)
+                        processing_result = "Success"
                     except GracefulShutdownInterrupt:
                         _log.error(
                             "Service interrupted.Shutting down *without* syncing to the central repo.")
+                        processing_result = "Interrupted"
                         sys.exit(1)
                     except IgnorableVisit as e:
                         _log.info("Skipping visit: %s", e)
+                        processing_result = "Ignore"
                     except Exception:
                         _log.exception("Processing failed:")
+                        processing_result = "Error"
                     finally:
-                        _log.info(
-                            "Processing completed for %s.  Starting next fan out event consumer poll",
-                            socket.gethostname())
+                        _log.debug("Request took %.3f s. Result: %s",
+                                   _time_diff(processing_start), processing_result)
+                        _log.info("Processing completed for %s.", socket.gethostname())
 
                 # Reset timer for fan out message polling and start redis client for next poll
+                _log.info("Starting next visit fan out event consumer poll")
                 fan_out_listen_start_time = time.time()
                 try:
-                    redis_client = _get_redis_streams_client()
+                    redis_client = _make_redis_streams_client()
                     redis_client.ping()
                     _log.info("Redis Streams client setup for continued polling")
                 except Exception as e:
@@ -492,7 +492,7 @@ def parse_next_visit(http_request):
 
     Returns
     -------
-    next_visit : `activator.visit.FannedOutVisit`
+    next_visit : `shared.visit.FannedOutVisit`
         The next_visit message contained in the request.
 
     Raises
@@ -633,7 +633,7 @@ def process_visit(expected_visit: FannedOutVisit):
 
     Parameters
     ----------
-    expected_visit : `activator.visit.FannedOutVisit`
+    expected_visit : `shared.visit.FannedOutVisit`
         The visit to process.
 
     Raises
