@@ -356,7 +356,7 @@ class MiddlewareInterfaceTest(MockTestCase):
                 )
 
         # Check that preloaded datasets have been generated
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         preload_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
                              f"NoPipeline/{self.deploy_id}"
         self.assertTrue(
@@ -1274,7 +1274,7 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
             skymap_name, second_local_repo.name, self.second_local_cache, prefix="file://")
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.second_interface.prep_butler()
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         self.preprocessing_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                                  f"/Preprocess/{self.deploy_id}"
         self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
@@ -1359,7 +1359,7 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         butler_tests.addDatasetType(central_butler, "testData", {"instrument", "exposure", "detector"}, "int")
         # Implementation detail: flush_local_repo looks for output-like
         # collections to avoid transferring inputs.
-        date = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-12)))
+        date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
               f"NoPipe/{self.deploy_id}"
 
