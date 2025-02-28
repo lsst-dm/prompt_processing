@@ -53,7 +53,7 @@ from tester.utils import (
 )
 
 
-EXPOSURE_INTERVAL = 18
+EXPOSURE_INTERVAL = 30
 SLEW_INTERVAL = 2
 
 
