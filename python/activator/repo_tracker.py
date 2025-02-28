@@ -78,12 +78,23 @@ class LocalRepoTracker:
 
     def cleanup_tracker(self):
         """Remove the tracker and delete all state.
+
+        Return
+        ------
+        repos : collection [`str`]
+            The (hopefully empty) set of repos that were still registered.
         """
         try:
+            with self._open_exclusive(self._BACKEND_FILE, mode="r") as f:
+                data = self._read_data(f)
+                repos = data.values()
             os.remove(self._BACKEND_FILE)
         except FileNotFoundError:
-            pass
+            repos = set()
         _log.info("Local repo tracker has been cleaned up.")
+        if repos:
+            _log.warning("The following repos were still registered: %s", repos)
+        return repos
 
     @staticmethod
     @contextlib.contextmanager
