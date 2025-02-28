@@ -22,7 +22,13 @@ max_requests = int(os.environ.get("WORKER_RESTART_FREQ", 0))
 
 def when_ready(server):
     tracker = activator.repo_tracker.LocalRepoTracker.get()
-    tracker.init_tracker()
+    old_repos = tracker.init_tracker()
+    for repo in old_repos:
+        try:
+            shutil.rmtree(repo)
+        except FileNotFoundError:
+            pass
+        # Propagate all other exceptions; it means the repo is still around!
 
 
 def child_exit(server, worker):

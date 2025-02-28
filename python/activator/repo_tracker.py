@@ -71,10 +71,26 @@ class LocalRepoTracker:
         This method should be called by the parent process of any processes
         that will use the tracker, or at least a process that is guaranteed
         to outlast the client processes.
+
+        Return
+        ------
+        old_repos : collection [`str`]
+            The contents of any pre-existing registry.
         """
-        with self._open_exclusive(self._BACKEND_FILE, mode="x") as f:
-            self._write_data(f, {})
-        _log.info("Local repo tracker is ready for use.")
+        try:
+            with self._open_exclusive(self._BACKEND_FILE, mode="x") as f:
+                self._write_data(f, {})
+            return set()
+        except FileExistsError:
+            # Don't log a stack trace, because this is likely to be called from
+            # a non-JSON logger.
+            with self._open_exclusive(self._BACKEND_FILE, mode="r+") as f:
+                data = self._read_data(f)
+                self._write_data(f, {})
+                _log.warning("Dangling repo registry found with the following repos: %s", data.values())
+                return data.values()
+        finally:
+            _log.info("Local repo tracker is ready for use.")
 
     def cleanup_tracker(self):
         """Remove the tracker and delete all state.
