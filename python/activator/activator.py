@@ -199,7 +199,7 @@ def _make_redis_streams_client():
     return redis_client
 
 
-def _time_diff(start_time):
+def _time_since(start_time):
     """Calculates time since a reference timestamp.
 
     Parameters
@@ -256,7 +256,7 @@ def _calculate_time_since_fan_out_message_delivered(redis_streams_message_id):
         in prompt processing.
     """
     message_timestamp = float(redis_streams_message_id.split('-', 1)[0].strip())
-    return _time_diff(message_timestamp/1000.0)
+    return _time_since(message_timestamp/1000.0)
 
 
 def create_app():
@@ -385,7 +385,7 @@ def keda_start():
 
                         consumer_polls_with_message += 1
                         if consumer_polls_with_message >= 1:
-                            fan_out_listen_time = _time_diff(fan_out_listen_start_time)
+                            fan_out_listen_time = _time_since(fan_out_listen_start_time)
                             _log.debug(
                                 "Seconds since last redis streams message received %r for consumer poll %r",
                                 fan_out_listen_time, consumer_polls_with_message)
@@ -411,7 +411,7 @@ def keda_start():
                         processing_result = "Error"
                     finally:
                         _log.debug("Request took %.3f s. Result: %s",
-                                   _time_diff(processing_start), processing_result)
+                                   _time_since(processing_start), processing_result)
                         _log.info("Processing completed for %s.", socket.gethostname())
 
                 # Reset timer for fan out message polling and start redis client for next poll
