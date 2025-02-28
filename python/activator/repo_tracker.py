@@ -43,6 +43,10 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
+# Absolute path on this worker's system where local repos may be created
+local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
+
+
 class LocalRepoTracker:
     """A mapping of process IDs to repo locations.
 
@@ -56,7 +60,10 @@ class LocalRepoTracker:
     """
     _instance: typing.Self | None = None
 
-    _BACKEND_FILE = os.path.join(os.path.expanduser("~"), ".repo.tracker.csv")
+    # Temp space is guaranteed to be in persistent storage (local disk
+    # in unit tests, ephemeral in container). The same is NOT true for
+    # ~ or /app.
+    _BACKEND_FILE = os.path.join(local_repos, ".repo.tracker.csv")
 
     @staticmethod
     def get() -> typing.Self:
