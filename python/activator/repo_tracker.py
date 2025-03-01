@@ -43,6 +43,10 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
+# Absolute path on this worker's system where local repos may be created
+local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
+
+
 class LocalRepoTracker:
     """A mapping of process IDs to repo locations.
 
@@ -56,7 +60,10 @@ class LocalRepoTracker:
     """
     _instance: typing.Self | None = None
 
-    _BACKEND_FILE = os.path.join(os.path.expanduser("~"), ".repo.tracker.csv")
+    # Temp space is guaranteed to be in persistent storage (local disk
+    # in unit tests, ephemeral in container). The same is NOT true for
+    # ~ or /app.
+    _BACKEND_FILE = os.path.join(local_repos, ".repo.tracker.csv")
 
     @staticmethod
     def get() -> typing.Self:
@@ -71,19 +78,46 @@ class LocalRepoTracker:
         This method should be called by the parent process of any processes
         that will use the tracker, or at least a process that is guaranteed
         to outlast the client processes.
+
+        Return
+        ------
+        old_repos : collection [`str`]
+            The contents of any pre-existing registry.
         """
-        with self._open_exclusive(self._BACKEND_FILE, mode="x") as f:
-            self._write_data(f, {})
-        _log.info("Local repo tracker is ready for use.")
+        try:
+            with self._open_exclusive(self._BACKEND_FILE, mode="x") as f:
+                self._write_data(f, {})
+            return set()
+        except FileExistsError:
+            # Don't log a stack trace, because this is likely to be called from
+            # a non-JSON logger.
+            with self._open_exclusive(self._BACKEND_FILE, mode="r+") as f:
+                data = self._read_data(f)
+                self._write_data(f, {})
+                _log.warning("Dangling repo registry found with the following repos: %s", data.values())
+                return data.values()
+        finally:
+            _log.info("Local repo tracker is ready for use.")
 
     def cleanup_tracker(self):
         """Remove the tracker and delete all state.
+
+        Return
+        ------
+        repos : collection [`str`]
+            The (hopefully empty) set of repos that were still registered.
         """
         try:
+            with self._open_exclusive(self._BACKEND_FILE, mode="r") as f:
+                data = self._read_data(f)
+                repos = data.values()
             os.remove(self._BACKEND_FILE)
         except FileNotFoundError:
-            pass
+            repos = set()
         _log.info("Local repo tracker has been cleaned up.")
+        if repos:
+            _log.warning("The following repos were still registered: %s", repos)
+        return repos
 
     @staticmethod
     @contextlib.contextmanager
