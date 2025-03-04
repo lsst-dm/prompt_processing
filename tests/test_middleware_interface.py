@@ -55,7 +55,7 @@ from activator.caching import DatasetCache
 from activator.exception import NonRetriableError, NoGoodPipelinesError, PipelineExecutionError
 from activator.middleware_interface import get_central_butler, flush_local_repo, make_local_repo, \
     _get_sasquatch_dispatcher, MiddlewareInterface, \
-    _filter_datasets, _generic_query, _MissingDatasetError
+    _transfer_multitype, _filter_datasets, _generic_query, _MissingDatasetError
 from shared.config import PipelinesConfig
 from shared.run_utils import get_output_run, get_deployment
 from shared.visit import FannedOutVisit
@@ -1363,6 +1363,19 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                 # No datasets of that type, obviously.
                 pass
         return count
+
+    def test_transfer_multitype(self):
+        central_butler = Butler(self.central_repo.name, writeable=False)
+        dimension_config = central_butler.dimensions.dimensionConfig
+        refs = central_butler.query_datasets("bias", collections="*", find_first=False) \
+            + central_butler.query_datasets("transmission_optics", collections="*", find_first=False)
+        with tempfile.TemporaryDirectory() as local_repo:
+            local_butler = Butler(Butler.makeRepo(local_repo, dimensionConfig=dimension_config),
+                                  writeable=True)
+            new_refs = _transfer_multitype(local_butler, central_butler, refs,
+                                           register_dataset_types=True, transfer_dimensions=True)
+        # transfer_from API returns a list, but order is meaningless
+        self.assertEqual(set(new_refs), set(refs))
 
     def test_flush_local_repo(self):
         central_butler = Butler(self.central_repo.name, writeable=True)

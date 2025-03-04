@@ -22,6 +22,7 @@
 __all__ = ["get_central_butler", "make_local_repo", "flush_local_repo", "make_local_cache",
            "MiddlewareInterface"]
 
+import collections
 import collections.abc
 import itertools
 import logging
@@ -40,7 +41,7 @@ import lsst.sphgeom
 import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
-from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan, \
+from lsst.daf.butler import Butler, CollectionType, DatasetRef, DatasetType, Timespan, \
     DataIdValueError, MissingDatasetTypeError
 import lsst.dax.apdb
 import lsst.geom
@@ -106,6 +107,39 @@ def get_central_butler(central_repo: str, instrument_class: str):
                   )
 
 
+def _transfer_multitype(dest_butler: Butler,
+                        source_butler: Butler,
+                        source_refs: collections.abc.Iterable[DatasetRef],
+                        *args, **kwargs) -> list[DatasetRef]:
+    """Efficiently transfer datasets of mixed types from one Butler
+    to another.
+
+    Parameters
+    ----------
+    dest_butler : `lsst.daf.butler.Butler`
+        The Butler to which the datasets are to be transferred.
+    source_butler : `lsst.daf.butler.Butler`
+        The Butler from which the datasets are to be transferred.
+    source_refs : iterable [`lsst.daf.butler.DatasetRef`]
+        Datasets to transfer from ``source_butler`` to ``dest_butler``.
+    *args, **kwargs
+        Additional arguments for `Butler.transfer_from`.
+
+    Returns
+    -------
+    transferred : `list` [`lsst.daf.butler.DatasetRef`]
+        The datasets transferred to ``dest_butler``.
+    """
+    refs_by_type = collections.defaultdict(set)
+    for ref in source_refs:
+        refs_by_type[ref.datasetType].add(ref)
+
+    transferred = []
+    for dtype, refs in refs_by_type.items():
+        transferred.extend(dest_butler.transfer_from(source_butler, refs, *args, **kwargs))
+    return transferred
+
+
 def flush_local_repo(repo_dir: str, central_butler: Butler):
     """Clean up a local repository abandoned by a different PP instance.
 
@@ -133,8 +167,8 @@ def flush_local_repo(repo_dir: str, central_butler: Butler):
                 )
         with lsst.utils.timer.time_this(_log, msg="flush_local_repo (transfer)", level=logging.DEBUG):
             MiddlewareInterface._export_exposure_dimensions(butler, central_butler)
-            transferred = central_butler.transfer_from(butler, datasets,
-                                                       transfer="copy", transfer_dimensions=False)
+            transferred = _transfer_multitype(central_butler, butler, datasets,
+                                              transfer="copy", transfer_dimensions=False)
             # Not necessarily a problem -- we might be transferring datasets
             # that have already been (partially?) transferred.
             _check_transfer_completion(datasets, transferred, "Uploaded")
@@ -823,13 +857,14 @@ class MiddlewareInterface:
             The calibs to re-certify into the local repo.
         """
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)", level=logging.DEBUG):
-            transferred = self.butler.transfer_from(self.central_butler,
-                                                    datasets,
-                                                    transfer="copy",
-                                                    skip_missing=True,
-                                                    register_dataset_types=True,
-                                                    transfer_dimensions=True,
-                                                    )
+            transferred = _transfer_multitype(self.butler,
+                                              self.central_butler,
+                                              datasets,
+                                              transfer="copy",
+                                              skip_missing=True,
+                                              register_dataset_types=True,
+                                              transfer_dimensions=True,
+                                              )
             _check_transfer_completion(datasets, transferred, "Downloaded")
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)", level=logging.DEBUG):
@@ -1495,8 +1530,8 @@ class MiddlewareInterface:
                 instrument=self.instrument.getName(),
                 detector=self.visit.detector,
             )
-            transferred = self.central_butler.transfer_from(self.butler, datasets,
-                                                            transfer="copy", transfer_dimensions=False)
+            transferred = _transfer_multitype(self.central_butler, self.butler, datasets,
+                                              transfer="copy", transfer_dimensions=False)
             _check_transfer_completion(datasets, transferred, "Uploaded")
 
         return transferred
