@@ -360,7 +360,8 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
                             Body=json.dumps(dict(hdul[0].header)),
                             Key=dest_key.removesuffix("fits") + "json",
                         )
-            dest_bucket.upload_file(path, dest_key)
+            with open(path, "r") as temp_file:
+                dest_bucket.put_object(Body=temp_file, Key=dest_key)
             _log.debug(f"{dest_key} was written at {dest_bucket}")
         finally:
             os.remove(path)
