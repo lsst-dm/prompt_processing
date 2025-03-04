@@ -342,6 +342,8 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
             _log.error(
                 f"{ref} has multiple artifacts and cannot be handled by current implementation"
             )
+            for transfer in transferred:
+                os.remove(transfer.path)
             return
 
         path = transferred[0].path
