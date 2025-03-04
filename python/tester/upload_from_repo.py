@@ -24,6 +24,7 @@ import json
 import logging
 import math
 import multiprocessing
+import os
 import random
 import tempfile
 import time
@@ -341,23 +342,29 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
             _log.error(
                 f"{ref} has multiple artifacts and cannot be handled by current implementation"
             )
+            for transfer in transferred:
+                os.remove(transfer.path)
             return
 
         path = transferred[0].path
         _log.debug(
             f"Raw file for {ref.dataId} was copied from Butler to {path}"
         )
-        with open(path, "r+b") as temp_file:
-            for header_key in headers:
-                replace_header_key(temp_file, header_key, headers[header_key])
-            if not sidecar_uploaded:
-                with fits.open(temp_file, mode="update") as hdul:
-                    dest_bucket.put_object(
-                        Body=json.dumps(dict(hdul[0].header)),
-                        Key=dest_key.removesuffix("fits") + "json",
-                    )
-        dest_bucket.upload_file(path, dest_key)
-        _log.debug(f"{dest_key} was written at {dest_bucket}")
+        try:
+            with open(path, "r+b") as temp_file:
+                for header_key in headers:
+                    replace_header_key(temp_file, header_key, headers[header_key])
+                if not sidecar_uploaded:
+                    with fits.open(temp_file, mode="update") as hdul:
+                        dest_bucket.put_object(
+                            Body=json.dumps(dict(hdul[0].header)),
+                            Key=dest_key.removesuffix("fits") + "json",
+                        )
+            with open(path, "r") as temp_file:
+                dest_bucket.put_object(Body=temp_file, Key=dest_key)
+            _log.debug(f"{dest_key} was written at {dest_bucket}")
+        finally:
+            os.remove(path)
 
 
 if __name__ == "__main__":
