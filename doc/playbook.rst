@@ -354,7 +354,7 @@ One raw was ingested, visit-defined, and kept in the development central repo, s
 .. code-block:: sh
 
    apdb-cli create-sql "sqlite:///apdb.db" apdb_config.yaml
-   pipetask run -b s3://rubin-pp-dev-users/central_repo_2 -i LSSTComCamSim/raw/all,LSSTComCamSim/defaults,LSSTComCamSim/templates -o u/username/collection -d " instrument='LSSTComCamSim' and exposure=7024062700235 and detector=8" -p $AP_PIPE_DIR/pipelines/LSSTComCamSim/ApPipe.yaml -c parameters:apdb_config=apdb_config.yaml -c diaPipe:doPackageAlerts=False --register-dataset-types --init-only
+   pipetask run -b s3://rubin-pp-dev-users/central_repo_2 -i LSSTComCamSim/raw/all,LSSTComCamSim/defaults,LSSTComCamSim/templates -o u/${USER}/add-dataset-types -d "instrument='LSSTComCamSim' and exposure=7024062700235 and detector=8" -p $AP_PIPE_DIR/pipelines/LSSTComCamSim/ApPipe.yaml -c parameters:apdb_config=apdb_config.yaml -c diaPipe:doPackageAlerts=False --register-dataset-types --init-only
 
 .. note::
 
