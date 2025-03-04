@@ -143,7 +143,7 @@ def main():
     # exposure.
     _log.debug("Uploading with %d processes...", max_processes)
     with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool, \
-            tempfile.TemporaryDirectory() as temp_dir:
+            tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp_dir:
         for visit in visit_list:
             group = increment_group(instrument, group, 1)
             refs = prepare_one_visit(kafka_url, group, butler, instrument, visit)
@@ -285,7 +285,7 @@ def _get_max_processes():
         overhead, and processing speed.
     """
     try:
-        return math.ceil(0.25*multiprocessing.cpu_count())
+        return math.ceil(multiprocessing.cpu_count())
     except NotImplementedError:
         return 4
 
