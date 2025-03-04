@@ -1,5 +1,5 @@
 instrument: LSSTCam-imSim
 query:
   collections: 2.2i/raw/OR5/DDF/day2/DM-48585
-  #where: "exposure > 1181582"
+  where: "exposure > 1191232"
 repo: embargo_or5
