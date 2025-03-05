@@ -82,6 +82,8 @@ kafka_group_id = str(uuid.uuid4())
 bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
 # Offset for Kafka bucket notification.
 bucket_notification_kafka_offset_reset = os.environ.get("BUCKET_NOTIFICATION_KAFKA_OFFSET_RESET", "latest")
+# Max requests to handle before restarting. 0 means no limit.
+max_requests = int(os.environ.get("WORKER_RESTART_FREQ", 0))
 
 # Conditionally load keda environment variables
 if platform == "keda":
@@ -199,7 +201,7 @@ def _make_redis_streams_client():
     return redis_client
 
 
-def _time_diff(start_time):
+def _time_since(start_time):
     """Calculates time since a reference timestamp.
 
     Parameters
@@ -256,7 +258,7 @@ def _calculate_time_since_fan_out_message_delivered(redis_streams_message_id):
         in prompt processing.
     """
     message_timestamp = float(redis_streams_message_id.split('-', 1)[0].strip())
-    return _time_diff(message_timestamp/1000.0)
+    return _time_since(message_timestamp/1000.0)
 
 
 def create_app():
@@ -340,7 +342,8 @@ def keda_start():
 
     with instances_started_gauge.track_inprogress():
         try:
-            while time.time() - fan_out_listen_start_time < fanned_out_msg_listen_timeout:
+            while (max_requests <= 0 or consumer_polls_with_message < max_requests) \
+                    and (_time_since(fan_out_listen_start_time) < fanned_out_msg_listen_timeout):
 
                 try:
                     fan_out_message = redis_client.xreadgroup(
@@ -385,7 +388,7 @@ def keda_start():
 
                         consumer_polls_with_message += 1
                         if consumer_polls_with_message >= 1:
-                            fan_out_listen_time = _time_diff(fan_out_listen_start_time)
+                            fan_out_listen_time = _time_since(fan_out_listen_start_time)
                             _log.debug(
                                 "Seconds since last redis streams message received %r for consumer poll %r",
                                 fan_out_listen_time, consumer_polls_with_message)
@@ -411,7 +414,7 @@ def keda_start():
                         processing_result = "Error"
                     finally:
                         _log.debug("Request took %.3f s. Result: %s",
-                                   _time_diff(processing_start), processing_result)
+                                   _time_since(processing_start), processing_result)
                         _log.info("Processing completed for %s.", socket.gethostname())
 
                 # Reset timer for fan out message polling and start redis client for next poll
@@ -426,6 +429,11 @@ def keda_start():
                     _log.exception(e)
                     redis_client.close()
                     sys.exit(1)
+
+            if _time_since(fan_out_listen_start_time) >= fanned_out_msg_listen_timeout:
+                _log.info("No messages received in %f seconds, shutting down.", fanned_out_msg_listen_timeout)
+            if max_requests > 0 and consumer_polls_with_message >= max_requests:
+                _log.info("Handled %d messages, shutting down.", consumer_polls_with_message)
 
         finally:
             # Assume only one worker per pod, don't need to remove local repo.
