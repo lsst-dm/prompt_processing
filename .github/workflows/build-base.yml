@@ -90,7 +90,7 @@ jobs:
         # Context-free build
         working-directory: base
         env:
-          EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
+          EUPS_TAG: quickstack
         run: |
           docker build - \
             --build-arg "PIPE_CONTAINER=${PIPE_CONTAINER}" \
@@ -103,7 +103,7 @@ jobs:
       - name: Push image to registries
         working-directory: base
         env:
-          EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
+          EUPS_TAG: quickstack
         run: |
           BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
           [ "$BRANCH" == "merge" ] && BRANCH=$(echo "${{ github.head_ref }}" | sed -e 's,.*/\(.*\),\1,')
