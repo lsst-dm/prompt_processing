@@ -52,7 +52,7 @@ runs:
         IMAGE_NAME: ${{ inputs.imageName }}
         BASE_IMAGE: ${{ inputs.baseImage }}
         BASE_TAG: ${{ inputs.baseTag }}
-        EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
+        EUPS_TAG: quickstack
       shell: bash
       run: |
         docker build . -f Dockerfile \
@@ -66,7 +66,7 @@ runs:
         IMAGE_NAME: ${{ inputs.imageName }}
         BASE_IMAGE: ${{ inputs.baseImage }}
         BASE_TAG: ${{ inputs.baseTag }}
-        EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
+        EUPS_TAG: quickstack
       shell: bash
       run: |
         BRANCH=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
