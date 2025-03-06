@@ -460,7 +460,7 @@ class MiddlewareInterface:
             boresight_center = lsst.geom.SpherePoint(sky_position.ra.degree, sky_position.dec.degree,
                                                      lsst.geom.degrees)
             orientation = self.visit.get_rotation_sky().degree * lsst.geom.degrees
-        except TypeError as e:
+        except (AttributeError, TypeError) as e:
             raise _NoPositionError("nextVisit does not have a position.") from e
         except RuntimeError as e:
             raise _NoPositionError(str(e)) from e
