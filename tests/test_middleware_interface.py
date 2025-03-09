@@ -288,24 +288,25 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
         self.assertEqual(self.interface.rawIngestTask.config.transfer, "copy")
 
-    def _check_imports(self, butler, group, detector, expected_shards, have_filter=True):
+    def _check_imports(self, butler, group, detector, expected_shards, have_filter=True, have_spatial=True):
         """Test that the butler has the expected supporting data.
         """
         self.assertEqual(butler.get('camera',
                                     instrument=instname,
                                     collections=[f"{instname}/calib/unbounded"]).getName(), instname)
 
-        # Check that the right skymap is in the chained output collection.
-        self.assertTrue(
-            butler.exists("skyMap",
-                          skymap=skymap_name,
-                          full_check=True,
-                          collections=self.umbrella)
-        )
+        if have_spatial:
+            # Check that the right skymap is in the chained output collection.
+            self.assertTrue(
+                butler.exists("skyMap",
+                              skymap=skymap_name,
+                              full_check=True,
+                              collections=self.umbrella)
+            )
+            # check that we got appropriate refcat shards
+            loaded_shards = butler.query_datasets("uw_stars_20240524", collections="refcats")
+            self.assertEqual(expected_shards, {x.dataId['htm7'] for x in loaded_shards})
 
-        # check that we got appropriate refcat shards
-        loaded_shards = butler.query_datasets("uw_stars_20240524", collections="refcats")
-        self.assertEqual(expected_shards, {x.dataId['htm7'] for x in loaded_shards})
         # Check that the right calibs are in the chained output collection.
         self.assertTrue(
             butler.exists('bias', detector=detector, instrument='LSSTComCamSim',
@@ -328,7 +329,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           collections=self.umbrella)
         )
 
-        if have_filter:
+        if have_filter and have_spatial:
             # Check that the right templates are in the chained output collection.
             # Need to refresh the butler to get all the dimensions/collections.
             butler.registry.refresh()
@@ -358,11 +359,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                           full_check=True,
                           collections=preload_collection)
         )
-        self.assertTrue(
-            butler.exists('regionTimeInfo', instrument=instname, group=group, detector=detector,
-                          full_check=True,
-                          collections=preload_collection)
-        )
+        if have_spatial:
+            self.assertTrue(
+                butler.exists('regionTimeInfo', instrument=instname, group=group, detector=detector,
+                              full_check=True,
+                              collections=preload_collection)
+            )
 
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
@@ -412,6 +414,25 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         expected_shards = {166464, 177536}
         self._check_imports(self.interface.butler, group="1", detector=4,
                             expected_shards=expected_shards, have_filter=False)
+
+        # Hard to test actual pipeline output, so just check we're calling it
+        mock_pre.assert_called_once()
+
+    def test_prep_butler_noposition(self):
+        """Test that prep_butler can handle visits without a position.
+        """
+        self.interface.visit = dataclasses.replace(
+            self.interface.visit,
+            coordinateSystem=FannedOutVisit.CoordSys.NONE,
+            position=[0.0, 0.0],
+        )
+        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
+                as mock_pre:
+            self.interface.prep_butler()
+
+        expected_shards = set()
+        self._check_imports(self.interface.butler, group="1", detector=4,
+                            expected_shards=expected_shards, have_spatial=False)
 
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
