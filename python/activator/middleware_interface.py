@@ -460,7 +460,7 @@ class MiddlewareInterface:
             boresight_center = lsst.geom.SpherePoint(sky_position.ra.degree, sky_position.dec.degree,
                                                      lsst.geom.degrees)
             orientation = self.visit.get_rotation_sky().degree * lsst.geom.degrees
-        except TypeError as e:
+        except (AttributeError, TypeError) as e:
             raise _NoPositionError("nextVisit does not have a position.") from e
         except RuntimeError as e:
             raise _NoPositionError(str(e)) from e
@@ -592,19 +592,18 @@ class MiddlewareInterface:
         """
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)", level=logging.DEBUG):
             calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
-        if region is None:
-            return (calib_datasets, calib_datasets)
 
-        with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)", level=logging.DEBUG):
-            refcat_datasets = set(self._export_refcats(region))
-        with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)", level=logging.DEBUG):
-            template_datasets = set(self._export_skymap_and_templates(
-                region, self.visit.filters))
+        all_datasets = calib_datasets
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)", level=logging.DEBUG):
-            model_datasets = set(self._export_ml_models())
-        return (refcat_datasets | template_datasets | calib_datasets | model_datasets,
-                calib_datasets,
-                )
+            all_datasets |= set(self._export_ml_models())
+
+        if region is not None:
+            with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)", level=logging.DEBUG):
+                all_datasets |= set(self._export_refcats(region))
+            with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)", level=logging.DEBUG):
+                all_datasets |= set(self._export_skymap_and_templates(
+                    region, self.visit.filters))
+        return (all_datasets, calib_datasets)
 
     def _export_refcats(self, region):
         """Identify the refcats to export from the central butler.
