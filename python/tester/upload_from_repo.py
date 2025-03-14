@@ -46,6 +46,7 @@ from tester.utils import (
     get_last_group,
     increment_group,
     make_exposure_id,
+    make_imsim_time_headers,
     replace_header_key,
     send_next_visit,
 )
@@ -310,6 +311,8 @@ def _upload_one_image(temp_dir, group_id, ref, uri):
     instrument = ref.dataId["instrument"]
     with time_this(log=_log, msg="Single-image processing", prefix=None):
         exposure_num, headers = make_exposure_id(instrument, group_id, 0)
+        if instrument == "LSSTCam-imSim":
+            headers.update(make_imsim_time_headers(EXPOSURE_INTERVAL))
         dest_key = get_raw_path(
             instrument,
             ref.dataId["detector"],

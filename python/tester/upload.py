@@ -50,6 +50,7 @@ from tester.utils import (
     get_last_group,
     increment_group,
     make_exposure_id,
+    make_imsim_time_headers,
     replace_header_key,
     send_next_visit,
 )
@@ -390,6 +391,8 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
             src_blob = snap_dict[snap_id][visit]
             exposure_num, headers = \
                 make_exposure_id(visit.instrument, visit.groupId, snap_id)
+            if instrument == "LSSTCam-imSim":
+                headers.update(make_imsim_time_headers(EXPOSURE_INTERVAL))
             filename = get_raw_path(visit.instrument, visit.detector, visit.groupId, snap_id,
                                     exposure_num, visit.filters)
 

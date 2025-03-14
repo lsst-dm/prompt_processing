@@ -22,6 +22,7 @@
 __all__ = [
     "get_last_group",
     "make_exposure_id",
+    "make_imsim_time_headers",
     "replace_header_key",
     "send_next_visit",
     "make_group",
@@ -36,6 +37,7 @@ import logging
 import requests
 
 from astropy.io import fits
+from astropy.time import Time, TimeDelta
 
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 
@@ -307,6 +309,30 @@ def make_imsim_id(group_id, snap):
         # mocked exposure records.
         "DAYOBS": day_obs,
         "GROUPID": group_id,
+    }
+
+
+def make_imsim_time_headers(exposure_interval):
+    """Generate imsim headers based on current time.
+
+    Parameters
+    ----------
+    exposure_interval : `float`
+        Exposure time in seconds.
+
+    Returns
+    -------
+    headers : `dict`
+        Key-value pairs in the form to appear in the headers.
+    """
+    start_time = Time.now().tai
+    end_time = start_time + TimeDelta(exposure_interval, format="sec")
+    return {
+        "MJD-OBS": start_time.mjd,
+        "DATE-OBS": start_time.strftime("%Y-%m-%dT%H:%M:%S.%f"),
+        "DATE-END": end_time.strftime("%Y-%m-%dT%H:%M:%S.%f"),
+        "EXPTIME": exposure_interval,
+        "DARKTIME": exposure_interval,
     }
 
 
