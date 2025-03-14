@@ -10,10 +10,8 @@ tasks:
     class: lsst.ip.isr.IsrTask
     config:
       doBrighterFatter: false
-      # turn off things we don't correct while LSSTCam is in the cleanroom
+      # turn off things that we can't do yet with the current repo's data.
       doBias: false
-      doLinearize: false
-      doCrosstalk: false
       doDefect: false
       doDark: false
       doFlat: false
