@@ -308,7 +308,7 @@ def _upload_one_image(temp_dir, group_id, butler, ref):
     """
     instrument = ref.dataId["instrument"]
     with time_this(log=_log, msg="Single-image processing", prefix=None):
-        exposure_num, headers = make_exposure_id(instrument, group_id, 0)
+        exposure_num, headers = make_exposure_id(instrument, group_id, 0, EXPOSURE_INTERVAL)
         dest_key = get_raw_path(
             instrument,
             ref.dataId["detector"],

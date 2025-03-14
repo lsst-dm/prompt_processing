@@ -36,6 +36,7 @@ import logging
 import requests
 
 from astropy.io import fits
+from astropy.time import Time, TimeDelta
 
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 
@@ -164,7 +165,7 @@ def make_compressed_date(date):
     return "%04d" % compressed
 
 
-def make_exposure_id(instrument, group_id, snap):
+def make_exposure_id(instrument, group_id, snap, exposure_time):
     """Generate an exposure ID from an exposure's other metadata.
 
     The exposure ID is designed for insertion into an image header, and is
@@ -178,6 +179,8 @@ def make_exposure_id(instrument, group_id, snap):
         A group ID.
     snap : `int`
         A snap ID.
+    exposure_time : `float`
+        Exposure time in seconds. This only matters to LSSTCam-imSim.
 
     Returns
     -------
@@ -190,7 +193,7 @@ def make_exposure_id(instrument, group_id, snap):
         format for ``instrument``'s header.
     """
     if instrument == "LSSTCam-imSim":
-        return make_imsim_id(group_id, snap)
+        return make_imsim_id(group_id, snap, exposure_time)
     elif instrument in _LSST_CAMERA_LIST:
         abbrev = _CAMERA_ABBREV[instrument]
         return make_lsst_id(group_id, snap, abbrev)
@@ -267,7 +270,7 @@ def make_lsst_id(group_id, snap, abbrev):
     }
 
 
-def make_imsim_id(group_id, snap):
+def make_imsim_id(group_id, snap, exposure_time):
     """Generate an exposure ID that the Butler can parse as a valid LSSTCam-imSim ID.
 
     Parameters
@@ -283,6 +286,8 @@ def make_imsim_id(group_id, snap):
         An exposure ID in the format expected by Gen 3 Middleware.
     headers : `dict`
         Key-value pairs in the form to appear in LSST headers.
+    exposure_time : `float`
+        Exposure time in seconds.
 
     Notes
     -----
@@ -301,8 +306,16 @@ def make_imsim_id(group_id, snap):
     if exposure_num > max_exposure["LSSTCam-imSim"]:
         raise RuntimeError(f"{group_id} translated to expId {exposure_num}, "
                            f"max allowed is {max_exposure['LSSTCam-imSim']}.")
+
+    start_time = Time.now()
+    end_time = start_time + TimeDelta(exposure_time, format="sec")
     return exposure_num, {
         "OBSID": exposure_num,
+        "MJD-OBS": start_time.mjd,
+        "DATE-OBS": start_time.strftime("%Y-%m-%dT%H:%M:%S.%f"),
+        "DATE-END": end_time.strftime("%Y-%m-%dT%H:%M:%S.%f"),
+        "EXPTIME": exposure_time,
+        "DARKTIME": exposure_time,
         # These headers do not exist in original imsim files, but are added for
         # mocked exposure records.
         "DAYOBS": day_obs,

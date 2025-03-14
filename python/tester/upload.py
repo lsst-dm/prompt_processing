@@ -389,7 +389,7 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
         def upload_from_pool(visit, snap_id):
             src_blob = snap_dict[snap_id][visit]
             exposure_num, headers = \
-                make_exposure_id(visit.instrument, visit.groupId, snap_id)
+                make_exposure_id(visit.instrument, visit.groupId, snap_id, EXPOSURE_INTERVAL)
             filename = get_raw_path(visit.instrument, visit.detector, visit.groupId, snap_id,
                                     exposure_num, visit.filters)
 
