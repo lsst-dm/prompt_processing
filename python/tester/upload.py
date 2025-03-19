@@ -303,10 +303,13 @@ def get_samples_lsst(bucket, instrument):
             md = json.load(f)
 
         sal_index = INSTRUMENTS[instrument].sal_index
+        timestamp = astropy.time.Time(md["DATE-BEG"], format="isot", scale="tai")
         # Use special sal_index to indicate a subset of detectors
         if instrument == "LSSTCam-imSim":
             # For imSim data, the OBSID header has the exposure ID.
             sal_index = int(md["OBSID"])
+            # For imSim, use current time TBD
+            timestamp = astropy.time.Time.now()
 
         visit = FannedOutVisit(
             instrument=instrument,
@@ -317,7 +320,7 @@ def get_samples_lsst(bucket, instrument):
             filters=md["FILTBAND"] or md["FILTER"],
             coordinateSystem=FannedOutVisit.CoordSys.ICRS,
             position=[md["RA"], md["DEC"]],
-            startTime=astropy.time.Time(md["DATE-BEG"], format="isot", scale="tai").unix_tai,
+            startTime=timestamp.unix_tai,
             rotationSystem=FannedOutVisit.RotSys.SKY,
             cameraAngle=md["ROTPA"],
             survey="SURVEY",
@@ -326,8 +329,7 @@ def get_samples_lsst(bucket, instrument):
             dome=FannedOutVisit.Dome.OPEN,
             duration=duration,
             totalCheckpoints=1,
-            private_sndStamp=astropy.time.Time(md["DATE-BEG"], format="isot", scale="tai"
-                                               ).unix_tai-2*duration,
+            private_sndStamp=timestamp.unix_tai-2*duration,
         )
         _log.debug(f"File {blob.key} parsed as visit {visit} and registered as group {md['GROUPID']}.")
         _add_to_raw_pool(result, 0, visit, blob)

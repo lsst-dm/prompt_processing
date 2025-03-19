@@ -223,6 +223,11 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
         dataId={"visit": visit_id, "instrument": instrument},
     )
 
+    timestamp = data_id.records["exposure"].timespan.begin
+    if instrument == "LSSTCam-imSim":
+        # For imSim, use current time TBD
+        timestamp = astropy.time.Time.now()
+
     duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
     # all items in refs share the same visit info and one event is to be sent
     for data_id in refs.dataIds.limit(1).expanded():
@@ -242,8 +247,8 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
             dome=SummitVisit.Dome.OPEN,
             duration=duration,
             totalCheckpoints=1,
-            private_sndStamp=data_id.records["exposure"].timespan.begin.unix_tai-2*duration,
-            private_efdStamp=data_id.records["exposure"].timespan.begin.unix-2*duration,
+            private_sndStamp=timestamp.unix_tai-2*duration,
+            private_efdStamp=timestamp.unix-2*duration,
         )
         send_next_visit(kafka_url, group_id, {visit})
 
