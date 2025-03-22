@@ -1277,9 +1277,10 @@ class MiddlewareInterface:
                 _log.warning("No timespan defined for visit: %s. Assuming APDB modified.", data_id)
                 return True
             apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
-            return apdb.containsVisitDetector(
-                data_id["visit"], self.visit.detector, region=data_id.region, visit_time=visit_time
-            )
+            with lsst.utils.timer.time_this(_log, msg="Apdb.containsVisitDetector", level=logging.DEBUG):
+                return apdb.containsVisitDetector(
+                    data_id["visit"], self.visit.detector, region=data_id.region, visit_time=visit_time
+                )
         elif not data_ids:
             # Engineering exposures don't produce visits, but they also can't write to the APDB.
             return False
