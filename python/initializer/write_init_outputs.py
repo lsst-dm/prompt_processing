@@ -82,31 +82,35 @@ def main(args=None):
     """
     instrument_name = os.environ["RUBIN_INSTRUMENT"]
     setup_usdf_logger(labels={"instrument": instrument_name},)
-    repo = os.environ["CALIB_REPO"]
+    try:
+        repo = os.environ["CALIB_REPO"]
+        _log.info("Preparing init-outputs for %s in %s.", instrument_name, repo)
 
-    _log.info("Preparing init-outputs for %s in %s.", instrument_name, repo)
+        parsed = make_parser().parse_args(args)
+        # URI to the repository that should contain init-outputs.
+        butler = lsst.daf.butler.Butler(repo, writeable=True)
+        # The preprocessing pipelines to execute and the conditions in which to choose them.
+        pre_pipelines = _config_from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
+        # The main pipelines to execute and the conditions in which to choose them.
+        main_pipelines = _config_from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
+        # URI to an APDB config file.
+        apdb = os.environ["CONFIG_APDB"]
+        deploy_id = parsed.deploy_id or run_utils.get_deployment(apdb)
 
-    parsed = make_parser().parse_args(args)
-    # URI to the repository that should contain init-outputs.
-    butler = lsst.daf.butler.Butler(repo, writeable=True)
-    # The preprocessing pipelines to execute and the conditions in which to choose them.
-    pre_pipelines = _config_from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
-    # The main pipelines to execute and the conditions in which to choose them.
-    main_pipelines = _config_from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
-    # URI to an APDB config file.
-    apdb = os.environ["CONFIG_APDB"]
-    deploy_id = parsed.deploy_id or run_utils.get_deployment(apdb)
+        instrument = lsst.obs.base.Instrument.from_string(instrument_name, butler.registry)
 
-    instrument = lsst.obs.base.Instrument.from_string(instrument_name, butler.registry)
+        preload_run = run_utils.get_preload_run(instrument, deploy_id, _get_current_day_obs())
+        butler.collections.register(preload_run, lsst.daf.butler.CollectionType.RUN)
+        for pipeline in pre_pipelines.get_all_pipeline_files():
+            _make_init_outputs(butler, instrument, apdb, deploy_id, pipeline)
+        for pipeline in main_pipelines.get_all_pipeline_files():
+            _make_init_outputs(butler, instrument, apdb, deploy_id, pipeline)
 
-    preload_run = run_utils.get_preload_run(instrument, deploy_id, _get_current_day_obs())
-    butler.collections.register(preload_run, lsst.daf.butler.CollectionType.RUN)
-    for pipeline in pre_pipelines.get_all_pipeline_files():
-        _make_init_outputs(butler, instrument, apdb, deploy_id, pipeline)
-    for pipeline in main_pipelines.get_all_pipeline_files():
-        _make_init_outputs(butler, instrument, apdb, deploy_id, pipeline)
-
-    _log.info("Registered init-outputs in %s.", repo)
+        _log.info("Registered init-outputs in %s.", repo)
+        return 0
+    except Exception:
+        _log.exception("Failed to prepare init-outputs for %s in %s.", instrument_name, repo)
+        return 1
 
 
 def _get_current_day_obs() -> str:
