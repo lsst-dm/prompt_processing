@@ -55,7 +55,7 @@ class Instrument:
 
 
 INSTRUMENTS = {
-    "LSSTCam": Instrument(2, 189 + 8 + 8, 1),
+    "LSSTCam": Instrument(1, 189 + 8 + 8, 1),
     "LSSTComCam": Instrument(2, 9, 1),
     "LSSTComCamSim": Instrument(1, 9, 3),
     "LATISS": Instrument(1, 1, 2),
