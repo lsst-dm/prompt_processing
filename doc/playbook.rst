@@ -326,7 +326,7 @@ To inspect table permissions:
    set search_path to <namespace>;
    \dp
 
-Most tables should grant the SELECT (r) and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcomcamsim_prompt``).
+Most tables should grant the SELECT (r) and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, ``lsstcam_prompt``, and ``lsstcomcamsim_prompt``).
 Some tables need INSERT (a).
 Table ``collection_chain`` also needs DELETE (d).
 
@@ -337,7 +337,7 @@ If any tables are missing permissions, run:
 
 .. code-block:: psql
 
-   GRANT insert, select, update ON TABLE "<table1>", "<table2>" TO hsc_prompt, latiss_prompt, lsstcomcamsim_prompt;
+   GRANT insert, select, update ON TABLE "<table1>", "<table2>" TO hsc_prompt, latiss_prompt, lsstcam_prompt, lsstcomcamsim_prompt;
 
 See the `GRANT command`_ for other options.
 
