@@ -33,6 +33,7 @@ import astropy.time
 import boto3
 from botocore.handlers import validate_bucket_name
 
+from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 from lsst.resources import ResourcePath
 
 from shared.raw import (
@@ -309,6 +310,10 @@ def get_samples_lsst(bucket, instrument):
         if instrument == "LSSTCam-imSim":
             # For imSim data, the OBSID header has the exposure ID.
             sal_index = int(md["OBSID"])
+        elif instrument == "LSSTCam":
+            _, _, day_obs, seq_num = md["OBSID"].split("_")
+            exposure_num = LsstBaseTranslator.compute_exposure_id(int(day_obs), int(seq_num))
+            sal_index = exposure_num
 
         visit = FannedOutVisit(
             instrument=instrument,
