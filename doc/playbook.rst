@@ -375,13 +375,13 @@ See the `Phalanx`_ docs for information on working with Phalanx in general (incl
 
 There are two different ways to deploy a development release of the service:
 
-* If you will not be making permanent changes to the Phalanx config, go to the Argo UI, select the specific ``prompt-proto-service-<instrument>`` service, then select the first "svc" node.
+* If you will not be making permanent changes to the Phalanx config, go to the Argo UI, select the specific ``prompt-keda-<instrument>`` service, then select the "scaledjob" node.
   Scroll down to the live manifest, click "edit", then update the ``template.spec.containers.image`` key to point to the new service container (likely a ticket branch instead of ``latest``).
   The service will immediately redeploy with the new image.
-  To force an update of the container, edit ``template.metadata.annotations.revision``.
+  To force an update of the Knative container without config changes, edit ``template.metadata.annotations.revision`` (this feature is not needed in Keda).
   *Do not* click "SYNC" on the main screen, as that will undo all your edits.
 * If you will be making permanent changes of any kind, the above procedure would force you to re-enter your changes with each update of the ``phalanx`` branch.
-  Instead, clone the `lsst-sqre/phalanx`_ repo and navigate to the ``applications/prompt-proto-service-<instrument>`` directory.
+  Instead, clone the `lsst-sqre/phalanx`_ repo and navigate to the ``applications/prompt-keda-<instrument>`` directory.
   Edit ``values-usdfdev-prompt-processing.yaml`` to point to the new service container (likely a ticket branch instead of ``latest``) and push the branch.
   You do not need to create a PR.
   Then, in the Argo UI, follow the instructions in `the Phalanx docs <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#switching-the-argo-cd-application-to-sync-the-branch>`_.
@@ -392,12 +392,12 @@ There are two different ways to deploy a development release of the service:
 
 The service configuration is in each instrument's ``values.yaml`` (for settings shared between development and production) and ``values-usdfdev-prompt-processing.yaml`` (for development-only settings).
 ``values.yaml`` and ``README.md`` provide documentation for all settings.
-The actual Kubernetes config (and the implementation of new config settings or secrets) is in ``charts/prompt-proto-service/templates/prompt-proto-service.yaml``.
+The actual Kubernetes config (and the implementation of new config settings or secrets) is in ``charts/prompt-keda/templates/scaled-job.yaml``.
 This file fully supports the Go template syntax.
 
 A few useful commands for managing the service:
 
-* ``kubectl config set-context usdf-prompt-processing-dev --namespace=prompt-proto-service-<instrument>`` sets the default namespace for the following ``kubectl`` commands to ``prompt-proto-service-<instrument>``.
+* ``kubectl config set-context usdf-prompt-processing-dev --namespace=prompt-keda-<instrument>`` sets the default namespace for the following ``kubectl`` commands to ``prompt-keda-<instrument>``.
 * ``kubectl get serving`` summarizes the state of the service, including which revision(s) are currently handling messages.
   A revision with 0 replicas is inactive.
 * ``kubectl get pods`` lists the Kubernetes pods that are currently running, how long they have been active, and how recently they crashed.
