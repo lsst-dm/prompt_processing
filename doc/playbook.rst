@@ -198,7 +198,7 @@ Check again that the ``latest`` base container matches ``X.Y.0`` before publishi
 Buckets
 =======
 
-`This document <https://confluence.lsstcorp.org/display/LSSTOps/USDF+S3+Bucket+Organization>`_ describes the overall organization of S3 buckets and access at USDF.
+`This document <https://rubinobs.atlassian.net/wiki/spaces/LSSTOps/pages/45636680/USDF+S3+Bucket+Organization>`_ describes the overall organization of S3 buckets and access at USDF.
 
 For development purposes, Prompt Processing has its own buckets, including ``rubin-pp-dev``, ``rubin-pp-dev-users``, ``rubin:rubin-pp``, and ``rubin:rubin-pp-users``.
 
