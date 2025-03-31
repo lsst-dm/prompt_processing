@@ -192,8 +192,8 @@ class RedisStreamSession:
     """The use of a single Redis Stream by a single consumer.
 
     A "session" may include multiple connections to Redis Streams. This object
-    automatically opens connections as needed. Connections may be closed safely
-    by calling `close`.
+    automatically opens connections as needed, and closes them when they are
+    unsafe. Connections may also be closed manually by calling `close`.
 
     Parameters
     ----------
@@ -231,6 +231,25 @@ class RedisStreamSession:
         """
         return redis.Redis(host=self.host)
 
+    @staticmethod
+    def _close_on_error(func):
+        """A decorator that closes the Redis client on a connection error.
+
+        This is a safety measure: if the caller aborts, the client needs to be
+        cleaned up; if they can recover, it's best to do so with a fresh
+        connection.
+        """
+        @functools.wraps(func)
+        def wrapper(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+            # TODO Review Redis Errors and determine what should be retriable.
+            except redis.exceptions.RedisError:
+                self.close()
+                raise
+        return wrapper
+
+    @_close_on_error
     def _ensure_connection(self):
         """Check for a valid connection to the stream, opening a new one
         if necessary.
@@ -248,6 +267,7 @@ class RedisStreamSession:
             _log.debug("Redis Streams client setup")
         self.client.ping()
 
+    @_close_on_error
     def acknowledge(self, message_id):
         """Acknowledge receipt of a message.
 
@@ -268,6 +288,7 @@ class RedisStreamSession:
             self.client.close()
             self.client = None
 
+    @_close_on_error
     def read_message(self):
         """Attempt to read one message from the stream.
 
@@ -429,18 +450,13 @@ def keda_start():
         _get_central_butler()
         _get_local_repo()
 
-        try:
-            redis_session = RedisStreamSession(
-                redis_stream_host,
-                redis_stream_name,
-                redis_group_id,
-                redis_stream_consumer_group,
-                connect=True,
-            )
-        except redis.exceptions.RedisError:
-            # Startup handler will quit; make sure the client is cleaned up for that.
-            redis_session.close()
-            raise
+        redis_session = RedisStreamSession(
+            redis_stream_host,
+            redis_stream_name,
+            redis_group_id,
+            redis_stream_consumer_group,
+            connect=True,
+        )
 
         _log.info("Worker ready to handle requests.")
 
@@ -472,7 +488,6 @@ def keda_start():
                 except redis.exceptions.RedisError as e:
                     _log.critical("Redis Streams error; aborting.")
                     _log.exception(e)
-                    redis_session.close()
                     sys.exit(1)
                 except ValueError as e:
                     _log.error("Invalid redis stream message %s", e)
