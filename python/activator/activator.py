@@ -188,17 +188,150 @@ def _get_local_cache():
     return make_local_cache()
 
 
-def _make_redis_streams_client():
-    """Create a new Redis client.
+class RedisStreamSession:
+    """The use of a single Redis Stream by a single consumer.
 
-    Returns
-    -------
-    redis_client : `redis.Redis`
-        Initialized Redis client.
+    A "session" may include multiple connections to Redis Streams. This object
+    automatically opens connections as needed. Connections may be closed safely
+    by calling `close`.
+
+    Parameters
+    ----------
+    host : `str`
+        The address of the Redis Streams cluster.
+    stream : `str`
+        The name of the stream to listen to.
+    consumer_id : `str`
+        The unique Redis Streams consumer for this session.
+    consumer_group : `str`
+        The Redis Stream consumer group.
+    connect : `bool`, optional
+        Whether to connect to ``stream`` on construction. If `False`, the
+        connection is deferred until a stream operation is needed.
     """
-    redis_host = redis_stream_host
-    redis_client = redis.Redis(host=redis_host)
-    return redis_client
+
+    # invariant: self.client is either an open Redis object, or `None`
+
+    def __init__(self, host, stream, consumer_id, consumer_group, *, connect=True):
+        self.host = host
+        self.stream = stream
+        self.groupname = consumer_group
+        self.consumername = consumer_id
+        self.client = None
+        if connect:
+            self._ensure_connection()
+
+    def _make_redis_streams_client(self):
+        """Create a new Redis client.
+
+        Returns
+        -------
+        redis_client : `redis.Redis`
+            Initialized Redis client.
+        """
+        return redis.Redis(host=self.host)
+
+    def _ensure_connection(self):
+        """Check for a valid connection to the stream, opening a new one
+        if necessary.
+
+        After this method returns, ``self.client`` is guaranteed non-`None`.
+
+        Exceptions
+        ----------
+        redis.exceptions.RedisError
+            Raised if the client could not connect or an existing connection
+            has gone bad.
+        """
+        if not self.client:
+            self.client = self._make_redis_streams_client()
+            _log.debug("Redis Streams client setup")
+        self.client.ping()
+
+    def acknowledge(self, message_id):
+        """Acknowledge receipt of a message.
+
+        Parameters
+        ----------
+        message_id : `str`
+            The message to acknowledge.
+        """
+        self._ensure_connection()
+        self.client.xack(self.stream, self.groupname, message_id)
+
+    def close(self):
+        """Close the session's active connection, if it has one.
+
+        This method is idempotent.
+        """
+        if self.client:
+            self.client.close()
+            self.client = None
+
+    def read_message(self):
+        """Attempt to read one message from the stream.
+
+        Returns
+        -------
+        message_id : `str` or `None`
+            The Redis Streams message ID. `None` if no message was read.
+        message : `dict` [`str`, `str`]
+            The message contents. Empty if no message was read.
+
+        Exceptions
+        ----------
+        redis.exceptions.RedisError
+            Raised if the stream could not be read.
+        ValueError
+            Raised if a message was received but the message was invalid.
+            Invalid messages may not be acknowledged (a message ID might not
+            exist) and do not close the stream, even if ``close_on_receipt``
+            is set.
+        """
+        self._ensure_connection()
+        raw_message = self.client.xreadgroup(
+            streams={self.stream: ">"},  # Read new messages (">" for pending messages)
+            consumername=self.consumername,
+            groupname=self.groupname,
+            count=1  # Read one message at a time
+        )
+
+        if not raw_message:
+            return None, {}
+        else:
+            return self._decode_redis_streams_message(raw_message)
+
+    @staticmethod
+    def _decode_redis_streams_message(fan_out_message):
+        """Decode redis streams message from binary.
+
+        Parameters
+        ----------
+        fan_out_message
+            Fan out message, as a list of dicts.
+
+        Returns
+        -------
+        redis_streams_message_id : `str`
+            Redis streams message id decoded from bytes.
+        fan_out_visit_decoded : `dict` [`str`, `str`]
+            Fan out visit message decoded from bytes.
+
+        Raises
+        ------
+        ValueError
+            Raised if the message could not be decoded.
+        """
+        try:
+            # Decode redis streams message id
+            redis_streams_message_id = (fan_out_message[0][1][0][0]).decode("utf-8")
+            # Decode and unpack fan out message from redis stream
+            fan_out_visit_bytes = fan_out_message[0][1][0][1]
+            fan_out_visit_decoded = {key.decode("utf-8"): value.decode("utf-8")
+                                     for key, value in fan_out_visit_bytes.items()}
+            return redis_streams_message_id, fan_out_visit_decoded
+        except (LookupError, UnicodeError) as e:
+            raise ValueError("Invalid redis stream message") from e
 
 
 def _time_since(start_time):
@@ -215,30 +348,6 @@ def _time_since(start_time):
         Time in seconds since ``start_time``.
     """
     return time.time() - start_time
-
-
-def _decode_redis_streams_message(fan_out_message):
-    """Decode redis streams message from binary.
-
-    Parameters
-    ----------
-    fan_out_message
-        Fan out message, as a list of dicts.
-
-    Returns
-    -------
-    redis_streams_message_id : `str`
-        Redis streams message id decoded from bytes.
-    fan_out_visit_decoded : `dict` [`str`, `str`]
-        Fan out visit message decoded from bytes.
-    """
-    # Decode redis streams message id
-    redis_streams_message_id = (fan_out_message[0][1][0][0]).decode("utf-8")
-    # Decode and unpack fan out message from redis stream
-    fan_out_visit_bytes = fan_out_message[0][1][0][1]
-    fan_out_visit_decoded = {key.decode("utf-8"): value.decode("utf-8")
-                             for key, value in fan_out_visit_bytes.items()}
-    return redis_streams_message_id, fan_out_visit_decoded
 
 
 def _calculate_time_since_fan_out_message_delivered(redis_streams_message_id):
@@ -320,14 +429,17 @@ def keda_start():
         _get_central_butler()
         _get_local_repo()
 
-        # Setup redis client connection.  Setup before while loop to avoid performance
-        # issues of constantly resetting up client connection
-        redis_client = _make_redis_streams_client()
         try:
-            redis_client.ping()
+            redis_session = RedisStreamSession(
+                redis_stream_host,
+                redis_stream_name,
+                redis_group_id,
+                redis_stream_consumer_group,
+                connect=True,
+            )
         except redis.exceptions.RedisError:
             # Startup handler will quit; make sure the client is cleaned up for that.
-            redis_client.close()
+            redis_session.close()
             raise
 
         _log.info("Worker ready to handle requests.")
@@ -346,36 +458,23 @@ def keda_start():
                     and (_time_since(fan_out_listen_start_time) < fanned_out_msg_listen_timeout):
 
                 try:
-                    fan_out_message = redis_client.xreadgroup(
-                        streams={redis_stream_name: ">"},  # Read new messages (">" for pending messages)
-                        consumername=redis_group_id,
-                        groupname=redis_stream_consumer_group,
-                        count=1  # Read one message at a time
-                    )
+                    redis_streams_message_id, fan_out_visit_decoded = redis_session.read_message()
                     processing_start = time.time()
                     processing_result = "Unknown"
 
-                    if not fan_out_message:
+                    if not redis_streams_message_id:
                         continue
-                    else:
 
-                        redis_streams_message_id, fan_out_visit_decoded = _decode_redis_streams_message(
-                            fan_out_message)
-
-                        # Ack the redis stream message and close redis stream client
-                        # TODO Consider moving xack after process visit completes for catch up processing.
-                        redis_client.xack(redis_stream_name,
-                                          redis_stream_consumer_group,
-                                          redis_streams_message_id)
-                        redis_client.close()
+                    redis_session.acknowledge(redis_streams_message_id)
+                    redis_session.close()
 
                 # TODO Review Redis Errors and determine what should be retriable.
                 except redis.exceptions.RedisError as e:
                     _log.critical("Redis Streams error; aborting.")
                     _log.exception(e)
-                    redis_client.close()
+                    redis_session.close()
                     sys.exit(1)
-                except (LookupError, UnicodeError) as e:
+                except ValueError as e:
                     _log.error("Invalid redis stream message %s", e)
                     fan_out_listen_start_time = time.time()
                     continue
@@ -417,18 +516,9 @@ def keda_start():
                                    _time_since(processing_start), processing_result)
                         _log.info("Processing completed for %s.", socket.gethostname())
 
-                # Reset timer for fan out message polling and start redis client for next poll
+                # Reset timer for fan out message polling
                 _log.info("Starting next visit fan out event consumer poll")
                 fan_out_listen_start_time = time.time()
-                try:
-                    redis_client = _make_redis_streams_client()
-                    redis_client.ping()
-                    _log.info("Redis Streams client setup for continued polling")
-                except Exception as e:
-                    _log.critical("Redis Streams client unexpected error in continued polling; aborting")
-                    _log.exception(e)
-                    redis_client.close()
-                    sys.exit(1)
 
             if _time_since(fan_out_listen_start_time) >= fanned_out_msg_listen_timeout:
                 _log.info("No messages received in %f seconds, shutting down.", fanned_out_msg_listen_timeout)
