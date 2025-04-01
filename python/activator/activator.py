@@ -482,6 +482,9 @@ def keda_start():
                         continue
 
                     redis_session.acknowledge(redis_streams_message_id)
+
+                    expected_visit = FannedOutVisit.from_dict(fan_out_visit_decoded)
+                    _log.debug("Unpacked message as %r.", expected_visit)
                     redis_session.close()
 
                 # TODO Review Redis Errors and determine what should be retriable.
@@ -496,9 +499,6 @@ def keda_start():
 
                 with instances_processing_gauge.track_inprogress():
                     try:
-
-                        expected_visit = FannedOutVisit.from_dict(fan_out_visit_decoded)
-                        _log.debug("Unpacked message as %r.", expected_visit)
 
                         consumer_polls_with_message += 1
                         if consumer_polls_with_message >= 1:
