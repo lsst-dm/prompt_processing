@@ -761,8 +761,11 @@ def next_visit_handler() -> tuple[str, int]:
         except ValueError as e:
             _log.exception("Bad Request")
             return f"Bad Request: {e}", 400
-        process_visit(expected_visit)
-        return "Pipeline executed", 200
+        if is_processable(expected_visit, visit_expire):
+            process_visit(expected_visit)
+            return "Pipeline executed", 200
+        else:
+            return "Stale request, ignoring", 403
     except GracefulShutdownInterrupt:
         # Safety net to minimize chance of interrupt propagating out of the worker.
         # Ideally, this would be a Flask.errorhandler, but Flask ignores BaseExceptions.
