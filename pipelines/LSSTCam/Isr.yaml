@@ -1,7 +1,7 @@
 description: ISR-only pipeline specialized for LSSTCam
 
 imports:
-  - location: $AP_PIPE_DIR/pipelines/_ingredients/ApPipe.yaml
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/ApPipe.yaml
     include:
       - isr
 
