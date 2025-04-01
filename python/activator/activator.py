@@ -34,6 +34,7 @@ import time
 import uuid
 import yaml
 
+import astropy.time
 import boto3
 from botocore.handlers import validate_bucket_name
 import cloudevents.http
@@ -74,10 +75,12 @@ image_bucket = os.environ["IMAGE_BUCKET"]
 image_timeout = int(os.environ.get("IMAGE_TIMEOUT", 20))
 # Absolute path on this worker's system where local repos may be created
 local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
-# Kafka server
+# Kafka server for raw notifications
 kafka_cluster = os.environ["KAFKA_CLUSTER"]
 # Kafka group; must be worker-unique to keep workers from "stealing" messages for others.
 kafka_group_id = str(uuid.uuid4())
+# The time (in seconds) after which to ignore old nextVisit messages.
+visit_expire = float(os.environ.get("MESSAGE_EXPIRATION", 3600))
 # The topic on which to listen to updates to image_bucket
 bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
 # Offset for Kafka bucket notification.
@@ -391,6 +394,37 @@ def _calculate_time_since_fan_out_message_delivered(redis_streams_message_id):
     return _time_since(message_timestamp/1000.0)
 
 
+def is_processable(visit, expire) -> bool:
+    """Test whether a nextVisit message should be processed, or rejected out
+    of hand.
+
+    This function emits explanatory logs as a side effect.
+
+    Parameters
+    ----------
+    visit : `FannedOutVisit`
+        The nextVisit message to consider processing.
+    expire : `float`
+        The maximum age, in seconds, that a message can still be handled.
+
+    Returns
+    -------
+    handleable : `bool`
+        `True` is the message can be processed, `False` otherwise.
+    """
+    # sndStamp is visit publication, in seconds since 1970-01-01 TAI
+    # For expirations of a few minutes the TAI-UTC difference is significant!
+    published = astropy.time.Time(visit.private_sndStamp, format="unix_tai").utc.unix
+    age = round(_time_since(published))  # Microsecond precision is distracting
+    if age > expire:
+        _log.warning("Message published on %s UTC is %s old, ignoring.",
+                     time.ctime(published),
+                     astropy.time.TimeDelta(age, format='sec').quantity_str
+                     )
+        return False
+    return True
+
+
 def create_app():
     try:
         setup_usdf_logger(
@@ -481,11 +515,16 @@ def keda_start():
                     if not redis_streams_message_id:
                         continue
 
+                    # TODO: Revisit acknowledgement policy for old messages once fan-out service exists
                     redis_session.acknowledge(redis_streams_message_id)
 
                     expected_visit = FannedOutVisit.from_dict(fan_out_visit_decoded)
                     _log.debug("Unpacked message as %r.", expected_visit)
-                    redis_session.close()
+                    if is_processable(expected_visit, visit_expire):
+                        # Processing can take a long time, and long-lived connections are ill-behaved
+                        redis_session.close()
+                    else:
+                        continue
 
                 # TODO Review Redis Errors and determine what should be retriable.
                 except redis.exceptions.RedisError as e:
