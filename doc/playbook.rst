@@ -198,7 +198,7 @@ Check again that the ``latest`` base container matches ``X.Y.0`` before publishi
 Buckets
 =======
 
-`This document <https://confluence.lsstcorp.org/display/LSSTOps/USDF+S3+Bucket+Organization>`_ describes the overall organization of S3 buckets and access at USDF.
+`This document <https://rubinobs.atlassian.net/wiki/spaces/LSSTOps/pages/45636680/USDF+S3+Bucket+Organization>`_ describes the overall organization of S3 buckets and access at USDF.
 
 For development purposes, Prompt Processing has its own buckets, including ``rubin-pp-dev``, ``rubin-pp-dev-users``, ``rubin:rubin-pp``, and ``rubin:rubin-pp-users``.
 
@@ -686,3 +686,23 @@ For a PostgreSQL APDB, you can do the check without bucket access by running, e.
 
    psql -h usdf-prompt-processing-dev.slac.stanford.edu lsst-devl rubin \
        -c 'select * from pp_apdb_latiss.metadata;'
+
+Upgrading the APDB Schema
+-------------------------
+
+To perform an APDB schema upgrade, download the ``apdb_migrate`` extension to ``dax``:
+
+.. code-block:: sh
+
+   git clone https://github.com/lsst-dm/dax_apdb_migrate/
+   cd dax_apdb_migrate
+   setup -r .
+   scons -j 6
+
+This activates ``apdb-migrate-sql``.
+Next, follow the instructions in the `lsst.dax.apdb_migrate documentation <https://github.com/lsst-dm/dax_apdb_migrate/blob/main/doc/lsst.dax.apdb_migrate/typical-tasks.rst>`_.
+In our case, we want to upgrade when we update ``latest`` to a version that has changes to the APDB schema.
+
+.. note::
+
+   Currently this script only works for Postgres APDB databases and cannot be used for Cassandra APDB databases.
