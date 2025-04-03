@@ -138,7 +138,8 @@ Add text as follows.
 
 Select **Publish Release**.
 
-The `ci-release.yaml <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
+The `Release CI <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
+This may take a few minutes, and the release is not usable until it succeeds.
 
 3. Tag the release
 
