@@ -312,20 +312,22 @@ def make_imsim_id(group_id, snap):
     }
 
 
-def make_imsim_time_headers(exposure_interval):
+def make_imsim_time_headers(exposure_interval, start_time_unix_tai):
     """Generate imsim headers based on current time.
 
     Parameters
     ----------
     exposure_interval : `float`
         Exposure time in seconds.
+    start_time_unix_tai : `float`
+        The Unix time (TAI) of the exposure start.
 
     Returns
     -------
     headers : `dict`
         Key-value pairs in the form to appear in the headers.
     """
-    start_time = Time.now().tai
+    start_time = Time(start_time_unix_tai, format='unix_tai')
     end_time = start_time + TimeDelta(exposure_interval, format="sec")
     return {
         "MJD-OBS": start_time.mjd,
