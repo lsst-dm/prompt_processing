@@ -30,6 +30,7 @@ import tempfile
 import time
 import yaml
 
+import astropy
 from astropy.io import fits
 import boto3
 from botocore.handlers import validate_bucket_name
@@ -226,6 +227,10 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
     duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
     # all items in refs share the same visit info and one event is to be sent
     for data_id in refs.dataIds.limit(1).expanded():
+        start_time = data_id.records["exposure"].timespan.begin
+        if instrument == "LSSTCam-imSim":
+            # For imSim, use current time for the event timestamp.
+            start_time = astropy.time.Time.now() + astropy.time.TimeDelta(2*duration, format='sec')
         visit = SummitVisit(
             instrument=instrument,
             groupId=group_id,
@@ -233,7 +238,7 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
             filters=data_id.records["physical_filter"].name,
             coordinateSystem=SummitVisit.CoordSys.ICRS,
             position=[data_id.records["exposure"].tracking_ra, data_id.records["exposure"].tracking_dec],
-            startTime=data_id.records["exposure"].timespan.begin.unix_tai,
+            startTime=start_time.unix_tai,
             rotationSystem=SummitVisit.RotSys.SKY,
             cameraAngle=data_id.records["exposure"].sky_angle,
             survey="SURVEY",
@@ -242,8 +247,8 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
             dome=SummitVisit.Dome.OPEN,
             duration=duration,
             totalCheckpoints=1,
-            private_sndStamp=data_id.records["exposure"].timespan.begin.unix_tai-2*duration,
-            private_efdStamp=data_id.records["exposure"].timespan.begin.unix-2*duration,
+            private_sndStamp=start_time.unix_tai-2*duration,
+            private_efdStamp=start_time.unix-2*duration,
         )
         send_next_visit(kafka_url, group_id, {visit})
 
