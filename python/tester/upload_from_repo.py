@@ -60,7 +60,7 @@ logging.basicConfig(
     style="{",
 )
 _log = logging.getLogger("lsst." + __name__)
-_log.setLevel(logging.INFO)
+_log.setLevel(logging.DEBUG)
 
 
 # HACK: S3 object initialized once per process; see https://stackoverflow.com/questions/48091874/
@@ -287,7 +287,7 @@ def _get_max_processes():
         overhead, and processing speed.
     """
     try:
-        return math.ceil(0.25*multiprocessing.cpu_count())
+        return math.ceil(0.125*multiprocessing.cpu_count())
     except NotImplementedError:
         return 4
 
