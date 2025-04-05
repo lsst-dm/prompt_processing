@@ -360,7 +360,7 @@ def _upload_one_image(temp_dir, group_id, ref, uri, exposure_start):
             with open(path, "r+b") as temp_file:
                 for header_key in headers:
                     replace_header_key(temp_file, header_key, headers[header_key])
-                if not sidecar_uploaded:
+                if not sidecar_uploaded and instrument in _LSST_CAMERA_LIST:
                     with fits.open(temp_file, mode="update") as hdul:
                         dest_bucket.put_object(
                             Body=json.dumps(dict(hdul[0].header)),
