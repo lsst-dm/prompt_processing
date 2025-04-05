@@ -3,9 +3,12 @@ FROM ghcr.io/lsst-dm/prompt-base:${BASE_TAG}
 ENV PYTHONUNBUFFERED=True
 ENV APP_HOME=/app
 ENV PROMPT_PROCESSING_DIR=$APP_HOME
+ENV PYTHONPATH=$APP_HOME
 ARG PORT
 WORKDIR $APP_HOME
 COPY python/activator activator/
+# Initializer is not run by this container, but its code is needed to generate consistent version hashes.
+COPY python/initializer initializer/
 COPY python/shared shared/
 COPY pipelines pipelines/
 COPY config/gunicorn.conf.py ./

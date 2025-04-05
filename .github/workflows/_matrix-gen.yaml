@@ -1,0 +1,27 @@
+---
+name: Select base tags
+on:
+  workflow_call:
+    outputs:
+      matrix:
+        value: ${{ jobs.matrix-gen.outputs.matrix }}
+
+env:
+  # This is a bracketed, comma-separated list of double-quoted base container
+  # tags that will be used to build service containers on each branch
+  # (including "main").  Typically, any tags listed beyond "latest" would be
+  # relatively stable Pipelines containers that are needed to avoid issues with
+  # the "latest" version; they would remain in this list until "latest" becomes
+  # usable for all building and testing.
+  BASE_TAG_LIST: '["latest"]'
+
+jobs:
+  matrix-gen:
+    # This job exists solely because fromJSON() cannot directly accept
+    # env.BASE_TAG_LIST for some reason.
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - id: set-matrix
+        run: echo "matrix=${BASE_TAG_LIST}" >> $GITHUB_OUTPUT
