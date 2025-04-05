@@ -48,7 +48,7 @@ To build the service container:
 * To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml>`_ and select "Run workflow".
   From the dropdown, select the branch whose code should be built.
   The container will be built using the ``latest`` base container, even if there is a branch build of the base.
-* To use a base other than ``latest``, edit ``.github/workflows/build-service.yml`` on the branch and override the ``BASE_TAG_LIST`` variable.
+* To use a base other than ``latest``, edit ``.github/workflows/_matrix-gen.yaml`` on the branch and override the ``BASE_TAG_LIST`` variable.
   Be careful not to merge the temporary override to ``main``!
 * New service containers built from ``main`` have the tags of their base container.
   Containers built from a branch are prefixed by the ticket number or, for user branches, the branch topic.
@@ -62,7 +62,7 @@ Stable Base Containers
 
 In general, the ``latest`` base container is built from a weekly or other stable Science Pipelines release.
 However, it may happen that the ``latest`` base is used for development while production runs should use an older build.
-If this comes up, edit ``.github/workflows/build-service.yml`` and append the desired base build to the ``BASE_TAG_LIST`` variable.
+If this comes up, edit ``.github/workflows/_matrix-gen.yaml`` and append the desired base build to the ``BASE_TAG_LIST`` variable.
 Any subsequent builds of the service container will build against both bases.
 
 This is the only situation in which a change to ``BASE_TAG_LIST`` should be committed to ``main``.
