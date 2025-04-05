@@ -50,6 +50,7 @@ from tester.utils import (
     get_last_group,
     increment_group,
     make_exposure_id,
+    make_imsim_time_headers,
     replace_header_key,
     send_next_visit,
 )
@@ -377,9 +378,19 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
         # Copy all the visit-blob dictionaries under each snap_id,
         # replacing the (immutable) FannedOutVisit objects to point to group
         # instead of true_group.
+        # Update timestamp for LSSTCam-imSim only.
+        now = astropy.time.Time.now().unix_tai
         for snap_id, old_visits in raw_pool[true_group].items():
-            snap_dict[snap_id] = {dataclasses.replace(true_visit, groupId=group): blob
-                                  for true_visit, blob in old_visits.items()}
+            snap_dict[snap_id] = {
+                dataclasses.replace(
+                    true_visit,
+                    groupId=group,
+                    **({
+                        "startTime": now + 2*(EXPOSURE_INTERVAL + SLEW_INTERVAL),
+                        "private_sndStamp": now
+                    } if instrument == "LSSTCam-imSim" else {})
+                ): blob
+                for true_visit, blob in old_visits.items()}
         # Gather all the FannedOutVisit objects found in snap_dict, merging
         # duplicates for different snaps of the same detector.
         visit_infos = {info for det_dict in snap_dict.values() for info in det_dict}
@@ -390,6 +401,8 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
             src_blob = snap_dict[snap_id][visit]
             exposure_num, headers = \
                 make_exposure_id(visit.instrument, visit.groupId, snap_id)
+            if instrument == "LSSTCam-imSim":
+                headers.update(make_imsim_time_headers(EXPOSURE_INTERVAL))
             filename = get_raw_path(visit.instrument, visit.detector, visit.groupId, snap_id,
                                     exposure_num, visit.filters)
 
