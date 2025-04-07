@@ -558,10 +558,27 @@ def keda_start():
                         _log.info("Skipping visit: %s", e)
                         processing_result = "Ignore"
                     except GracefulShutdownInterrupt:
-                        _log.error(
-                            "Service interrupted.Shutting down *without* syncing to the central repo.")
+                        # Safety net to minimize chance of interrupt propagating out of the worker.
+                        _log.error("Service interrupted.")
                         processing_result = "Interrupted"
                         sys.exit(1)
+                    except RetriableError as e:
+                        # TODO: need to implement retries for both cases
+                        if isinstance(e.nested, GracefulShutdownInterrupt):
+                            _log.error("Service interrupted.")
+                            processing_result = "Interrupted"
+                            sys.exit(1)
+                        else:
+                            _log.exception("Processing failed:")
+                            processing_result = "Error"
+                    except NonRetriableError as e:
+                        if isinstance(e.nested, GracefulShutdownInterrupt):
+                            _log.error("Service interrupted.")
+                            processing_result = "Interrupted"
+                            sys.exit(1)
+                        else:
+                            _log.exception("Processing failed:")
+                            processing_result = "Error"
                     except Exception:
                         _log.exception("Processing failed:")
                         processing_result = "Error"
