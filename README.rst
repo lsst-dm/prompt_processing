@@ -2,6 +2,10 @@
 prompt_processing
 #################
 
+.. image:: https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml/badge.svg?event=push
+   :target: https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml
+   :alt: Release CI Build Status
+
 ``prompt_processing`` is a package in the `LSST Science Pipelines <https://pipelines.lsst.io>`_.
 
 ``prompt_processing`` contains code used for the Rubin Observatory Prompt Processing framework.
