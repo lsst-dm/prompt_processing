@@ -2,6 +2,10 @@
 prompt_processing
 #################
 
+.. image:: https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml/badge.svg?branch=main
+   :target: https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml
+   :alt: Dev Build Status
+
 .. image:: https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml/badge.svg?event=push
    :target: https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml
    :alt: Release CI Build Status
