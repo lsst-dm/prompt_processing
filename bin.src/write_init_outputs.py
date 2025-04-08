@@ -28,9 +28,10 @@ given pipeline configuration. It is idempotent, i.e. regenerating the same
 init-outputs in the same run is not an error.
 """
 
+import sys
 
 from initializer.write_init_outputs import main
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
