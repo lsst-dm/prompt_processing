@@ -2,7 +2,9 @@
 *
 # Include these paths.
 !python/activator/*.py
+!python/initializer/*.py
 !python/shared/*.py
 !pipelines
 !config/gunicorn.conf.py
 !maps
+!bin.src/write_init_outputs.py

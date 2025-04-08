@@ -35,6 +35,7 @@ from tester.utils import (
     decode_group,
     increment_group,
 )
+from test_utils import MockTestCase
 
 try:
     import boto3
@@ -48,7 +49,7 @@ except ImportError:
 
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
-class TesterUtilsTest(unittest.TestCase):
+class TesterUtilsTest(MockTestCase):
     """Test components in tester.
     """
     bucket_name = "testBucketName"
@@ -60,7 +61,7 @@ class TesterUtilsTest(unittest.TestCase):
 
     def setUp(self):
         self.enterContext(lsst.resources.s3utils.clean_test_environment_for_s3())
-        self.mock_aws.start()
+        self.setup_patcher(self.mock_aws)
         s3 = boto3.resource("s3")
         s3.create_bucket(Bucket=self.bucket_name)
 
@@ -84,20 +85,16 @@ class TesterUtilsTest(unittest.TestCase):
         s3 = boto3.resource("s3")
         bucket = s3.Bucket(self.bucket_name)
         try:
-            try:
-                bucket.objects.all().delete()
-            except botocore.exceptions.ClientError as e:
-                if e.response["Error"]["Code"] == "404":
-                    # the key was not reachable - pass
-                    pass
-                else:
-                    raise
-            finally:
-                bucket = s3.Bucket(self.bucket_name)
-                bucket.delete()
+            bucket.objects.all().delete()
+        except botocore.exceptions.ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                # the key was not reachable - pass
+                pass
+            else:
+                raise
         finally:
-            # Stop the S3 mock.
-            self.mock_aws.stop()
+            bucket = s3.Bucket(self.bucket_name)
+            bucket.delete()
 
     def test_get_last_group(self):
         s3 = boto3.resource("s3")

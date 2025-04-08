@@ -48,7 +48,7 @@ To build the service container:
 * To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml>`_ and select "Run workflow".
   From the dropdown, select the branch whose code should be built.
   The container will be built using the ``latest`` base container, even if there is a branch build of the base.
-* To use a base other than ``latest``, edit ``.github/workflows/build-service.yml`` on the branch and override the ``BASE_TAG_LIST`` variable.
+* To use a base other than ``latest``, edit ``.github/workflows/_matrix-gen.yaml`` on the branch and override the ``BASE_TAG_LIST`` variable.
   Be careful not to merge the temporary override to ``main``!
 * New service containers built from ``main`` have the tags of their base container.
   Containers built from a branch are prefixed by the ticket number or, for user branches, the branch topic.
@@ -62,7 +62,7 @@ Stable Base Containers
 
 In general, the ``latest`` base container is built from a weekly or other stable Science Pipelines release.
 However, it may happen that the ``latest`` base is used for development while production runs should use an older build.
-If this comes up, edit ``.github/workflows/build-service.yml`` and append the desired base build to the ``BASE_TAG_LIST`` variable.
+If this comes up, edit ``.github/workflows/_matrix-gen.yaml`` and append the desired base build to the ``BASE_TAG_LIST`` variable.
 Any subsequent builds of the service container will build against both bases.
 
 This is the only situation in which a change to ``BASE_TAG_LIST`` should be committed to ``main``.
@@ -328,8 +328,7 @@ To inspect table permissions:
    \dp
 
 Most tables should grant the SELECT (r) and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcomcamsim_prompt``).
-Some tables need INSERT (a).
-Table ``collection_chain`` also needs DELETE (d).
+Some tables also need INSERT (a) and DELETE (d).
 
 We need SELECT (r) and USAGE (U) permissions for the sequence ``collection_seq_collection_id``, but *not* for ``dataset_calibs_*_seq_id``, ``dataset_type_seq_id``, or ``dimension_graph_key_seq_id``.
 We expect that most future sequences will only be touched by repository maintenance and not by pipeline runs or data transfers.
@@ -375,29 +374,46 @@ See the `Phalanx`_ docs for information on working with Phalanx in general (incl
 
 There are two different ways to deploy a development release of the service:
 
-* If you will not be making permanent changes to the Phalanx config, go to the Argo UI, select the specific ``prompt-proto-service-<instrument>`` service, then select the first "svc" node.
-  Scroll down to the live manifest, click "edit", then update the ``template.spec.containers.image`` key to point to the new service container (likely a ticket branch instead of ``latest``).
-  The service will immediately redeploy with the new image.
-  To force an update of the container, edit ``template.metadata.annotations.revision``.
-  *Do not* click "SYNC" on the main screen, as that will undo all your edits.
-* If you will be making permanent changes of any kind, the above procedure would force you to re-enter your changes with each update of the ``phalanx`` branch.
-  Instead, clone the `lsst-sqre/phalanx`_ repo and navigate to the ``applications/prompt-proto-service-<instrument>`` directory.
-  Edit ``values-usdfdev-prompt-processing.yaml`` to point to the new service container (likely a ticket branch instead of ``latest``) and push the branch.
-  You do not need to create a PR.
-  Then, in the Argo UI, follow the instructions in `the Phalanx docs <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#switching-the-argo-cd-application-to-sync-the-branch>`_.
-  To force a container update without a corresponding ``phalanx`` update, you need to edit ``template.metadata.annotations.revision`` as described above -- `restarting a deployment <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#restarting-a-deployment>`_ that's part of a service does not check for a newer container, even with Always pull policy.
+**Argo patching**:
+If you will not be making permanent changes to the Phalanx config, go to the Argo UI, select the specific ``prompt-keda-<instrument>`` service, then select "Details" from the top bar.
+Open the "Parameters" tab, click "edit", then update the ``prompt-keda.image.tag`` key to point to the new service container (likely a ticket branch instead of ``latest``).
+The changes will not take effect until you click "SYNC" on the main screen.
+To force an update of the Knative container without config changes, edit ``prompt-proto-service.podAnnotations.revision`` (this feature is not needed in Keda).
+Changes made in the Parameters tab last indefinitely, so be sure to undo them by clicking "edit" followed by the "Remove override" link.
+
+.. important::
+
+   Never remove the overrides for ``global.host``, ``global.baseUrl``, or ``global.vaultSecretsPath``.
+
+.. note::
+
+   Changes to parameters do not show up in any Diff and aren't overwritten by syncing to a branch.
+   The only way to see if a parameter has been changed is to go to the Parameters tab; all overridden parameters are grouped at the top of the list.
+
+**Phalanx branch**:
+If you will be making permanent changes, clone the `lsst-sqre/phalanx`_ repo and navigate to the ``applications/prompt-keda-<instrument>`` directory.
+Edit ``values-usdfdev-prompt-processing.yaml`` to point to the new service container (likely a ticket branch instead of ``latest``) and push the branch.
+You do not need to create a PR.
+Then, in the Argo UI, follow the instructions in `the Phalanx docs <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#switching-the-argo-cd-application-to-sync-the-branch>`_.
+To force a container update without a corresponding ``phalanx`` update, you need to edit ``template.metadata.annotations.revision`` as described above -- `restarting a deployment <https://phalanx.lsst.io/developers/deploy-from-a-branch.html#restarting-a-deployment>`_ that's part of a service does not check for a newer container, even with Always pull policy.
+
+.. note::
+
+   We used to be able to make changes in Argo by directly patching the Kubernetes config for specific Service/ScaledJob nodes.
+   This is no longer safe, because there are multiple components that need to share certain configs.
+   Always do your updates either in Argo's Parameters view or in ``values*.yaml`` files.
 
 .. _Phalanx: https://phalanx.lsst.io/developers/
 .. _lsst-sqre/phalanx: https://github.com/lsst-sqre/phalanx/
 
 The service configuration is in each instrument's ``values.yaml`` (for settings shared between development and production) and ``values-usdfdev-prompt-processing.yaml`` (for development-only settings).
 ``values.yaml`` and ``README.md`` provide documentation for all settings.
-The actual Kubernetes config (and the implementation of new config settings or secrets) is in ``charts/prompt-proto-service/templates/prompt-proto-service.yaml``.
-This file fully supports the Go template syntax.
+The actual Kubernetes configs (and the implementation of new config settings or secrets) are in ``charts/prompt-keda/templates/``.
+These files fully support the Go template syntax.
 
 A few useful commands for managing the service:
 
-* ``kubectl config set-context usdf-prompt-processing-dev --namespace=prompt-proto-service-<instrument>`` sets the default namespace for the following ``kubectl`` commands to ``prompt-proto-service-<instrument>``.
+* ``kubectl config set-context usdf-prompt-processing-dev --namespace=prompt-keda-<instrument>`` sets the default namespace for the following ``kubectl`` commands to ``prompt-keda-<instrument>``.
 * ``kubectl get serving`` summarizes the state of the service, including which revision(s) are currently handling messages.
   A revision with 0 replicas is inactive.
 * ``kubectl get pods`` lists the Kubernetes pods that are currently running, how long they have been active, and how recently they crashed.

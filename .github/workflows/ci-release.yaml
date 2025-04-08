@@ -20,9 +20,12 @@ name: Release CI
       - '.github/workflows/ci-release.yaml'
       - '.github/actions/**'
       - 'Dockerfile'
+      - 'init-output-run/Dockerfile'
 
 env:
-  IMAGE_NAME: lsst-dm/prompt-service
+  SERVICE_IMAGE_NAME: lsst-dm/prompt-service
+  INIT_IMAGE_NAME: lsst-dm/prompt-init
+  INIT_DOCKERDIR: init-output-run
   # Base image and tag to run tests against. NOT used in the container build.
   BASE_TAG: "latest"
   BASE_IMAGE: ghcr.io/${{ github.repository_owner }}/prompt-base
@@ -48,8 +51,8 @@ jobs:
           ghcr_user: ${{ github.actor }}
           ghcr_token: ${{ secrets.GITHUB_TOKEN }}
 
-  build:
-    name: Build release image
+  build-service:
+    name: Build release service image
     needs: test
     runs-on: ubuntu-latest
 
@@ -59,7 +62,24 @@ jobs:
       - uses: lsst-sqre/build-and-push-to-ghcr@v1
         id: build
         with:
-          image: ${{ env.IMAGE_NAME }}
+          image: ${{ env.SERVICE_IMAGE_NAME }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - run: echo Pushed ghcr.io/${{ github.repository }}:${{ steps.build.outputs.tag }}
+
+  build-init:
+    name: Build release initializer image
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: lsst-sqre/build-and-push-to-ghcr@v1
+        id: build
+        with:
+          image: ${{ env.INIT_IMAGE_NAME }}
+          dockerfile: ${{ env.INIT_DOCKERDIR }}/Dockerfile
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - run: echo Pushed ghcr.io/${{ github.repository }}:${{ steps.build.outputs.tag }}

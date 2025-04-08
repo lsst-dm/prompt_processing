@@ -8,6 +8,10 @@ inputs:
     description: The container image to update.
     required: true
     type: string
+  dockerDir:
+    description: The directory containing the Dockerfile for the container.
+    default: .
+    type: string
   baseImage:
     description: The fully qualified name of the PP base container to build from.
     required: true
@@ -53,9 +57,12 @@ runs:
         BASE_IMAGE: ${{ inputs.baseImage }}
         BASE_TAG: ${{ inputs.baseTag }}
         EUPS_TAG: ${{ steps.eups.outputs.eups_tag }}
+        # Build needs to include shared code from the main repo
+        BUILD_CONTEXT: ${{ github.workspace }}
       shell: bash
+      working-directory: ${{ inputs.dockerDir }}
       run: |
-        docker build . -f Dockerfile \
+        docker build ${BUILD_CONTEXT} -f Dockerfile \
           --build-arg "BASE_TAG=$BASE_TAG" \
           --tag $IMAGE_NAME \
           --label "runnumber=${GITHUB_RUN_ID}" \
