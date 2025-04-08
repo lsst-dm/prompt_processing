@@ -6,28 +6,36 @@ on:
       - main
       - 'releases/**'
     paths:
+      # Build workflow changes
       - '.github/workflows/build-init-job.yaml'
       - '.github/workflows/_matrix-gen.yaml'
       - '.github/actions/**'
+      - 'init-output-run/Dockerfile'
+      # Code (deployment ID) changes
       - 'bin.src/write_init_outputs.py'
       - 'config/**'
       - 'pipelines/**'
+      - 'python/activator/**'
       - 'python/initializer/**'
       - 'python/shared/**'
+      # Need to re-test
       - 'tests/**'
-      - 'init-output-run/Dockerfile'
   pull_request:
     paths:
+      # Build workflow changes
       - '.github/workflows/build-init-job.yaml'
       - '.github/workflows/_matrix-gen.yaml'
       - '.github/actions/**'
+      - 'init-output-run/Dockerfile'
+      # Code (deployment ID) changes
       - 'bin.src/write_init_outputs.py'
       - 'config/**'
       - 'pipelines/**'
+      - 'python/activator/**'
       - 'python/initializer/**'
       - 'python/shared/**'
+      # Need to re-test
       - 'tests/**'
-      - 'init-output-run/Dockerfile'
   workflow_dispatch:
 
 permissions:
