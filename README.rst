@@ -6,6 +6,12 @@ prompt_processing
    :target: https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml
    :alt: Dev Build Status
 
+.. Selecting tag, not release, to catch any accidental runs of Release CI
+
+.. image:: https://img.shields.io/github/v/tag/lsst-dm/prompt_processing?sort=date&label=Release
+   :target: https://github.com/lsst-dm/prompt_processing/releases/latest
+   :alt: Latest Release
+
 .. image:: https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml/badge.svg?event=push
    :target: https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml
    :alt: Release CI Build Status
