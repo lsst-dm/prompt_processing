@@ -149,13 +149,13 @@ def main():
         for visit in visit_list:
             group = increment_group(instrument, group, 1)
             refs = prepare_one_visit(kafka_url, group, butler, instrument, visit)
-            uris = [butler.getURI(ref) for ref in refs]
+            ref_dict = butler.get_many_uris(refs)
             _log.info(f"Slewing to group {group}, with {instrument} visit {visit}")
             time.sleep(SLEW_INTERVAL)
             _log.info(f"Taking exposure for group {group}")
             time.sleep(EXPOSURE_INTERVAL)
             _log.info(f"Uploading detector images for group {group}")
-            upload_images(pool, temp_dir, group, zip(refs, uris))
+            upload_images(pool, temp_dir, group, ref_dict)
         pool.close()
         _log.info("Waiting for uploads to finish...")
         pool.join()
@@ -251,7 +251,7 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
     return refs
 
 
-def upload_images(pool, temp_dir, group_id, image_tuples):
+def upload_images(pool, temp_dir, group_id, ref_dict):
     """Upload one group of raw images to the central repo
 
     Parameters
@@ -263,15 +263,15 @@ def upload_images(pool, temp_dir, group_id, image_tuples):
         metadata can be modified.
     group_id : `str`
         The group ID under which to store the images.
-    image_tuples : iterable of `tuple` [ `lsst.daf.butler.DatasetRef`, `lsst.resources.ResourcePath` ]
-        The datasets to upload as datasetRefs and URIs
+    ref_dict : `dict` [ `lsst.daf.butler.DatasetRef`, `lsst.daf.butler.datastore.DatasetRefURIs` ]
+        A dict of the datasetRefs to upload and their corresponding URIs.
     """
     # Non-blocking assignment lets us upload during the next exposure.
     # Can't time these tasks directly, but the blocking equivalent took
     # 12-20 s depending on tuning, or less than a single exposure.
     pool.starmap_async(
         _upload_one_image,
-        [(temp_dir, group_id, t[0], t[1]) for t in image_tuples],
+        [(temp_dir, group_id, r, ref_dict[r].primaryURI) for r in ref_dict],
         error_callback=_log.exception,
         chunksize=5  # Works well across a broad range of # processes
     )
