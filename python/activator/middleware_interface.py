@@ -204,6 +204,7 @@ def make_local_cache():
             # TODO: find an API that doesn't require explicit enumeration
             "goodSeeingCoadd": template_factor * base_keep_limit,
             "deepCoadd": template_factor * base_keep_limit,
+            "template_coadd": template_factor * base_keep_limit,
             "uw_stars_20240524": refcat_factor * base_keep_limit,
             "uw_stars_20240228": refcat_factor * base_keep_limit,
             "uw_stars_20240130": refcat_factor * base_keep_limit,
@@ -1647,7 +1648,8 @@ class MiddlewareInterface:
                 raise RuntimeError from e
             graph = pipeline.to_graph()
             for dataset_type in graph.iter_overall_inputs():
-                if dataset_type[0].endswith("Coadd"):
+                # Avoid pulling in too many other sorts of coadds
+                if dataset_type[0] == "template_coadd" or dataset_type[0].endswith("Coadd"):
                     template_types.add(dataset_type[0])
         return template_types
 
