@@ -631,10 +631,7 @@ From ``rubin-devl``, new APDB schemas can be created in the usual way:
 
    apdb-cli create-sql --namespace="pp_apdb_latiss" \
        "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_latiss.yaml
-   apdb-cli create-sql --namespace="pp_apdb_hsc" \
-       "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_hsc.yaml
-   apdb-cli create-sql --namespace="pp_apdb_lsstcomcamsim" \
-       "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_lsstcomcamsim.yaml
+   apdb-cli metadata set apdb_config_latiss.yaml instrument LATISS
 
 Cassandra
 ^^^^^^^^^
@@ -645,10 +642,7 @@ To set up a new keyspace and connection, use:
 
    apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
        pp_apdb_latiss_dev pp_apdb_latiss-dev.yaml --user apdb --replication-factor=3 --enable-replica
-   apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
-       pp_apdb_hsc_dev pp_apdb_hsc-dev.yaml --user apdb --replication-factor=3 --enable-replica
-   apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
-       pp_apdb_lsstcomcamsim_dev pp_apdb_lsstcomcamsim-dev.yaml --user apdb --replication-factor=3 --enable-replica
+   apdb-cli metadata set pp_apdb_latiss-dev.yaml instrument LATISS
 
 Here ``sdfk8sk001.sdf.slac.stanford.edu`` and ``sdfk8sk004.sdf.slac.stanford.edu`` are two nodes within the Prompt Processing allocation, which are the ``contact_points`` used for the initial connection.
 All of the available nodes will be used.
@@ -674,16 +668,7 @@ To restore the APDB to a clean state, add the ``--drop`` option to  ``apdb-cli c
 
    apdb-cli create-sql --drop --namespace="pp_apdb_latiss" \
        "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_latiss.yaml
-
-.. code-block:: sh
-
-   apdb-cli create-sql --drop --namespace="pp_apdb_hsc" \
-       "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_hsc.yaml
-
-.. code-block:: sh
-
-   apdb-cli create-sql --drop --namespace="pp_apdb_lsstcomcamsim" \
-       "postgresql://rubin@usdf-prompt-processing-dev.slac.stanford.edu/lsst-devl" apdb_config_lsstcomcamsim.yaml
+   apdb-cli metadata set apdb_config_latiss.yaml instrument LATISS
 
 Checking the APDB Version
 -------------------------
