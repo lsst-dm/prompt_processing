@@ -19,6 +19,7 @@ butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-
 butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type pretrainedModelPackage --collections pretrained_models/dummy
 butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type skyMap --where "skymap='ops_rehersal_prep_2k_v1'"
 butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type goodSeeingCoadd --collections LSSTComCamSim/runs/OR4_templates/w_2024_23/DM-44718/20240610T044930Z --where "instrument='LSSTComCamSim' and detector=4 and visit=7024061700046"
+# TODO: add examples of template_coadd
 butler transfer-datasets embargo_or4 "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type uw_stars_20240524 --collections refcats --where "instrument='LSSTComCamSim' and detector=4 and visit=7024061700046"
 
 # Certify non-curated calibs
