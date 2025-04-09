@@ -30,6 +30,7 @@ import tempfile
 import time
 import yaml
 
+import astropy
 from astropy.io import fits
 import boto3
 from botocore.handlers import validate_bucket_name
@@ -46,6 +47,7 @@ from tester.utils import (
     get_last_group,
     increment_group,
     make_exposure_id,
+    make_imsim_time_headers,
     replace_header_key,
     send_next_visit,
 )
@@ -148,14 +150,17 @@ def main():
             tempfile.TemporaryDirectory() as temp_dir:
         for visit in visit_list:
             group = increment_group(instrument, group, 1)
-            refs = prepare_one_visit(kafka_url, group, butler, instrument, visit)
+            # For imSim, use current time as the event publish time. This does
+            # not guarantee that the actual exposure will occur at a specific time.
+            exposure_start = astropy.time.Time.now().unix_tai + 2*float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
+            refs = prepare_one_visit(kafka_url, group, butler, instrument, visit, exposure_start)
             ref_dict = butler.get_many_uris(refs)
             _log.info(f"Slewing to group {group}, with {instrument} visit {visit}")
             time.sleep(SLEW_INTERVAL)
             _log.info(f"Taking exposure for group {group}")
             time.sleep(EXPOSURE_INTERVAL)
             _log.info(f"Uploading detector images for group {group}")
-            upload_images(pool, temp_dir, group, ref_dict)
+            upload_images(pool, temp_dir, group, ref_dict, exposure_start)
         pool.close()
         _log.info("Waiting for uploads to finish...")
         pool.join()
@@ -194,7 +199,7 @@ def get_visit_list(butler, n_sample, ordered=False, **kwargs):
         return visits
 
 
-def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
+def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id, start_time_unix_tai):
     """Extract metadata and send next_visit events for one visit
 
     One ``next_visit`` message is sent to the development fan-out service,
@@ -212,6 +217,9 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
         The short instrument name of this visit.
     visit_id : `int`
         The ID of a visit in the dataset.
+    start_time_unix_tai : `float`
+        The Unix time (TAI) of the exposure start.
+        This is only used for LSSTCam-imSim.
 
     Returns
     -------
@@ -227,6 +235,10 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
     duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
     # all items in refs share the same visit info and one event is to be sent
     for data_id in refs.dataIds.limit(1).expanded():
+        # All instruments except LSSTCam-imSim uses original exposure timespan.
+        start_time = data_id.records["exposure"].timespan.begin
+        if instrument == "LSSTCam-imSim":
+            start_time = astropy.time.Time(start_time_unix_tai, format="unix_tai")
         visit = SummitVisit(
             instrument=instrument,
             groupId=group_id,
@@ -234,7 +246,7 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
             filters=data_id.records["physical_filter"].name,
             coordinateSystem=SummitVisit.CoordSys.ICRS,
             position=[data_id.records["exposure"].tracking_ra, data_id.records["exposure"].tracking_dec],
-            startTime=data_id.records["exposure"].timespan.begin.unix_tai,
+            startTime=start_time.unix_tai,
             rotationSystem=SummitVisit.RotSys.SKY,
             cameraAngle=data_id.records["exposure"].sky_angle,
             survey="SURVEY",
@@ -243,15 +255,15 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
             dome=SummitVisit.Dome.OPEN,
             duration=duration,
             totalCheckpoints=1,
-            private_sndStamp=data_id.records["exposure"].timespan.begin.unix_tai-2*duration,
-            private_efdStamp=data_id.records["exposure"].timespan.begin.unix-2*duration,
+            private_sndStamp=start_time.unix_tai-2*duration,
+            private_efdStamp=start_time.unix-2*duration,
         )
         send_next_visit(kafka_url, group_id, {visit})
 
     return refs
 
 
-def upload_images(pool, temp_dir, group_id, ref_dict):
+def upload_images(pool, temp_dir, group_id, ref_dict, exposure_start):
     """Upload one group of raw images to the central repo
 
     Parameters
@@ -265,13 +277,15 @@ def upload_images(pool, temp_dir, group_id, ref_dict):
         The group ID under which to store the images.
     ref_dict : `dict` [ `lsst.daf.butler.DatasetRef`, `lsst.daf.butler.datastore.DatasetRefURIs` ]
         A dict of the datasetRefs to upload and their corresponding URIs.
+    exposure_start : `float`
+        The Unix time (TAI) of the exposure start.
     """
     # Non-blocking assignment lets us upload during the next exposure.
     # Can't time these tasks directly, but the blocking equivalent took
     # 12-20 s depending on tuning, or less than a single exposure.
     pool.starmap_async(
         _upload_one_image,
-        [(temp_dir, group_id, r, ref_dict[r].primaryURI) for r in ref_dict],
+        [(temp_dir, group_id, r, ref_dict[r].primaryURI, exposure_start) for r in ref_dict],
         error_callback=_log.exception,
         chunksize=5  # Works well across a broad range of # processes
     )
@@ -292,7 +306,7 @@ def _get_max_processes():
         return 4
 
 
-def _upload_one_image(temp_dir, group_id, ref, uri):
+def _upload_one_image(temp_dir, group_id, ref, uri, exposure_start):
     """Upload a raw image to the central repo.
 
     Parameters
@@ -306,10 +320,15 @@ def _upload_one_image(temp_dir, group_id, ref, uri):
         The dataset to upload.
     uri : `lsst.resources.ResourcePath`
         URI to the image to upload.
+    exposure_start : `float`
+        The Unix time (TAI) of the exposure start.
+        Currently only used in imSim tests.
     """
     instrument = ref.dataId["instrument"]
     with time_this(log=_log, msg="Single-image processing", prefix=None):
         exposure_num, headers = make_exposure_id(instrument, group_id, 0)
+        if instrument == "LSSTCam-imSim":
+            headers.update(make_imsim_time_headers(EXPOSURE_INTERVAL, exposure_start))
         dest_key = get_raw_path(
             instrument,
             ref.dataId["detector"],
