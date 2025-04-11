@@ -5,6 +5,7 @@
 !python/initializer/*.py
 !python/shared/*.py
 !pipelines
+!config/astropy.cfg
 !config/gunicorn.conf.py
 !maps
 !bin.src/write_init_outputs.py

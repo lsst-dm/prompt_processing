@@ -4,6 +4,7 @@ ENV PYTHONUNBUFFERED=True
 ENV APP_HOME=/app
 ENV PROMPT_PROCESSING_DIR=$APP_HOME
 ENV PYTHONPATH=$APP_HOME
+ENV XDG_CONFIG_HOME=$APP_HOME
 ARG PORT
 WORKDIR $APP_HOME
 COPY python/activator activator/
@@ -11,6 +12,7 @@ COPY python/activator activator/
 COPY python/initializer initializer/
 COPY python/shared shared/
 COPY pipelines pipelines/
+COPY config/astropy.cfg $XDG_CONFIG_HOME/astropy/
 COPY config/gunicorn.conf.py ./
 COPY maps maps/
 CMD source /opt/lsst/software/stack/loadLSST.bash \
