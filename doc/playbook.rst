@@ -214,7 +214,7 @@ The bucket ``rubin-pp-dev`` holds incoming raw images.
 The bucket ``rubin-pp-dev-users`` holds:
 
 * ``rubin-pp-dev-users/central_repo_2/`` contains the central repository described in `DMTN-219`_.
-  This repository currently contains HSC, LATISS, LSSTComCamSim, and LSSTCam-imSim data, uploaded with ``make_export.py``.
+  This repository currently contains HSC, LATISS, LSSTComCamSim, LSSTCam, and LSSTCam-imSim data, uploaded with ``make_export.py``.
 
 * ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload scripts can draw from to create incoming raws.
 
@@ -327,7 +327,7 @@ To inspect table permissions:
    set search_path to <namespace>;
    \dp
 
-Most tables should grant the SELECT (r) and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcomcamsim_prompt``).
+Most tables should grant the SELECT (r) and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, ``lsstcam_prompt``, and ``lsstcomcamsim_prompt``).
 Some tables also need INSERT (a) and DELETE (d).
 
 We need SELECT (r) and USAGE (U) permissions for the sequence ``collection_seq_collection_id``, but *not* for ``dataset_calibs_*_seq_id``, ``dataset_type_seq_id``, or ``dimension_graph_key_seq_id``.
@@ -337,7 +337,7 @@ If any tables are missing permissions, run:
 
 .. code-block:: psql
 
-   GRANT insert, select, update ON TABLE "<table1>", "<table2>" TO hsc_prompt, latiss_prompt, lsstcomcamsim_prompt;
+   GRANT insert, select, update ON TABLE "<table1>", "<table2>" TO hsc_prompt, latiss_prompt, lsstcam_prompt, lsstcomcamsim_prompt;
 
 See the `GRANT command`_ for other options.
 
@@ -500,8 +500,7 @@ Install the Prompt Processing code, and set it up before use:
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin-pp-dev`` S3 bucket, simulating incoming raw images.
 
-``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, LSSTComCamSim, and LSSTCam-imSim), number of groups
- of images to send, and the platform (KNATIVE or KEDA).
+``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, LSSTComCamSim, LSSTCam, and LSSTCam-imSim), number of groups of images to send, and the platform (KNATIVE or KEDA).
 
 Sample command line:
 
@@ -510,6 +509,7 @@ Sample command line:
    python upload.py HSC 3 KNATIVE
    python upload.py LATISS 3 KEDA
    python upload.py LSSTComCamSim 1 KNATIVE
+   python upload.py LSSTCam 2 KEDA
    python upload.py LSSTCam-imSim 2 KEDA
 
 This script draws images stored in the ``rubin-pp-dev-users`` bucket.
@@ -520,6 +520,7 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
   One of the files, the unobserved group `2024-09-04T05:59:29.342`, has no templates and is known to fail `calibrateImage` in determining PSF.
   This visit can test pipeline fallback features.
 * For LSSTComCamSim, 2 groups, in total 18 raw fits files and their corresponding json metadata files, are curated.
+* For LSSTCam, 2 groups, in total 2 raw fits files and their corresponding json metadata files, are curated.
 * For LSSTCam-imSim, 2 groups, in total 3 raw fits files and custom-made json metadata files, are curated.
 
 ``python/tester/upload_from_repo.py``: Command line arguments are a configuration file, the number of groups of images to send, and the
