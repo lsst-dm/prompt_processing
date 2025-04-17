@@ -93,7 +93,7 @@ In the future, there may be "patched weekly" builds, which would justify a patch
 For the ``prompt_processing`` service, a new major version is triggered by any of the following:
 
 * Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
-* Incompatibility with an old `APDB schema`_, `ApdbSql`_, or `ApdbCassandra`_ version (see `DMTN-269`_ for the distinction)
+* Incompatibility with an old `APDB schema`_, `ApdbSql`_, `ApdbCassandra`_, or `ApdbCassandraReplica`_ version (see `DMTN-269`_ for the distinction)
 * Incompatibility with an old `Butler dimensions-config`_ version
 * A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
 
@@ -116,8 +116,7 @@ Add text as follows.
 
 * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
 * Science Pipelines version and rubin-env version
-* Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_ versions (see `DMTN-269`_ for rationale).
-  You do *not* need to consider the `ApdbCassandraReplica` version.
+* Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_/`ApdbCassandraReplica`_ versions (see `DMTN-269`_ for rationale).
   A stack quoting a given minor version is compatible with *older* APDBs of that major version but not necessarily newer ones; for example, a release whose baseline is APDB schema 1.4.0 can access a schema 1.0.0 or 1.4.1 database, but not schema 1.5.
 * Supported `Butler dimensions-config`_ versions
 * The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
@@ -133,6 +132,8 @@ Add text as follows.
 .. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/sql/apdbSql.py#L71-L75
 
 .. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L84-L88
+
+.. _ApdbCassandraReplica: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandraReplica.py#L52-L56
 
 .. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
 
