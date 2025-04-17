@@ -312,6 +312,12 @@ class MiddlewareInterfaceTest(MockTestCase):
             # check that we got appropriate refcat shards
             loaded_shards = butler.query_datasets("uw_stars_20240524", collections="refcats")
             self.assertEqual(expected_shards, {x.dataId['htm7'] for x in loaded_shards})
+        else:
+            # Either outcome acceptable
+            try:
+                self.assertFalse(butler.query_datasets("uw_stars_20240524", collections="refcats"))
+            except lsst.daf.butler.MissingDatasetTypeError:
+                pass
 
         # Check that the right calibs are in the chained output collection.
         self.assertTrue(
@@ -320,14 +326,14 @@ class MiddlewareInterfaceTest(MockTestCase):
                           # TODO DM-46178: add query by validity range.
                           collections=self.umbrella)
         )
-        if have_filter:
-            self.assertTrue(
-                butler.exists('flat', detector=detector, instrument='LSSTComCamSim',
-                              physical_filter=filter,
-                              full_check=True,
-                              # TODO DM-46178: add query by validity range.
-                              collections=self.umbrella)
-            )
+        self.assertEqual(
+            bool(butler.exists('flat', detector=detector, instrument='LSSTComCamSim',
+                               physical_filter=filter,
+                               full_check=True,
+                               # TODO DM-46178: add query by validity range.
+                               collections=self.umbrella)),
+            have_filter
+        )
         # Check that we got a model (only one in the test data)
         self.assertTrue(
             butler.exists('pretrainedModelPackage',
@@ -355,6 +361,13 @@ class MiddlewareInterfaceTest(MockTestCase):
                                   full_check=True,
                                   collections=self.umbrella)
                 )
+        else:
+            self.assertFalse(
+                butler.exists('goodSeeingCoadd', tract=7445, patch=160, band="g",
+                              skymap=skymap_name,
+                              full_check=True,
+                              collections=self.umbrella)
+            )
 
         # Check that preloaded datasets have been generated
         date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")

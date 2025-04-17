@@ -699,8 +699,14 @@ class MiddlewareInterface:
             templates = set()
         return skymaps | templates
 
-    def _get_calib_types(self):
+    def _get_calib_types(self, filter):
         """Identify the specific calib types to query.
+
+        Parameters
+        ----------
+        filter : `str`
+            Physical filter name of the upcoming visit. May be empty to indicate
+            no specific filter.
 
         Returns
         -------
@@ -745,7 +751,7 @@ class MiddlewareInterface:
         data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
         if filter:
             data_id["physical_filter"] = filter
-        type_names = self._get_calib_types()
+        type_names = self._get_calib_types(filter)
 
         def query_calibs_by_date(butler, label):
             with lsst.utils.timer.time_this(_log, msg=f"Calib query ({label})", level=logging.DEBUG), \
