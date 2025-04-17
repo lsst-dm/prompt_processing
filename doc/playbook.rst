@@ -142,14 +142,6 @@ Select **Publish Release**.
 The `Release CI <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
 This may take a few minutes, and the release is not usable until it succeeds.
 
-3. Tag the release
-
-At the HEAD of the ``main`` branch, create and push a tag with the semantic version:
-
-.. code-block:: sh
-
-   git tag -s X.Y.Z -m "X.Y.Z"
-   git push --tags
 
 Patch Releases and Release Branches
 -----------------------------------
