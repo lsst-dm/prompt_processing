@@ -402,13 +402,13 @@ def get_group_id_from_oid(oid: str) -> str:
     return md.get("GROUPID", "")
 
 
-def get_raw_path(instrument, detector, group, snap, exposure_id, filter):
+def get_raw_path(instrument, detector, group, snap, exposure_id, physical_filter):
     """The path on which to store raws in the image bucket."""
     if instrument not in _LSST_CAMERA_LIST:
         return (
-            f"{instrument}/{detector}/{group}/{snap}/{exposure_id}/{filter}"
+            f"{instrument}/{detector}/{group}/{snap}/{exposure_id}/{physical_filter}"
             f"/{instrument}-{group}-{snap}"
-            f"-{exposure_id}-{filter}-{detector}.fz"
+            f"-{exposure_id}-{physical_filter}-{detector}.fz"
         )
 
     raft_sensor = _DETECTOR_FROM_INT[instrument][detector]
@@ -420,7 +420,7 @@ def get_raw_path(instrument, detector, group, snap, exposure_id, filter):
         day_obs = group[:10].replace("-", "")
         return (
             f"{instrument}/{day_obs}/{exposure_id}/"
-            f"{exposure_id}_{filter}_{detector}_{raft_sensor}.fits"
+            f"{exposure_id}_{physical_filter}_{detector}_{raft_sensor}.fits"
         )
 
     day_obs, seq_num, controller = LsstBaseTranslator.unpack_exposure_id(exposure_id)

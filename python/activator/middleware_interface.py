@@ -640,14 +640,14 @@ class MiddlewareInterface:
             _log.debug("Found 0 new refcat datasets.")
         return refcats
 
-    def _export_skymap_and_templates(self, region, filter):
+    def _export_skymap_and_templates(self, region, physical_filter):
         """Identify the skymap and templates to export from the central butler.
 
         Parameters
         ----------
         region : `lsst.sphgeom.Region`
             The region to load the skyamp and templates tract/patches for.
-        filter : `str`
+        physical_filter : `str`
             Physical filter for which to export templates. May be empty to
             indicate no specific filter.
 
@@ -667,13 +667,13 @@ class MiddlewareInterface:
         ))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
 
-        if not filter:
+        if not physical_filter:
             _log.warning("Preloading templates is not supported for visits without a specific filter.")
             return skymaps
 
         data_id = {"instrument": self.instrument.getName(),
                    "skymap": self.skymap_name,
-                   "physical_filter": filter,
+                   "physical_filter": physical_filter,
                    }
         types = self._get_template_types()
         if types:
@@ -699,12 +699,12 @@ class MiddlewareInterface:
             templates = set()
         return skymaps | templates
 
-    def _get_calib_types(self, filter):
+    def _get_calib_types(self, physical_filter):
         """Identify the specific calib types to query.
 
         Parameters
         ----------
-        filter : `str`
+        physical_filter : `str`
             Physical filter name of the upcoming visit. May be empty to indicate
             no specific filter.
 
@@ -717,7 +717,7 @@ class MiddlewareInterface:
         # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
         types = {t for t in self.central_butler.registry.queryDatasetTypes()
                  if t.isCalibration() and "exposure" not in t.dimensions}
-        if not filter:
+        if not physical_filter:
             _log.warning("Preloading filter-dependent calibs is not supported for visits "
                          "without a specific filter.")
             types = {t for t in types
@@ -730,14 +730,14 @@ class MiddlewareInterface:
             self.instrument.makeCalibrationCollectionName(), include_summary=True)
         return self.central_butler.collections._filter_dataset_types(type_names, collections_info)
 
-    def _export_calibs(self, detector_id, filter):
+    def _export_calibs(self, detector_id, physical_filter):
         """Identify the calibs to export from the central butler.
 
         Parameters
         ----------
         detector_id : `int`
             Identifier of the detector to load calibs for.
-        filter : `str`
+        physical_filter : `str`
             Physical filter name of the upcoming visit. May be empty to indicate
             no specific filter.
 
@@ -749,9 +749,9 @@ class MiddlewareInterface:
         # TAI observation start time should be used for calib validity range.
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
         data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
-        if filter:
-            data_id["physical_filter"] = filter
-        type_names = self._get_calib_types(filter)
+        if physical_filter:
+            data_id["physical_filter"] = physical_filter
+        type_names = self._get_calib_types(physical_filter)
 
         def query_calibs_by_date(butler, label):
             with lsst.utils.timer.time_this(_log, msg=f"Calib query ({label})", level=logging.DEBUG), \
