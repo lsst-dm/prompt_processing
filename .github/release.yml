@@ -1,0 +1,7 @@
+# Configuration for automatic release notes generation
+
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+      - duplicate
