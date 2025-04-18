@@ -315,13 +315,16 @@ def get_samples_lsst(bucket, instrument):
             exposure_num = LsstBaseTranslator.compute_exposure_id(int(day_obs), int(seq_num))
             sal_index = exposure_num
 
+        # ComCam currently sets the FILTBAND header to null.
+        physical_filter = md["FILTBAND"] or md["FILTER"]
+        if instrument == "LATISS" and len(physical_filter) == 1:
+            physical_filter = f"SDSS{physical_filter}_65mm~empty"
         visit = FannedOutVisit(
             instrument=instrument,
             detector=_DETECTOR_FROM_RS[instrument][m["raft_sensor"]],
             groupId=md["GROUPID"],
             nimages=INSTRUMENTS[instrument].n_snaps,
-            # ComCam currently sets the FILTBAND header to null.
-            filters=md["FILTBAND"] or md["FILTER"],
+            filters=physical_filter,
             coordinateSystem=FannedOutVisit.CoordSys.ICRS,
             position=[md["RA"], md["DEC"]],
             startTime=astropy.time.Time(md["DATE-BEG"], format="isot", scale="tai").unix_tai,
