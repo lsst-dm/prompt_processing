@@ -13,6 +13,7 @@ tasks:
       defaultSaturationSource: CAMERAMODEL
       doApplyGains: false
       doBias: false
+      doCrosstalk: false
       doDark: false
       doDefect: false
       doDeferredCharge: false
