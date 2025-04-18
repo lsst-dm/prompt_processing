@@ -53,7 +53,7 @@ from tester.utils import (
 )
 
 
-EXPOSURE_INTERVAL = 30
+EXPOSURE_INTERVAL = 60
 SLEW_INTERVAL = 2
 
 
@@ -228,7 +228,9 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id, start_t
     """
     refs = butler.registry.queryDatasets(
         datasetType="raw",
-        collections=f"{instrument}/raw/all",
+        # HACK FOR DC2:
+        collections="2.2i/raw/all",
+        # collections=f"{instrument}/raw/all",
         dataId={"visit": visit_id, "instrument": instrument},
     )
 
