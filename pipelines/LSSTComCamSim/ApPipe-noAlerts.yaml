@@ -5,7 +5,7 @@ description: >-
 imports:
   - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
 tasks:
-  diaPipe:
+  associateApdb:
     class: lsst.ap.association.DiaPipelineTask
     config:
       alertPackager.doProduceAlerts: False

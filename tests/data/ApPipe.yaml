@@ -6,7 +6,7 @@ parameters:
   # Use dataset's specific templates
   coaddName: goodSeeing
 tasks:
-  diaPipe:
+  associateApdb:
     class: lsst.ap.association.DiaPipelineTask
     config:
       doSolarSystemAssociation: false
