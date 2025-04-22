@@ -1805,16 +1805,18 @@ def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler
                                         level=logging.DEBUG):
             datasets = set()
             for dataset_type in dataset_types:
-                try:
-                    datasets |= set(butler.query_datasets(
-                        # explain=False because empty query result is ok here.
-                        dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
-                    ))
-                except (DataIdValueError, MissingDatasetTypeError) as e:
-                    # Dimensions/dataset type often invalid for fresh local repo,
-                    # where there are no, and never have been, any matching datasets.
-                    # It *is* a problem for the central repo, but can be caught later.
-                    _log.debug("%s query failed with %s.", label, e)
+                with lsst.utils.timer.time_this(_log, msg=f"query_datasets({dataset_type}) ({label})",
+                                                level=logging.DEBUG):
+                    try:
+                        datasets |= set(butler.query_datasets(
+                            # explain=False because empty query result is ok here.
+                            dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
+                        ))
+                    except (DataIdValueError, MissingDatasetTypeError) as e:
+                        # Dimensions/dataset type often invalid for fresh local repo,
+                        # where there are no, and never have been, any matching datasets.
+                        # It *is* a problem for the central repo, but can be caught later.
+                        _log.debug("%s query failed with %s.", label, e)
             # Trace3 because, in many contexts, datasets is too large to print.
             _log_trace3.debug("%s: %s", label, datasets)
             return datasets
