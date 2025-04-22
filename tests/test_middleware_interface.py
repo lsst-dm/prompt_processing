@@ -210,7 +210,7 @@ class MiddlewareInterfaceTest(MockTestCase):
                                      inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
-        self.local_cache = DatasetCache(3, {"uw_stars_20240524": 10, "template_coadd": 30})
+        self.local_cache = DatasetCache(3, {"uw_stars_20240524": 10, "goodSeeingCoadd": 30})
         self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
 
         config = ApdbSql.init_database(db_url=f"sqlite:///{self.local_repo.name}/apdb.db")
@@ -349,21 +349,21 @@ class MiddlewareInterfaceTest(MockTestCase):
                           192, 193, 194, 195, 210, 211,):
                 with self.subTest(tract=7445, patch=patch):
                     self.assertTrue(
-                        butler.exists('template_coadd', tract=7445, patch=patch, band="g",
+                        butler.exists('goodSeeingCoadd', tract=7445, patch=patch, band="g",
                                       skymap=skymap_name,
                                       full_check=True,
                                       collections=self.umbrella)
                     )
             with self.subTest(tract=7445, patch=0):
                 self.assertFalse(
-                    butler.exists('template_coadd', tract=7445, patch=0, band="g",
+                    butler.exists('goodSeeingCoadd', tract=7445, patch=0, band="g",
                                   skymap=skymap_name,
                                   full_check=True,
                                   collections=self.umbrella)
                 )
         else:
             self.assertFalse(
-                butler.exists('template_coadd', tract=7445, patch=160, band="g",
+                butler.exists('goodSeeingCoadd', tract=7445, patch=160, band="g",
                               skymap=skymap_name,
                               full_check=True,
                               collections=self.umbrella)
@@ -926,7 +926,7 @@ class MiddlewareInterfaceTest(MockTestCase):
 
     def test_get_template_types(self):
         template_types = self.interface._get_template_types()
-        self.assertEqual(template_types, {"template_coadd"})
+        self.assertEqual(template_types, {"goodSeeingCoadd"})
 
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
         # Pass iff any dataset matches the query, no need to check them all.
@@ -1235,9 +1235,9 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         self.input_data = os.path.join(data_dir, "input_data")
 
         local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
-        self.local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "template_coadd": 30})
+        self.local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "goodSeeingCoadd": 30})
         second_local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
-        self.second_local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "template_coadd": 30})
+        self.second_local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "goodSeeingCoadd": 30})
         # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
         # getting garbage-collected.
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
@@ -1432,7 +1432,7 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
             interface = MiddlewareInterface(central_butler, self.input_data,
                                             dataclasses.replace(self.next_visit, groupId="42"),
                                             pre_pipelines_empty, pipelines, skymap_name, local_repo,
-                                            DatasetCache(3, {"uw_stars_20240524": 10, "template_coadd": 30}),
+                                            DatasetCache(3, {"uw_stars_20240524": 10, "goodSeeingCoadd": 30}),
                                             prefix="file://")
             with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
                 interface.prep_butler()
