@@ -11,7 +11,3 @@ tasks:
     config:
       doSolarSystemAssociation: false
       alertPackager.doProduceAlerts: false  # Hard to make init-outputs otherwise
-  rewarpTemplate:
-    class: lsst.ip.diffim.getTemplate.GetTemplateTask
-    config:
-      connections.coaddExposures: goodSeeingCoadd
