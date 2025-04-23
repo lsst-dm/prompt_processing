@@ -6,8 +6,12 @@ parameters:
   # Use dataset's specific templates
   coaddName: goodSeeing
 tasks:
-  diaPipe:
+  associateApdb:
     class: lsst.ap.association.DiaPipelineTask
     config:
       doSolarSystemAssociation: false
       alertPackager.doProduceAlerts: false  # Hard to make init-outputs otherwise
+  rewarpTemplate:
+    class: lsst.ip.diffim.getTemplate.GetTemplateTask
+    config:
+      connections.coaddExposures: goodSeeingCoadd

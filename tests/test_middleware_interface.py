@@ -782,7 +782,7 @@ class MiddlewareInterfaceTest(MockTestCase):
                 self.interface.run_pipeline({1})
 
     def test_run_pipeline_late_exception(self):
-        """Test behavior when execution fails in diaPipe cleanup.
+        """Test behavior when execution fails in associateApdb cleanup.
         """
         self._prepare_run_pipeline()
 

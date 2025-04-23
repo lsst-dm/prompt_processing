@@ -9,7 +9,7 @@ imports:
     include:
       - prompt
 tasks:
-  diaPipe:
+  associateApdb:
     class: lsst.ap.association.DiaPipelineTask
     config:
       # Alert distribution only runnable in PP environment.
