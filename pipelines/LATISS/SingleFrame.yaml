@@ -1,9 +1,12 @@
 description: >-
   Single-frame pipeline for the case in which
   no templates exist, specialized for LATISS
+  Unlike ap_pipe/SingleFrame.yaml, this pipeline is not standalone.
 
 imports:
   - location: $AP_PIPE_DIR/pipelines/LATISS/SingleFrame.yaml
-    include:
-      - apPipeSingleFrame
-      - analyzeCalibrationMetrics
+    exclude:
+      # Run in prep_butler or Preprocessing.yaml
+      - getRegionTimeFromVisit
+      - mpSkyEphemerisQuery
+      - loadDiaCatalogs
