@@ -11,6 +11,7 @@ tasks:
     class: lsst.ip.isr.IsrTaskLSST
     config:
       ampNoiseThreshold: .nan
+      serialOverscanMedianShiftSigmaThreshold: .nan
       defaultSaturationSource: CAMERAMODEL
       doApplyGains: false
       doBias: false
