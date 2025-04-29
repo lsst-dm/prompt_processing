@@ -526,6 +526,11 @@ def keda_start():
                     else:
                         continue
 
+                    # Calculate time to receive message based on timestamp in Redis Stream message
+                    fan_out_to_prompt_time = _calculate_time_since_fan_out_message_delivered(
+                        redis_streams_message_id)
+                    _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
+
                 # TODO Review Redis Errors and determine what should be retriable.
                 except redis.exceptions.RedisError as e:
                     _log.critical("Redis Streams error; aborting.")
@@ -545,11 +550,6 @@ def keda_start():
                             _log.debug(
                                 "Seconds since last redis streams message received %r for consumer poll %r",
                                 fan_out_listen_time, consumer_polls_with_message)
-
-                        # Calculate time to receive message based on timestamp in Redis Stream message
-                        fan_out_to_prompt_time = _calculate_time_since_fan_out_message_delivered(
-                            redis_streams_message_id)
-                        _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
 
                         # Process fan out visit
                         process_visit(expected_visit)
