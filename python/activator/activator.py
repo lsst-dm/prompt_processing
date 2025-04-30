@@ -402,7 +402,7 @@ def is_processable(visit, expire) -> bool:
 
     Parameters
     ----------
-    visit : `FannedOutVisit`
+    visit : `shared.visit.FannedOutVisit`
         The nextVisit message to consider processing.
     expire : `float`
         The maximum age, in seconds, that a message can still be handled.
@@ -509,8 +509,6 @@ def keda_start():
 
                 try:
                     redis_streams_message_id, fan_out_visit_decoded = redis_session.read_message()
-                    processing_start = time.time()
-                    processing_result = "Unknown"
 
                     if not redis_streams_message_id:
                         continue
@@ -542,50 +540,14 @@ def keda_start():
                     continue
 
                 with instances_processing_gauge.track_inprogress():
-                    try:
+                    consumer_polls_with_message += 1
+                    if consumer_polls_with_message >= 1:
+                        fan_out_listen_time = _time_since(fan_out_listen_start_time)
+                        _log.debug(
+                            "Seconds since last redis streams message received %r for consumer poll %r",
+                            fan_out_listen_time, consumer_polls_with_message)
 
-                        consumer_polls_with_message += 1
-                        if consumer_polls_with_message >= 1:
-                            fan_out_listen_time = _time_since(fan_out_listen_start_time)
-                            _log.debug(
-                                "Seconds since last redis streams message received %r for consumer poll %r",
-                                fan_out_listen_time, consumer_polls_with_message)
-
-                        # Process fan out visit
-                        process_visit(expected_visit)
-                        processing_result = "Success"
-                    except IgnorableVisit as e:
-                        _log.info("Skipping visit: %s", e)
-                        processing_result = "Ignore"
-                    except GracefulShutdownInterrupt:
-                        # Safety net to minimize chance of interrupt propagating out of the worker.
-                        _log.error("Service interrupted.")
-                        processing_result = "Interrupted"
-                        sys.exit(1)
-                    except RetriableError as e:
-                        # TODO: need to implement retries for both cases
-                        if isinstance(e.nested, GracefulShutdownInterrupt):
-                            _log.error("Service interrupted.")
-                            processing_result = "Interrupted"
-                            sys.exit(1)
-                        else:
-                            _log.exception("Processing failed:")
-                            processing_result = "Error"
-                    except NonRetriableError as e:
-                        if isinstance(e.nested, GracefulShutdownInterrupt):
-                            _log.error("Service interrupted.")
-                            processing_result = "Interrupted"
-                            sys.exit(1)
-                        else:
-                            _log.exception("Processing failed:")
-                            processing_result = "Error"
-                    except Exception:
-                        _log.exception("Processing failed:")
-                        processing_result = "Error"
-                    finally:
-                        _log.debug("Request took %.3f s. Result: %s",
-                                   _time_since(processing_start), processing_result)
-                        _log.info("Processing completed for %s.", socket.gethostname())
+                    handle_keda_visit(expected_visit)
 
                 # Reset timer for fan out message polling
                 _log.info("Starting next visit fan out event consumer poll")
@@ -599,6 +561,54 @@ def keda_start():
         finally:
             # Assume only one worker per pod, don't need to remove local repo.
             _log.info("Finished listening for fanned out messages")
+
+
+def handle_keda_visit(visit):
+    """Process a next_visit message with error handling appropriate for Keda.
+
+    Parameters
+    ----------
+    visit : `shared.visit.FannedOutVisit`
+        The next_visit to handle.
+    """
+    processing_start = time.time()
+    processing_result = "Unknown"
+
+    try:
+        process_visit(visit)
+        processing_result = "Success"
+    except IgnorableVisit as e:
+        _log.info("Skipping visit: %s", e)
+        processing_result = "Ignore"
+    except GracefulShutdownInterrupt:
+        # Safety net to minimize chance of interrupt propagating out of the worker.
+        _log.error("Service interrupted.")
+        processing_result = "Interrupted"
+        sys.exit(1)
+    except RetriableError as e:
+        # TODO: need to implement retries for both cases
+        if isinstance(e.nested, GracefulShutdownInterrupt):
+            _log.error("Service interrupted.")
+            processing_result = "Interrupted"
+            sys.exit(1)
+        else:
+            _log.exception("Processing failed:")
+            processing_result = "Error"
+    except NonRetriableError as e:
+        if isinstance(e.nested, GracefulShutdownInterrupt):
+            _log.error("Service interrupted.")
+            processing_result = "Interrupted"
+            sys.exit(1)
+        else:
+            _log.exception("Processing failed:")
+            processing_result = "Error"
+    except Exception:
+        _log.exception("Processing failed:")
+        processing_result = "Error"
+    finally:
+        _log.debug("Request took %.3f s. Result: %s",
+                   _time_since(processing_start), processing_result)
+        _log.info("Processing completed for %s.", socket.gethostname())
 
 
 def _graceful_shutdown(signum: int, stack_frame):
