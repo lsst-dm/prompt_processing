@@ -50,6 +50,7 @@ from shared.raw import (
     is_path_consistent,
     get_group_id_from_oid,
 )
+from shared.run_utils import get_day_obs
 from shared.visit import FannedOutVisit
 from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
     NonRetriableError, RetriableError
@@ -504,59 +505,63 @@ def keda_start():
 
     with instances_started_gauge.track_inprogress():
         try:
+            log_factory = logging.getLogRecordFactory()
             while (max_requests <= 0 or consumer_polls_with_message < max_requests) \
                     and (_time_since(fan_out_listen_start_time) < fanned_out_msg_listen_timeout):
 
-                try:
-                    redis_streams_message_id, fan_out_visit_decoded = redis_session.read_message()
+                # Ensure consistent day_obs for whole run, even if it crosses the boundary
+                with log_factory.add_context(day_obs=get_day_obs(astropy.time.Time.now())):
+                    try:
+                        redis_streams_message_id, fan_out_visit_decoded = redis_session.read_message()
 
-                    if not redis_streams_message_id:
+                        if not redis_streams_message_id:
+                            continue
+
+                        # TODO: Revisit acknowledgement policy for old messages once fan-out service exists
+                        redis_session.acknowledge(redis_streams_message_id)
+
+                        expected_visit = FannedOutVisit.from_dict(fan_out_visit_decoded)
+                        _log.debug("Unpacked message as %r.", expected_visit)
+                        if is_processable(expected_visit, visit_expire):
+                            # Processing can take a long time, and long-lived connections are ill-behaved
+                            redis_session.close()
+                        else:
+                            continue
+
+                        # Calculate time to receive message based on timestamp in Redis Stream message
+                        fan_out_to_prompt_time = _calculate_time_since_fan_out_message_delivered(
+                            redis_streams_message_id)
+                        _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
+
+                    # TODO Review Redis Errors and determine what should be retriable.
+                    except redis.exceptions.RedisError as e:
+                        _log.critical("Redis Streams error; aborting.")
+                        _log.exception(e)
+                        sys.exit(1)
+                    except ValueError as e:
+                        _log.error("Invalid redis stream message %s", e)
+                        fan_out_listen_start_time = time.time()
                         continue
 
-                    # TODO: Revisit acknowledgement policy for old messages once fan-out service exists
-                    redis_session.acknowledge(redis_streams_message_id)
+                    with instances_processing_gauge.track_inprogress():
+                        consumer_polls_with_message += 1
+                        if consumer_polls_with_message >= 1:
+                            fan_out_listen_time = _time_since(fan_out_listen_start_time)
+                            _log.debug(
+                                "Seconds since last redis streams message received %r for consumer poll %r",
+                                fan_out_listen_time, consumer_polls_with_message)
 
-                    expected_visit = FannedOutVisit.from_dict(fan_out_visit_decoded)
-                    _log.debug("Unpacked message as %r.", expected_visit)
-                    if is_processable(expected_visit, visit_expire):
-                        # Processing can take a long time, and long-lived connections are ill-behaved
-                        redis_session.close()
-                    else:
-                        continue
+                        handle_keda_visit(expected_visit)
 
-                    # Calculate time to receive message based on timestamp in Redis Stream message
-                    fan_out_to_prompt_time = _calculate_time_since_fan_out_message_delivered(
-                        redis_streams_message_id)
-                    _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
-
-                # TODO Review Redis Errors and determine what should be retriable.
-                except redis.exceptions.RedisError as e:
-                    _log.critical("Redis Streams error; aborting.")
-                    _log.exception(e)
-                    sys.exit(1)
-                except ValueError as e:
-                    _log.error("Invalid redis stream message %s", e)
+                    # Reset timer for fan out message polling
+                    _log.info("Starting next visit fan out event consumer poll")
                     fan_out_listen_start_time = time.time()
-                    continue
 
-                with instances_processing_gauge.track_inprogress():
-                    consumer_polls_with_message += 1
-                    if consumer_polls_with_message >= 1:
-                        fan_out_listen_time = _time_since(fan_out_listen_start_time)
-                        _log.debug(
-                            "Seconds since last redis streams message received %r for consumer poll %r",
-                            fan_out_listen_time, consumer_polls_with_message)
-
-                    handle_keda_visit(expected_visit)
-
-                # Reset timer for fan out message polling
-                _log.info("Starting next visit fan out event consumer poll")
-                fan_out_listen_start_time = time.time()
-
-            if _time_since(fan_out_listen_start_time) >= fanned_out_msg_listen_timeout:
-                _log.info("No messages received in %f seconds, shutting down.", fanned_out_msg_listen_timeout)
-            if max_requests > 0 and consumer_polls_with_message >= max_requests:
-                _log.info("Handled %d messages, shutting down.", consumer_polls_with_message)
+                if _time_since(fan_out_listen_start_time) >= fanned_out_msg_listen_timeout:
+                    _log.info("No messages received in %f seconds, shutting down.",
+                              fanned_out_msg_listen_timeout)
+                if max_requests > 0 and consumer_polls_with_message >= max_requests:
+                    _log.info("Handled %d messages, shutting down.", consumer_polls_with_message)
 
         finally:
             # Assume only one worker per pod, don't need to remove local repo.
