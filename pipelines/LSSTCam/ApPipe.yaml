@@ -9,6 +9,10 @@ imports:
     include:
       - prompt
 tasks:
+  rewarpTemplate:
+    class: lsst.ip.diffim.getTemplate.GetTemplateTask
+    config:
+      connections.coaddExposures: deep_coadd
   associateApdb:
     class: lsst.ap.association.DiaPipelineTask
     config:
