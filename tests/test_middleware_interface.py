@@ -220,6 +220,8 @@ class MiddlewareInterfaceTest(MockTestCase):
 
         self.setup_patcher(unittest.mock.patch.dict(os.environ,
                                                     {"CONFIG_APDB": config_file.name,
+                                                     # Disable external queries
+                                                     "MP_SKY_URL": ""
                                                      }))
         self.setup_patcher(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
         self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
@@ -1261,6 +1263,8 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
 
         self.setup_patcher(unittest.mock.patch.dict(os.environ,
                                                     {"CONFIG_APDB": config_file.name,
+                                                     # Disable external queries
+                                                     "MP_SKY_URL": ""
                                                      }))
         self.setup_patcher(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
         self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
