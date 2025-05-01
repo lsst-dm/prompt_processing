@@ -85,9 +85,9 @@ pre_pipelines_full = PipelinesConfig([{"survey": "SURVEY",
                                                      ],
                                        }])
 # The day_obs used for the init-output runs in the test repo.
-sim_date = astropy.time.Time("2025-02-26T00:00:00Z")
+sim_date = astropy.time.Time("2025-05-02T00:00:00Z")
 # The deployment ID used in the test repo.
-sim_deployment = "pipelines-e174675-config-8acfde6"
+sim_deployment = "pipelines-73f2e20-config-8acfde6"
 
 
 def fake_file_data(filename, dimensions, instrument, visit):
