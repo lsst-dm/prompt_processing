@@ -39,6 +39,7 @@ butler collection-chain "$REPO" LSSTComCamSim/defaults LSSTComCamSim/calib skyma
 # Create init-outputs (and chain)
 # UI designed to be run from container, not command line
 export RUBIN_INSTRUMENT=LSSTComCamSim
+export TEMP_APDB=apdb.db  # Needed for persistent metadata table
 export CALIB_REPO="$REPO"
 export CONFIG_APDB=foo.yaml
 export PREPROCESSING_PIPELINES_CONFIG="- survey: SURVEY
@@ -53,9 +54,9 @@ export MAIN_PIPELINES_CONFIG="- survey: SURVEY
   - ${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml
   - ${PROMPT_PROCESSING_DIR}/tests/data/ISR.yaml
 "
-apdb-cli create-sql "sqlite://" "${CONFIG_APDB}"
+apdb-cli create-sql "sqlite:///${TEMP_APDB}" "${CONFIG_APDB}"
 python "${PROMPT_PROCESSING_DIR}/bin/write_init_outputs.py"
-rm -f "${CONFIG_APDB}"
+rm -f "${CONFIG_APDB}" "${TEMP_APDB}"
 
 # Empty out files and make them size 0 in the registry.
 # We do not empty the camera or skymap because we actually need to read them.
