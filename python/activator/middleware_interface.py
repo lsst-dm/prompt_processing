@@ -606,6 +606,52 @@ class MiddlewareInterface:
                 all_datasets |= set(self._export_templates(region, self.visit.filters))
         return (all_datasets, calib_datasets)
 
+    def _get_pipeline_input_types(self, pipeline_file):
+        """Identify the dataset types needed as inputs for a pipeline.
+
+        Parameters
+        ----------
+        pipeline_file : `str`
+            The pipeline whose inputs are desired.
+
+        Returns
+        -------
+        input_types : set [`str`]
+            The types of preexisting datasets needed to run the pipeline.
+        """
+        try:
+            pipeline = self._prep_pipeline_graph(pipeline_file)
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Could not find pipeline {pipeline_file}.") from e
+
+        task_inputs = {edge.parent_dataset_type_name
+                       for task in pipeline.tasks.values() for edge in task.iter_all_inputs()}
+        # Ignore inputs produced internally.
+        task_outputs = {edge.parent_dataset_type_name
+                        for task in pipeline.tasks.values() for edge in task.iter_all_outputs()}
+        return task_inputs - task_outputs
+
+    def _get_pipeline_output_types(self, pipeline_file):
+        """Identify the dataset types produced as outputs by a pipeline.
+
+        Parameters
+        ----------
+        pipeline_file : `str`
+            The pipeline whose inputs are desired.
+
+        Returns
+        -------
+        input_types : set [`str`]
+            The types of preexisting datasets needed to run the pipeline.
+        """
+        try:
+            pipeline = self._prep_pipeline_graph(pipeline_file)
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Could not find pipeline {pipeline_file}.") from e
+
+        return {edge.parent_dataset_type_name
+                for task in pipeline.tasks.values() for edge in task.iter_all_outputs()}
+
     def _export_refcats(self, region):
         """Identify the refcats to export from the central butler.
 
