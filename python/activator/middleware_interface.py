@@ -601,8 +601,8 @@ class MiddlewareInterface:
             with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)", level=logging.DEBUG):
                 all_datasets |= set(self._export_refcats(region))
             with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)", level=logging.DEBUG):
-                all_datasets |= set(self._export_skymap_and_templates(
-                    region, self.visit.filters))
+                all_datasets |= set(self._export_skymap())
+                all_datasets |= set(self._export_templates(region, self.visit.filters))
         return (all_datasets, calib_datasets)
 
     def _export_refcats(self, region):
@@ -638,20 +638,12 @@ class MiddlewareInterface:
             _log.debug("Found 0 new refcat datasets.")
         return refcats
 
-    def _export_skymap_and_templates(self, region, physical_filter):
-        """Identify the skymap and templates to export from the central butler.
-
-        Parameters
-        ----------
-        region : `lsst.sphgeom.Region`
-            The region to load the skyamp and templates tract/patches for.
-        physical_filter : `str`
-            Physical filter for which to export templates. May be empty to
-            indicate no specific filter.
+    def _export_skymap(self):
+        """Identify the skymap to export from the central butler.
 
         Returns
         -------
-        skymap_templates : iterable [`lsst.daf.butler.DatasetRef`]
+        skymap : iterable [`lsst.daf.butler.DatasetRef`]
             The datasets to be exported, after any filtering.
         """
         skymaps = set(_filter_datasets(
@@ -664,10 +656,27 @@ class MiddlewareInterface:
             all_callback=self._mark_dataset_usage,
         ))
         _log.debug("Found %d new skymap datasets.", len(skymaps))
+        return skymaps
 
+    def _export_templates(self, region, physical_filter):
+        """Identify the templates to export from the central butler.
+
+        Parameters
+        ----------
+        region : `lsst.sphgeom.Region`
+            The region to load the templates tract/patches for.
+        physical_filter : `str`
+            Physical filter for which to export templates. May be empty to
+            indicate no specific filter.
+
+        Returns
+        -------
+        templates : iterable [`lsst.daf.butler.DatasetRef`]
+            The datasets to be exported, after any filtering.
+        """
         if not physical_filter:
             _log.warning("Preloading templates is not supported for visits without a specific filter.")
-            return skymaps
+            return set()
 
         data_id = {"instrument": self.instrument.getName(),
                    "skymap": self.skymap_name,
@@ -695,7 +704,7 @@ class MiddlewareInterface:
                 _log.debug("Found %d new template datasets.", len(templates))
         else:
             templates = set()
-        return skymaps | templates
+        return templates
 
     def _get_calib_types(self, physical_filter):
         """Identify the specific calib types to query.
