@@ -872,24 +872,26 @@ class MiddlewareInterface:
             _log.debug("Found %d new ML model datasets.", len(models))
         return models
 
-    def _get_init_output_types(self, run):
+    def _get_init_output_types(self, pipeline_file):
         """Identify the specific init-output types to query.
 
         Parameters
         ----------
-        run : `str`
-            The name of an output run of the pipeline of interest. Different
-            pipelines may produce different sets of init-outputs.
+        pipeline_file : `str`
+            The pipeline of interest.
 
         Returns
         -------
         init_types : collection [`str`]
             The init-output types of interest to Prompt Processing.
         """
-        # Need to distinguish init-outputs from past visits' outputs.
-        all_names = self.central_butler.collections.get_info(run, include_summary=True).dataset_types
-        all_types = {self.central_butler.registry.getDatasetType(name) for name in all_names}
-        return {t.name for t in all_types if not t.dimensions}
+        try:
+            pipeline = self._prep_pipeline_graph(pipeline_file)
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Could not find pipeline {pipeline_file}.") from e
+
+        return {edge.parent_dataset_type_name
+                for task in pipeline.tasks.values() for edge in task.init.iter_all_outputs()}
 
     def _export_init_outputs(self):
         """Identify the init-output datasets to export from the central butler.
@@ -902,7 +904,7 @@ class MiddlewareInterface:
         datasets = set()
         for pipeline_file in self._get_combined_pipeline_files():
             run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
-            types = self._get_init_output_types(run)
+            types = self._get_init_output_types(pipeline_file)
             # Output runs are always cleared after execution, so _filter_datasets would always warn.
             # This also means the init-outputs don't need to be cached with _mark_dataset_usage.
             datasets.update(_generic_query(types, collections=run)(self.central_butler, "source datasets"))
