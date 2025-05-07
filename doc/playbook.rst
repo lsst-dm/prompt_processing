@@ -373,7 +373,6 @@ There are two different ways to deploy a development release of the service:
 If you will not be making permanent changes to the Phalanx config, go to the Argo UI, select the specific ``prompt-keda-<instrument>`` service, then select "Details" from the top bar.
 Open the "Parameters" tab, click "edit", then update the ``prompt-keda.image.tag`` key to point to the new service container (likely a ticket branch instead of ``latest``).
 The changes will not take effect until you click "SYNC" on the main screen.
-To force an update of the Knative container without config changes, edit ``prompt-proto-service.podAnnotations.revision`` (this feature is not needed in Keda).
 Changes made in the Parameters tab last indefinitely, so be sure to undo them by clicking "edit" followed by the "Remove override" link.
 
 .. important::
@@ -394,7 +393,7 @@ To force a container update without a corresponding ``phalanx`` update, you need
 
 .. note::
 
-   We used to be able to make changes in Argo by directly patching the Kubernetes config for specific Service/ScaledJob nodes.
+   We used to be able to make changes in Argo by directly patching the Kubernetes config for specific ScaledJob nodes.
    This is no longer safe, because there are multiple components that need to share certain configs.
    Always do your updates either in Argo's Parameters view or in ``values*.yaml`` files.
 
@@ -504,15 +503,13 @@ Install the Prompt Processing code, and set it up before use:
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin-pp-dev`` S3 bucket, simulating incoming raw images.
 
-``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, LSSTComCamSim, LSSTCam, and LSSTCam-imSim), number of groups of images to send, and the platform (KNATIVE or KEDA).
+``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, LSSTComCamSim, LSSTCam, and LSSTCam-imSim), number of groups of images to send, and the platform (KEDA only).
 
 Sample command line:
 
 .. code-block:: sh
 
-   python upload.py HSC 3 KNATIVE
    python upload.py LATISS 3 KEDA
-   python upload.py LSSTComCamSim 1 KNATIVE
    python upload.py LSSTCam 2 KEDA
    python upload.py LSSTCam-imSim 2 KEDA
 
@@ -528,14 +525,13 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 * For LSSTCam-imSim, 2 groups, in total 3 raw fits files and custom-made json metadata files, are curated.
 
 ``python/tester/upload_from_repo.py``: Command line arguments are a configuration file, the number of groups of images to send, and the
-platform (KNATIVE or KEDA).
+platform (KEDA only).
 
 Sample command line:
 
 .. code-block:: sh
 
    python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/HSC.yaml 3 KEDA
-   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LATISS.yaml 4 KNATIVE
    python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LSSTComCamSim.yaml 2 KEDA --ordered
 
 This scripts draws images from a butler repository as defined in the input configuration file.
