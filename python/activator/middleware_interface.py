@@ -29,6 +29,7 @@ import logging
 import os
 import os.path
 import re
+import subprocess
 import tempfile
 import typing
 import yaml
@@ -499,6 +500,26 @@ class MiddlewareInterface:
         with time_this_to_bundle(bundle, action_id, "prep_butlerTotalTime"):
             with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
                 _log.info(f"Preparing Butler for visit {self.visit!r}")
+
+                _log_trace.debug("Cache contents: %s", self.cache)
+                _census = {}
+                with self.butler.registry.caching_context():
+                    _all_types = sorted(self.butler.registry.queryDatasetTypes(...))
+                    _collections = self.butler.collections.query('*', collection_types=CollectionType.RUN)
+                    with self.butler.query() as _query:
+                        for _type in _all_types:
+                            _count = _query.datasets(_type, _collections, find_first=False).count()
+                            if _count:
+                                _census[_type.name] = _count
+                _log_trace.debug("Repo contents: %s",
+                                 ", ".join(f"{_type}: {_count}" for _type, _count in _census.items())
+                                 )
+                _repo_base = os.environ.get("LOCAL_REPOS", "/tmp")
+                _local_repos = [os.path.join(_repo_base, d)
+                                for d in os.listdir(os.environ.get("LOCAL_REPOS", "/tmp"))]
+                _size = subprocess.run(["du", "-hs"] + _local_repos,
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                _log_trace.debug("Repo size:\n%s", _size.stdout)
 
                 try:
                     region = self._compute_region()
