@@ -1776,6 +1776,7 @@ class MiddlewareInterface:
                     instrument=self.visit.instrument,
                     detector=self.visit.detector,
                 )
+                _log_trace.debug("Removing %d raws for exposures %s.", len(raws), exposure_ids)
                 self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
             # Outputs are all in their own runs, so just drop them.
             preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
@@ -1783,6 +1784,7 @@ class MiddlewareInterface:
             for pipeline_file in self._get_combined_pipeline_files():
                 output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file,
                                                  self._day_obs)
+                _log_trace.debug("Removing run %s.", output_run)
                 _remove_run_completely(self.butler, output_run)
 
             # Clean out calibs, templates, and other preloaded datasets
