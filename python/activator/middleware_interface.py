@@ -1581,7 +1581,7 @@ class MiddlewareInterface:
         types : iterable [`str`]
             The dataset types to return.
         """
-        return [dstype for dstype in butler.registry.queryDatasetTypes(...)
+        return [dstype.name for dstype in butler.registry.queryDatasetTypes(...)
                 if "detector" in dstype.dimensions]
 
     def _export_subset(self, exposure_ids: set[int],
