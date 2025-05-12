@@ -1515,6 +1515,39 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
             self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
             0)
 
+    def test_export_selected_outputs(self):
+        # Export nothing
+        with unittest.mock.patch.dict(os.environ, {"EXPORT_TYPE_REGEXP": "[]"}):
+            self.interface.export_outputs({self.raw_data_id["exposure"]})
+        # Export calexp only
+        with unittest.mock.patch.dict(os.environ, {"EXPORT_TYPE_REGEXP": "- calexp"}):
+            self.second_interface.export_outputs({self.second_data_id["exposure"]})
+
+        central_butler = Butler(self.central_repo.name, writeable=False)
+        self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.preprocessing_run),
+                         0)
+        self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.output_run), 0)
+        self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.preprocessing_run), 0)
+        self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_run), 1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),
+            0)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.second_data_id),
+            1)
+
+    def test_export_selected_outputs_invalid_config(self):
+        # Bad config: export all
+        with unittest.mock.patch.dict(os.environ, {"EXPORT_TYPE_REGEXP": "Invalid item"}):
+            with self.assertLogs(self.logger_name, level="ERROR") as logs:
+                self.interface.export_outputs({self.raw_data_id["exposure"]})
+                self.assertIn("Invalid EXPORT_TYPE_REGEXP", logs.output[0])
+        central_butler = Butler(self.central_repo.name, writeable=False)
+        self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_run), 1)
+        self.assertEqual(
+            self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),
+            1)
+
     def test_compute_region(self):
         """Test preload region computation."""
         region = self.interface._compute_region()
