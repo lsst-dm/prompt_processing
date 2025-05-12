@@ -1779,6 +1779,7 @@ class MiddlewareInterface:
                 _remove_run_completely(self.butler, output_run)
 
             # Clean out calibs, templates, and other preloaded datasets
+            _log_trace.debug("Cache contents: %s", self.cache)
             excess_datasets = set()
             for dataset_type in self.butler.registry.queryDatasetTypes(...):
                 excess_datasets |= set(self.butler.query_datasets(
