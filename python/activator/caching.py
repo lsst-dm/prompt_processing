@@ -145,6 +145,11 @@ class DatasetCache(collections.abc.Collection[daf_butler.DatasetRef]):
             total += len(cache)
         return total
 
+    def __str__(self):
+        summary = ", ".join(f"{type_name}: {len(cache)}/{cache.max_size}"
+                            for type_name, cache in sorted(self._caches.items()))
+        return "{%s}" % summary
+
     def _merge_into_cache(self, inputs: Mapping[str, Set[daf_butler.DatasetRef]]) \
             -> [Set[daf_butler.DatasetRef], Set[daf_butler.DatasetRef], Mapping[str, EvictingSet]]:
         """Compute a bulk update of caches for multiple dataset types.
