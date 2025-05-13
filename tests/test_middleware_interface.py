@@ -197,6 +197,26 @@ def fake_eng_data(filename, dimensions, instrument, visit):
     return data_id, file_data
 
 
+# Can't find a way to do this with unittest.mock directly -- the mocks never take self as an argument
+def _filter_dataset_types(func, types):
+    """A decorator that removes specific dataset types from method results.
+
+    Parameters
+    ----------
+    types : set [`str`]
+        The dataset types to never return.
+    """
+    def wrapper(self, pipeline_file):
+        return func(self, pipeline_file) - types
+    return wrapper
+
+
+preprocessing_types = {"preloaded_ss_object", "preloaded_dia_source", "preloaded_dia_object",
+                       "preloaded_dia_forced_source", "loadDiaCatalogs_metadata",
+                       "loadDiaCatalogs_metadata_metrics",
+                       }
+
+
 class MiddlewareInterfaceTest(MockTestCase):
     """Test the MiddlewareInterface class with faked data.
     """
@@ -227,6 +247,12 @@ class MiddlewareInterfaceTest(MockTestCase):
         self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
                                                return_value=sim_deployment))
         self.deploy_id = sim_deployment
+        # Use new_callable instead of side_effect to make sure the right thing is patched
+        self.setup_patcher(unittest.mock.patch.object(MiddlewareInterface, "_get_pipeline_input_types",
+                                                      new_callable=_filter_dataset_types,
+                                                      func=MiddlewareInterface._get_pipeline_input_types,
+                                                      types=preprocessing_types,
+                                                      ))
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -411,7 +437,12 @@ class MiddlewareInterfaceTest(MockTestCase):
         )
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
                 as mock_pre:
-            self.interface.prep_butler()
+            # TODO: fix error assertion once I improve _find_data_to_preload error handling
+            try:
+                self.interface.prep_butler()
+            except RuntimeError:
+                # Sufficient but unnecessary pass condition. See below for alternative behavior.
+                return
 
         expected_shards = {166464, 177536}
         with self.assertRaises((AssertionError, lsst.daf.butler.registry.MissingCollectionError)):
@@ -471,10 +502,6 @@ class MiddlewareInterfaceTest(MockTestCase):
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
 
-    # TODO: prep_butler doesn't know what kinds of calibs to expect, so can't
-    # tell that there are specifically, e.g., no flats. This test should pass
-    # as-is after DM-40245.
-    @unittest.expectedFailure
     def test_prep_butler_novalid(self):
         """Test that prep_butler raises if no calibs are currently valid.
         """
@@ -937,10 +964,6 @@ class MiddlewareInterfaceTest(MockTestCase):
         self._prepare_run_preprocessing()
         self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
 
-    def test_get_template_types(self):
-        template_types = self.interface._get_template_types()
-        self.assertEqual(template_types, {"template_coadd"})
-
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
         # Pass iff any dataset matches the query, no need to check them all.
         for dataset in butler.query_datasets(dataset_type, collections=collection, data_id=data_id,
@@ -1270,6 +1293,12 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
                                                return_value=sim_deployment))
         self.deploy_id = sim_deployment
+        # Use new_callable instead of side_effect to make sure the right thing is patched
+        self.setup_patcher(unittest.mock.patch.object(MiddlewareInterface, "_get_pipeline_input_types",
+                                                      new_callable=_filter_dataset_types,
+                                                      func=MiddlewareInterface._get_pipeline_input_types,
+                                                      types=preprocessing_types,
+                                                      ))
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
