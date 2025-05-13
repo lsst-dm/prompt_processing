@@ -587,24 +587,25 @@ class MiddlewareInterface:
             net_types.difference_update(self._get_pipeline_output_types(pipeline_file))
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find init-outputs)", level=logging.DEBUG):
-            all_datasets = set(self._export_init_outputs())
+            all_datasets = set(self._find_init_outputs())
         calib_datasets = set()
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find inputs)", level=logging.DEBUG):
             for type_name in net_types:
                 dstype = self.central_butler.registry.getDatasetType(type_name)
                 if dstype.isCalibration():
-                    new_calibs = self._export_calibs(dstype, self.visit.detector, self.visit.filters)
+                    new_calibs = self._find_calibs(dstype, self.visit.detector, self.visit.filters)
                     calib_datasets.update(new_calibs)
                     all_datasets.update(new_calibs)
                 elif "htm7" in dstype.dimensions or "skypix" in dstype.dimensions:
                     if region is not None:
-                        all_datasets.update(self._export_refcats(dstype, region))
+                        all_datasets.update(self._find_refcats(dstype, region))
                 elif "tract" in dstype.dimensions:
                     if region is not None:
-                        all_datasets.update(self._export_templates(dstype, region, self.visit.filters))
+                        all_datasets.update(self._find_templates(dstype, region, self.visit.filters))
                 else:
-                    all_datasets.update(self._export_generic(dstype, self.visit.detector, self.visit.filters))
+                    all_datasets.update(self._find_generic_datasets(
+                        dstype, self.visit.detector, self.visit.filters))
 
         return (all_datasets, calib_datasets)
 
@@ -671,7 +672,7 @@ class MiddlewareInterface:
         return {edge.parent_dataset_type_name
                 for task in pipeline.tasks.values() for edge in task.iter_all_outputs()}
 
-    def _export_refcats(self, dataset_type, region):
+    def _find_refcats(self, dataset_type, region):
         """Identify the refcats to export from the central butler.
 
         Parameters
@@ -701,7 +702,7 @@ class MiddlewareInterface:
             _log.debug("Found %d new refcat datasets from catalog '%s'.", len(refcats), dataset_type.name)
         return refcats
 
-    def _export_templates(self, dataset_type, region, physical_filter):
+    def _find_templates(self, dataset_type, region, physical_filter):
         """Identify the templates to export from the central butler.
 
         Parameters
@@ -742,7 +743,7 @@ class MiddlewareInterface:
             _log.debug("Found %d new template datasets of type %s.", len(templates), dataset_type.name)
         return templates
 
-    def _export_calibs(self, dataset_type, detector_id, physical_filter):
+    def _find_calibs(self, dataset_type, detector_id, physical_filter):
         """Identify the calibs to export from the central butler.
 
         Parameters
@@ -803,7 +804,7 @@ class MiddlewareInterface:
             _log.debug("Found %d new calib datasets of type '%s'.", len(calibs), dataset_type.name)
         return calibs
 
-    def _export_generic(self, dataset_type, detector_id, physical_filter):
+    def _find_generic_datasets(self, dataset_type, detector_id, physical_filter):
         """Identify datasets to export from the central butler.
 
         Parameters
@@ -861,7 +862,7 @@ class MiddlewareInterface:
         return {edge.parent_dataset_type_name
                 for task in pipeline.tasks.values() for edge in task.init.iter_all_outputs()}
 
-    def _export_init_outputs(self):
+    def _find_init_outputs(self):
         """Identify the init-output datasets to export from the central butler.
 
         Returns
