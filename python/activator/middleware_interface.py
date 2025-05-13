@@ -605,8 +605,6 @@ class MiddlewareInterface:
                         all_datasets.update(self._export_templates(dstype, region, self.visit.filters))
                 else:
                     all_datasets.update(self._export_generic(dstype, self.visit.detector, self.visit.filters))
-            if region is not None:
-                all_datasets.update(self._export_skymap())
 
         return (all_datasets, calib_datasets)
 
@@ -702,26 +700,6 @@ class MiddlewareInterface:
         if refcats:
             _log.debug("Found %d new refcat datasets from catalog '%s'.", len(refcats), dataset_type.name)
         return refcats
-
-    def _export_skymap(self):
-        """Identify the skymap to export from the central butler.
-
-        Returns
-        -------
-        skymap : iterable [`lsst.daf.butler.DatasetRef`]
-            The datasets to be exported, after any filtering.
-        """
-        skymaps = set(_filter_datasets(
-            self.central_butler, self.butler,
-            _generic_query(["skyMap"],
-                           skymap=self.skymap_name,
-                           collections=self._collection_skymap,
-                           find_first=True,
-                           ),
-            all_callback=self._mark_dataset_usage,
-        ))
-        _log.debug("Found %d new skymap datasets.", len(skymaps))
-        return skymaps
 
     def _export_templates(self, dataset_type, region, physical_filter):
         """Identify the templates to export from the central butler.
