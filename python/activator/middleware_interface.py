@@ -1437,6 +1437,8 @@ class MiddlewareInterface:
             return
 
         export_patterns = yaml.safe_load(os.environ.get("EXPORT_TYPE_REGEXP", "- .*"))
+        _log.debug(f"EXPORT_TYPE_REGEXP: {os.environ.get('EXPORT_TYPE_REGEXP', 'NONE')}")
+        _log.debug(f"export_patterns : {export_patterns}")
         export_types = set(
             data_type
             for data_type in self._get_safe_dataset_types(self.butler)
