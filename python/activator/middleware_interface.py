@@ -653,7 +653,7 @@ class MiddlewareInterface:
         """
         pre_outputs = set()
         for pipeline_file in self._get_pre_pipeline_files():
-            input_types = self._get_pipeline_input_types(pipeline_file)
+            input_types = self._get_pipeline_input_types(pipeline_file, include_optional=False)
             input_types.discard("regionTimeInfo")
             if input_types <= present_types:
                 _log.debug("Found inputs for %s.", pipeline_file)
@@ -662,7 +662,7 @@ class MiddlewareInterface:
                 _log.debug("Missing inputs for %s: %s.", pipeline_file, input_types - present_types)
         main_inputs = present_types | pre_outputs
         for pipeline_file in self._get_main_pipeline_files():
-            input_types = self._get_pipeline_input_types(pipeline_file)
+            input_types = self._get_pipeline_input_types(pipeline_file, include_optional=False)
             input_types.discard("regionTimeInfo")
             input_types.discard("raw")
             if input_types <= main_inputs:
@@ -672,13 +672,16 @@ class MiddlewareInterface:
                 _log.debug("Missing inputs for %s: %s.", pipeline_file, input_types - main_inputs)
         return False
 
-    def _get_pipeline_input_types(self, pipeline_file):
+    def _get_pipeline_input_types(self, pipeline_file, include_optional=True):
         """Identify the dataset types needed as inputs for a pipeline.
 
         Parameters
         ----------
         pipeline_file : `str`
             The pipeline whose inputs are desired.
+        include_optional : `bool`, optional
+            Whether to report optional inputs (the default) or only required
+            ones.
 
         Returns
         -------
@@ -690,8 +693,13 @@ class MiddlewareInterface:
         except FileNotFoundError as e:
             raise RuntimeError(f"Could not find pipeline {pipeline_file}.") from e
 
-        task_inputs = {edge.parent_dataset_type_name
-                       for task in pipeline.tasks.values() for edge in task.iter_all_inputs()}
+        if include_optional:
+            task_inputs = {edge.parent_dataset_type_name
+                           for task in pipeline.tasks.values() for edge in task.iter_all_inputs()}
+        else:
+            task_inputs = {edge.parent_dataset_type_name
+                           for task in pipeline.tasks.values() for edge in task.iter_all_inputs()
+                           if not task.is_optional(edge.key[2])}
         # Ignore inputs produced internally.
         task_outputs = {edge.parent_dataset_type_name
                         for task in pipeline.tasks.values() for edge in task.iter_all_outputs()}

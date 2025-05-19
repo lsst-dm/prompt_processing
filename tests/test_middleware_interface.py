@@ -208,8 +208,8 @@ def _filter_dataset_types(func, types):
     types : set [`str`]
         The dataset types to never return.
     """
-    def wrapper(self, pipeline_file):
-        return func(self, pipeline_file) - types
+    def wrapper(self, pipeline_file, include_optional=True):
+        return func(self, pipeline_file, include_optional) - types
     return wrapper
 
 
