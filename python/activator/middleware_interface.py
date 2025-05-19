@@ -590,27 +590,36 @@ class MiddlewareInterface:
             all_datasets = set(self._find_init_outputs())
         calib_datasets = set()
 
+        present_types = net_types.copy()
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find inputs)", level=logging.DEBUG):
             for type_name in net_types:
                 dstype = self.central_butler.registry.getDatasetType(type_name)
-                if dstype.isCalibration():
-                    new_calibs = self._find_calibs(dstype, self.visit.detector, self.visit.filters)
-                    calib_datasets.update(new_calibs)
-                    all_datasets.update(new_calibs)
-                elif "htm7" in dstype.dimensions or "skypix" in dstype.dimensions:
-                    if region is not None:
-                        all_datasets.update(self._find_refcats(dstype, region))
-                elif "tract" in dstype.dimensions:
-                    if region is not None:
-                        all_datasets.update(self._find_templates(dstype, region, self.visit.filters))
-                else:
-                    all_datasets.update(self._find_generic_datasets(
-                        dstype, self.visit.detector, self.visit.filters))
+                try:
+                    if dstype.isCalibration():
+                        new_calibs = self._find_calibs(dstype, self.visit.detector, self.visit.filters)
+                        calib_datasets.update(new_calibs)
+                        all_datasets.update(new_calibs)
+                    elif "htm7" in dstype.dimensions or "skypix" in dstype.dimensions:
+                        if region is not None:
+                            all_datasets.update(self._find_refcats(dstype, region))
+                    elif "tract" in dstype.dimensions:
+                        if region is not None:
+                            all_datasets.update(self._find_templates(dstype, region, self.visit.filters))
+                    else:
+                        all_datasets.update(self._find_generic_datasets(
+                            dstype, self.visit.detector, self.visit.filters))
+                except _MissingDatasetError:
+                    _log.warning("Found no source datasets of type %s.", type_name)
+                    present_types.remove(type_name)
 
-        return (all_datasets, calib_datasets)
+        if self._is_main_pipeline_runnable(present_types):
+            return (all_datasets, calib_datasets)
+        else:
+            raise NoGoodPipelinesError("Cannot run any main pipeline.")
 
     def _get_preloadable_types(self):
         """Identify all types to attempt to preload.
+
         Returns
         -------
         types : mapping [`str`, set [`str`]]
@@ -625,6 +634,43 @@ class MiddlewareInterface:
             inputs.discard("raw")
             input_types[pipeline_file] = inputs
         return input_types
+
+    def _is_main_pipeline_runnable(self, present_types):
+        """Determine if at least one pipeline can be run with the available data.
+
+        This method emits diagnostic logs as a side effect.
+
+        Parameters
+        ----------
+        present_types : set [`str`]
+            The types that are accounted for, either already present in the
+            local repo or marked for download.
+
+        Returns
+        -------
+        runnable : `bool`
+            `True` if and only if at least one pipeline has all inputs.
+        """
+        pre_outputs = set()
+        for pipeline_file in self._get_pre_pipeline_files():
+            input_types = self._get_pipeline_input_types(pipeline_file)
+            input_types.discard("regionTimeInfo")
+            if input_types <= present_types:
+                _log.debug("Found inputs for %s.", pipeline_file)
+                pre_outputs.update(self._get_pipeline_output_types(pipeline_file))
+            else:
+                _log.debug("Missing inputs for %s: %s.", pipeline_file, input_types - present_types)
+        main_inputs = present_types | pre_outputs
+        for pipeline_file in self._get_main_pipeline_files():
+            input_types = self._get_pipeline_input_types(pipeline_file)
+            input_types.discard("regionTimeInfo")
+            input_types.discard("raw")
+            if input_types <= main_inputs:
+                _log.debug("Found inputs for %s.", pipeline_file)
+                return True
+            else:
+                _log.debug("Missing inputs for %s: %s.", pipeline_file, input_types - main_inputs)
+        return False
 
     def _get_pipeline_input_types(self, pipeline_file):
         """Identify the dataset types needed as inputs for a pipeline.
@@ -1784,8 +1830,6 @@ def _filter_datasets(src_repo: Butler,
     # this operation.
     src_datasets = set(query(src_repo, "source datasets"))
     if not src_datasets:
-        # The downstream method decides what to do with empty results.
-        # DM-40245 and DM-46178 may change this.
         raise _MissingDatasetError("Source repo query found no matches.")
     if all_callback:
         all_callback(src_datasets)

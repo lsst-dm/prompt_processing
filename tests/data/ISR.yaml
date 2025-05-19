@@ -1,6 +1,14 @@
-description: Test pipeline consisting only of ISR.
+description: >-
+  Ultra-minimal test pipeline, designed to be runnable even if key
+  datasets like flats are missing.
 
 imports:
   - location: $PROMPT_PROCESSING_DIR/tests/data/ApPipe.yaml
     include:
       - isr
+tasks:
+  isr:
+    class: lsst.ip.isr.IsrTaskLSST
+    config:
+      # Don't need filter-dependent calibs
+      doFlat: false
