@@ -23,6 +23,7 @@ __all__ = ["get_central_butler", "make_local_repo", "flush_local_repo", "make_lo
            "MiddlewareInterface"]
 
 import collections.abc
+import functools
 import itertools
 import logging
 import os
@@ -1065,6 +1066,7 @@ class MiddlewareInterface:
         """
         return self.main_pipelines.get_pipeline_files(self.visit)
 
+    @functools.cache
     def _prep_pipeline(self, pipeline_file) -> lsst.pipe.base.Pipeline:
         """Setup the pipeline to be run, based on the configured instrument and
         details of the incoming visit.
@@ -1085,6 +1087,23 @@ class MiddlewareInterface:
         pipeline.addConfigOverride("parameters", "apdb_config", self._apdb_config)
 
         return pipeline
+
+    @functools.cache
+    def _prep_pipeline_graph(self, pipeline_file) -> lsst.pipe.base.PipelineGraph:
+        """Setup the pipeline to be run, based on the configured instrument and
+        details of the incoming visit.
+
+        Parameters
+        ----------
+        pipeline_file : `str`
+            The pipeline file to run.
+
+        Returns
+        -------
+        pipeline : `lsst.pipe.base.PipelineGraph`
+            The fully configured pipeline, in graph form.
+        """
+        return self._prep_pipeline(pipeline_file).to_graph()
 
     def _download(self, remote):
         """Download an image located on a remote store.
@@ -1657,10 +1676,9 @@ class MiddlewareInterface:
         template_types = set()
         for pipeline_file in self._get_main_pipeline_files():
             try:
-                pipeline = self._prep_pipeline(pipeline_file)
+                graph = self._prep_pipeline_graph(pipeline_file)
             except FileNotFoundError as e:
                 raise RuntimeError from e
-            graph = pipeline.to_graph()
             for dataset_type in graph.iter_overall_inputs():
                 # Avoid pulling in too many other sorts of coadds
                 if dataset_type[0] == "template_coadd" or dataset_type[0].endswith("Coadd"):
