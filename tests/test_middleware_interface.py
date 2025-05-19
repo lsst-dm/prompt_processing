@@ -73,6 +73,8 @@ skymap_name = "ops_rehersal_prep_2k_v1"
 pipelines = PipelinesConfig([{"survey": "SURVEY",
                               "pipelines": ["${PROMPT_PROCESSING_DIR}/tests/data/ApPipe.yaml",
                                             "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml",
+                                            # Can run without flats
+                                            "${PROMPT_PROCESSING_DIR}/tests/data/ISR.yaml",
                                             ],
                               }])
 pipelines_minimal = PipelinesConfig([{"survey": "SURVEY",
@@ -436,22 +438,11 @@ class MiddlewareInterfaceTest(MockTestCase):
             private_sndStamp=datetime.datetime.fromisoformat("20150313T000000Z").timestamp(),
         )
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                as mock_pre:
-            # TODO: fix error assertion once I improve _find_data_to_preload error handling
-            try:
-                self.interface.prep_butler()
-            except RuntimeError:
-                # Sufficient but unnecessary pass condition. See below for alternative behavior.
-                return
+                as mock_pre, \
+                self.assertRaises(NoGoodPipelinesError):
+            self.interface.prep_butler()
 
-        expected_shards = {166464, 177536}
-        with self.assertRaises((AssertionError, lsst.daf.butler.registry.MissingCollectionError)):
-            # Nothing should have been imported
-            self._check_imports(self.interface.butler, group="1", detector=4,
-                                expected_shards=expected_shards)
-
-        # Hard to test actual pipeline output, so just check we're calling it
-        mock_pre.assert_called_once()
+        mock_pre.assert_not_called()
 
     def test_prep_butler_nofilter(self):
         """Test that prep_butler can handle visits without a filter.
@@ -513,7 +504,7 @@ class MiddlewareInterfaceTest(MockTestCase):
         with warnings.catch_warnings():
             # Avoid "dubious year" warnings from using a 2050 date
             warnings.simplefilter("ignore", category=erfa.ErfaWarning)
-            with self.assertRaises(_MissingDatasetError), \
+            with self.assertRaises(NoGoodPipelinesError), \
                 unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
                     as mock_pre:
                 self.interface.prep_butler()
