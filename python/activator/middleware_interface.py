@@ -672,7 +672,7 @@ class MiddlewareInterface:
                 _log.debug("Found inputs for %s.", pipeline_file)
                 return True
             else:
-                _log.debug("Missing inputs for %s: %s.", pipeline_file, input_types - present_types)
+                _log.debug("Missing inputs for %s: %s.", pipeline_file, input_types - main_inputs)
         return False
 
     def _get_pipeline_input_types(self, pipeline_file, include_optional=True):
