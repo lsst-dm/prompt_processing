@@ -826,8 +826,7 @@ class MiddlewareInterface:
             return set()
 
         def query_calibs_by_date(butler, label):
-            with lsst.utils.timer.time_this(_log, msg=f"Calib query ({label})", level=logging.DEBUG), \
-                    butler.query() as query:
+            with butler.query() as query:
                 expr = query.expression_factory
                 query = query.where(data_id)
                 try:
@@ -1864,34 +1863,23 @@ def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler
         logging label and executes the dataset query, returning an iterable of
         fully expanded `~lsst.daf.butler.DatasetRef`.
     """
-    formatted_args = "dataset_types={}, {}, {}".format(
-        dataset_types,
-        ", ".join(repr(a) for a in args),
-        ", ".join(f"{k}={v!r}" for k, v in kwargs.items()),
-    )
-
     def query(butler: Butler, butler_name: str = ""):
-        # time_this automatically escalates its log to ERROR level if the code raises.
-        # Some errors are expected to happen sometimes, and we don't want those to log
-        # at the ERROR level and cause confusion.
         label = butler_name or str(butler)
-        with lsst.utils.timer.time_this(_log, msg=f"_generic_query({formatted_args}) ({label})",
-                                        level=logging.DEBUG):
-            datasets = set()
-            for dataset_type in dataset_types:
-                try:
-                    datasets |= set(butler.query_datasets(
-                        # explain=False because empty query result is ok here.
-                        dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
-                    ))
-                except (DataIdValueError, MissingDatasetTypeError) as e:
-                    # Dimensions/dataset type often invalid for fresh local repo,
-                    # where there are no, and never have been, any matching datasets.
-                    # It *is* a problem for the central repo, but can be caught later.
-                    _log.debug("%s query failed with %s.", label, e)
-            # Trace3 because, in many contexts, datasets is too large to print.
-            _log_trace3.debug("%s: %s", label, datasets)
-            return datasets
+        datasets = set()
+        for dataset_type in dataset_types:
+            try:
+                datasets |= set(butler.query_datasets(
+                    # explain=False because empty query result is ok here.
+                    dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
+                ))
+            except (DataIdValueError, MissingDatasetTypeError) as e:
+                # Dimensions/dataset type often invalid for fresh local repo,
+                # where there are no, and never have been, any matching datasets.
+                # It *is* a problem for the central repo, but can be caught later.
+                _log.debug("%s query failed with %s.", label, e)
+        # Trace3 because, in many contexts, datasets is too large to print.
+        _log_trace3.debug("%s: %s", label, datasets)
+        return datasets
 
     return query
 
