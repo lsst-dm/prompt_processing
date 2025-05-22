@@ -1866,12 +1866,19 @@ def _check_transfer_completion(expected, transferred, transfer_type):
         The datasets that were successfully transferred.
     transfer_type : `str`
         A brief description of the transfer. Should be a past-tense verb.
+
+    Returns
+    -------
+    missing : set `lsst.daf.butler.DatasetRef`
+        The datasets that were not transferred.
     """
     # Count only unique datasets
     expected_s = set(expected)
     transferred_s = set(transferred)
-    if len(transferred_s) != len(expected_s):
+    missing = expected_s - transferred_s
+    if missing:
         _log.warning("%s only %d datasets out of %d; missing %s.",
                      transfer_type.capitalize(),
                      len(transferred_s), len(expected_s),
-                     expected_s - transferred_s)
+                     missing)
+    return missing
