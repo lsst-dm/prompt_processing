@@ -876,14 +876,15 @@ class MiddlewareInterface:
                                                     register_dataset_types=True,
                                                     transfer_dimensions=True,
                                                     )
-            _check_transfer_completion(datasets, transferred, "Downloaded")
+            missing = _check_transfer_completion(datasets, transferred, "Downloaded")
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)", level=logging.DEBUG):
             self._export_collections(self._collection_template)
             self._export_collections(self.instrument.makeUmbrellaCollectionName())
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)", level=logging.DEBUG):
-            self._export_calib_associations(self.instrument.makeCalibrationCollectionName(), calibs)
+            self._export_calib_associations(self.instrument.makeCalibrationCollectionName(),
+                                            calibs - missing)
 
         # Temporary workarounds until we have a prompt-processing default top-level collection
         # in shared repos, and raw collection in dev repo, and then we can organize collections
