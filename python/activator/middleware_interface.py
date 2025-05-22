@@ -137,9 +137,6 @@ def flush_local_repo(repo_dir: str, central_butler: Butler):
             # Not necessarily a problem -- we might be transferring datasets
             # that have already been (partially?) transferred.
             _check_transfer_completion(datasets, transferred, "Uploaded")
-            # Don't try to chain the runs -- only way to get the correct chain
-            # name is to parse the collection name(s), too brittle for the rare
-            # case that the runs aren't already in central repo.
     except Exception:
         _log.exception("Could not sync outputs from %s; they will be lost.", repo_dir)
     finally:
@@ -879,14 +876,15 @@ class MiddlewareInterface:
                                                     register_dataset_types=True,
                                                     transfer_dimensions=True,
                                                     )
-            _check_transfer_completion(datasets, transferred, "Downloaded")
+            missing = _check_transfer_completion(datasets, transferred, "Downloaded")
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)", level=logging.DEBUG):
             self._export_collections(self._collection_template)
             self._export_collections(self.instrument.makeUmbrellaCollectionName())
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)", level=logging.DEBUG):
-            self._export_calib_associations(self.instrument.makeCalibrationCollectionName(), calibs)
+            self._export_calib_associations(self.instrument.makeCalibrationCollectionName(),
+                                            calibs - missing)
 
         # Temporary workarounds until we have a prompt-processing default top-level collection
         # in shared repos, and raw collection in dev repo, and then we can organize collections
@@ -1869,12 +1867,19 @@ def _check_transfer_completion(expected, transferred, transfer_type):
         The datasets that were successfully transferred.
     transfer_type : `str`
         A brief description of the transfer. Should be a past-tense verb.
+
+    Returns
+    -------
+    missing : set `lsst.daf.butler.DatasetRef`
+        The datasets that were not transferred.
     """
     # Count only unique datasets
     expected_s = set(expected)
     transferred_s = set(transferred)
-    if len(transferred_s) != len(expected_s):
+    missing = expected_s - transferred_s
+    if missing:
         _log.warning("%s only %d datasets out of %d; missing %s.",
                      transfer_type.capitalize(),
                      len(transferred_s), len(expected_s),
-                     expected_s - transferred_s)
+                     missing)
+    return missing
