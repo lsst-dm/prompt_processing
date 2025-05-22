@@ -1437,6 +1437,10 @@ class MiddlewareInterface:
             return
 
         export_patterns = yaml.safe_load(os.environ.get("EXPORT_TYPE_REGEXP", "- .*"))
+        if not isinstance(export_patterns, list):
+            _log.error("Invalid EXPORT_TYPE_REGEXP=%s. Export all dataset types.",
+                       os.environ.get("EXPORT_TYPE_REGEXP", "- .*"))
+            export_patterns = []
         _log.debug(f"EXPORT_TYPE_REGEXP: {os.environ.get('EXPORT_TYPE_REGEXP', 'NONE')}")
         _log.debug(f"export_patterns : {export_patterns}")
         export_types = set(
