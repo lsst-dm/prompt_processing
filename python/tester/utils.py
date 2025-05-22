@@ -120,16 +120,14 @@ def get_last_group(bucket, instrument, date):
             last_number = 0
         return make_group(date, last_number)
     else:
-        preblobs = bucket.objects.filter(
+        blobs = bucket.objects.filter(
             Prefix=f"{instrument}/",
         )
-        detector = min(
-            (int(preblob.key.split("/")[1]) for preblob in preblobs), default=0
-        )
 
+        # format is instrument/detector/DDDD00NN/...
         group_prefix = make_compressed_date(date)
-        blobs = preblobs.filter(Prefix=f"{instrument}/{detector}/{group_prefix}")
-        numbers = [int(blob.key.split("/")[2][4:]) for blob in blobs]
+        numbers = [int(blob.key.split("/")[2][4:]) for blob in blobs
+                   if blob.key.split("/")[2].startswith(group_prefix)]
 
         if numbers:
             last_number = max(numbers)

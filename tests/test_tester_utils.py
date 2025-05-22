@@ -80,6 +80,12 @@ class TesterUtilsTest(MockTestCase):
         )
         obj = s3.Object(self.bucket_name, path)
         obj.put(Body=b'test3')
+        path = get_raw_path(
+            # Smallest HSC detector is 123
+            "HSC", 124, "11020003", 2, 30, "TestFilter"
+        )
+        obj = s3.Object(self.bucket_name, path)
+        obj.put(Body=b'test4')
 
     def tearDown(self):
         s3 = boto3.resource("s3")
@@ -112,7 +118,7 @@ class TesterUtilsTest(MockTestCase):
         bucket = s3.Bucket(self.bucket_name)
 
         last_group = get_last_group(bucket, "HSC", "20241102")
-        self.assertEqual(last_group, "11020002")
+        self.assertEqual(last_group, "11020003")
 
         # Test the case of no match
         last_group = get_last_group(bucket, "HSC", "20250101")
