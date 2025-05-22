@@ -137,9 +137,6 @@ def flush_local_repo(repo_dir: str, central_butler: Butler):
             # Not necessarily a problem -- we might be transferring datasets
             # that have already been (partially?) transferred.
             _check_transfer_completion(datasets, transferred, "Uploaded")
-            # Don't try to chain the runs -- only way to get the correct chain
-            # name is to parse the collection name(s), too brittle for the rare
-            # case that the runs aren't already in central repo.
     except Exception:
         _log.exception("Could not sync outputs from %s; they will be lost.", repo_dir)
     finally:
