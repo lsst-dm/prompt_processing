@@ -1747,16 +1747,16 @@ class MiddlewareInterface:
         """
         with lsst.utils.timer.time_this(_log, msg="clean_local_repo", level=logging.DEBUG):
             self.butler.registry.refresh()
-            if exposure_ids:
-                raws = self.butler.query_datasets(
-                    'raw',
-                    collections=self.instrument.makeDefaultRawIngestRunName(),
-                    where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
-                    explain=False,  # Raws might not have been ingested.
-                    instrument=self.visit.instrument,
-                    detector=self.visit.detector,
-                )
-                self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
+            # Clean out raws
+            raws = self.butler.query_datasets(
+                'raw',
+                collections=self.instrument.makeDefaultRawIngestRunName(),
+                explain=False,  # Raws might not have been ingested.
+                instrument=self.visit.instrument,
+                detector=self.visit.detector,
+            )
+            self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
+
             # Outputs are all in their own runs, so just drop them.
             preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
             _remove_run_completely(self.butler, preload_run)
