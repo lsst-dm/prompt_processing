@@ -753,25 +753,6 @@ def _parse_bucket_notifications(payload):
             _log.error("Invalid S3 bucket notification: %s", e)
 
 
-def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logger) -> bool:
-    """Attempt to export pipeline products, logging any failure.
-
-    This method is designed to be safely run from within exception handlers.
-
-    Returns
-    -------
-    exported : `bool`
-        `True` if the export was successful, `False` for a (possibly partial)
-        failure.
-    """
-    try:
-        mwi.export_outputs(exposures)
-        return True
-    except Exception:
-        log.exception("Central repo export failed. Some output products may be lost.")
-        return False
-
-
 def next_visit_handler() -> tuple[str, int]:
     """A Flask view function for handling next-visit events.
 
@@ -955,17 +936,15 @@ def process_visit(expected_visit: FannedOutVisit):
                     _log.info("Running pipeline...")
                     try:
                         mwi.run_pipeline(expid_set)
+                    except RetriableError:
+                        # Do not export, to leave room for the next attempt
+                        raise
+                    except Exception:
                         try:
                             mwi.export_outputs(expid_set)
                         except Exception as e:
                             raise NonRetriableError("APDB and possibly alerts or central repo modified") \
                                 from e
-                    except RetriableError:
-                        # Do not export, to leave room for the next attempt
-                        raise
-                    except Exception:
-                        _try_export(mwi, expid_set, _log)
-                        raise
             else:
                 raise RuntimeError("Timed out waiting for images.")
 
