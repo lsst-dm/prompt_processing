@@ -22,8 +22,8 @@ Containers
 ==========
 
 The service consists of two containers.
-The first is a base container with the Science Pipelines "stack" code and networking utilities.
-The second is a service container made from the base that has the Prompt Processing service code.
+The first is a **base container** with the Science Pipelines "stack" code and networking utilities.
+The second is a **service container** made from the base that has the Prompt Processing service code.
 All containers are managed by `GitHub Container Registry <https://github.com/orgs/lsst-dm/packages?repo_name=prompt_processing>`_ and are built using GitHub Actions.
 
 To build the base container:
@@ -49,8 +49,8 @@ To build the base container:
 To build the service container:
 
 * If there are changes to the service, push them to a branch, then open a PR.
-  The container should be built automatically using the ``latest`` base container.
-* To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml>`_ and select "Run workflow".
+  This will build the container automatically using the ``latest`` base container.
+* To force a rebuild manually, go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-service.yml>`_ and select "**Run workflow**".
   From the dropdown, select the branch whose code should be built.
   The container will be built using the ``latest`` base container, even if there is a branch build of the base.
 * To use a base other than ``latest``, edit ``.github/workflows/_matrix-gen.yaml`` on the branch and override the ``BASE_TAG_LIST`` variable.
@@ -76,7 +76,7 @@ It will sometimes be necessary to compile a container with the LSST Science Pipe
 Generally, this only occurs if the intended daily or weekly stack does not compile.
 In these cases, the Science Pipelines themselves must be built ahead of the base container.
 Instructions for building the Science Pipelines are `here <https://github.com/lsst/gha_build/blob/main/README.md>`_.
-For Prompt Processing, we only need to build `lsst_distrib`.
+For Prompt Processing, we only need to build ``lsst_distrib``.
 
 Release Management
 ==================
@@ -89,48 +89,63 @@ From the ``main`` branch you can release a new major version (``X.0.0``), a new 
 Release tags are semantic version identifiers following the `pep 440 <https://peps.python.org/pep-0440/>`_ specification.
 Please note that the tag does not include a ``v`` at the beginning.
 
-1. Choose Version Number
+#. Choosing the Version Number
 
-On GitHub.com, navigate to the main page of the repository.
-To the right of the list of files, click the latest release.
-At the top of the page, click **## commits to main since this release**.
-(If there's no such link or it doesn't mention ``main``, the release is probably based off a branch; go up to Releases and try older versions until you find one.)
-This is the list of internal changes that will be included in the next release.
+   The first step in making a release is choosing an appropriate version number to describe it. This subsection offers guidance on this choice, as well as on differentiating between major and minor releases.
 
-If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
-In practice, almost any Science Pipelines update is at least a minor version, because new features are added constantly.
-In the future, there may be "patched weekly" builds, which would justify a patch version of Prompt Processing.
+   **To see which changes have occurred since the last release:**
 
-For the ``prompt_processing`` service, a new major version is triggered by any of the following:
+   On GitHub.com, navigate to the main page of the repository.
+   To the right of the list of files, click the latest release.
+   At the top of the page, click **## commits to main since this release**.
+   (If there's no such link or it doesn't mention ``main``, the release is probably based off a branch; go up to Releases and try older versions until you find one.)
+   This is the list of internal changes that will be included in the next release.
 
-* Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
-* Incompatibility with an old `APDB schema`_, `ApdbSql`_, `ApdbCassandra`_, or `ApdbCassandraReplica`_ version (see `DMTN-269`_ for the distinction)
-* Incompatibility with an old `Butler dimensions-config`_ version
-* A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
+   If you are planning to update the Science Pipelines tag, you should also check the `Science Pipelines changelog <https://lsst-dm.github.io/lsst_git_changelog/weekly/>`_.
+   In practice, almost any Science Pipelines update is at least a minor version, because new features are added constantly.
+   You may need to do a "Quick-Stack" build, or build the science pipelines manually. This would justify a patch version of Prompt Processing.
 
-For the `next_visit_fan_out`_ service, a new major version is triggered by any of the following:
+   **The following changes will trigger a major release:**
 
-* Incompatibility with old Summit ``nextVisit`` messages
-* Breaking changes in the fanned-out ``nextVisit`` messages (almost any change to ``NextVisitModel`` qualifies)
+   For the ``prompt_processing`` service:
 
-2. Create a Release
+   * Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
+   * Incompatibility with an old `APDB schema`_, `ApdbSql`_, `ApdbCassandra`_, or `ApdbCassandraReplica`_ version (see `DMTN-269`_ for the distinction)
+   * Incompatibility with an old `Butler dimensions-config`_ version
+   * A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
 
-On GitHub.com, navigate to the main page of the repository.
-To the right of the list of files, click **Releases**.
-At the top of the page, click **Draft a new release**.
-Type a tag using semantic versioning described in the previous section.
-The Target should be the main branch.
+   For the `next_visit_fan_out`_ service:
 
-Select **Generate Release Notes**.
-This will generate a list of commit summaries and of submitters.
-Add text as follows.
+   * Incompatibility with old Summit ``nextVisit`` messages
+   * Breaking changes in the fanned-out ``nextVisit`` messages (almost any change to ``NextVisitModel`` qualifies)
 
-* Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
-* Science Pipelines version and rubin-env version
-* Supported `APDB schema`_ and `ApdbSql`_/`ApdbCassandra`_/`ApdbCassandraReplica`_ versions (see `DMTN-269`_ for rationale).
-  A stack quoting a given minor version is compatible with *older* APDBs of that major version but not necessarily newer ones; for example, a release whose baseline is APDB schema 1.4.0 can access a schema 1.0.0 or 1.4.1 database, but not schema 1.5.
-* Supported `Butler dimensions-config`_ versions
-* The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
+#. Create a Release
+
+   On GitHub.com, navigate to the main page of the repository.
+   To the right of the list of files, click **Releases**.
+   At the top of the page, click **Draft a new release**.
+   Type a tag using semantic versioning described in the previous section.
+   The Target should be the main branch.
+
+   .. note::
+
+      The `auto` option is unreliable if there are no changes in Prompt Processing itself.
+      In these cases, if there weren't any eligible Pull Requests since the last tag, it may choose an older version than the latest.
+   Select **Generate Release Notes**.
+   This will generate a list of commit summaries and of submitters.
+   Add text as follows:
+
+   * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
+   * Science Pipelines version and rubin-env version
+   * Supported `APDB schema`_ and `ApdbSql`_/ `ApdbCassandra`_/ `ApdbCassandraReplica`_ versions (see `DMTN-269`_ for rationale).
+     A stack quoting a given minor version is compatible with *older* APDBs of that major version but not necessarily newer ones; for example, a release whose baseline is APDB schema 1.4.0 can access a schema 1.0.0 or 1.4.1 database, but not schema 1.5.
+   * Supported `Butler dimensions-config`_ versions
+   * The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
+
+   Select **Publish Release**.
+
+   The `Release CI <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
+   This may take a few minutes, and the release is not usable until it succeeds.
 
 .. _DMTN-093: https://dmtn-093.lsst.io/#alertmanagement
 
@@ -142,16 +157,11 @@ Add text as follows.
 
 .. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/sql/apdbSql.py#L71-L75
 
-.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L84-L88
+.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L87-L91
 
 .. _ApdbCassandraReplica: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandraReplica.py#L52-L56
 
 .. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
-
-Select **Publish Release**.
-
-The `Release CI <https://github.com/lsst-dm/prompt_processing/actions/workflows/ci-release.yaml>`_ GitHub Actions workflow uploads the new release to GitHub packages.
-This may take a few minutes, and the release is not usable until it succeeds.
 
 
 Patch Releases and Release Branches
