@@ -29,10 +29,14 @@ All containers are managed by `GitHub Container Registry <https://github.com/org
 To build the base container:
 
 * If there are changes to the container, push them to a branch, then open a PR.
-  The container should be built automatically.
-* If there are no changes (typically because you want to use an updated Science Pipelines container), go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-base.yml>`_ and select "Run workflow".
-  From the dropdown, select the branch whose container definition will be used, and the label of the Science Pipelines container.
-* New containers built from ``main`` are tagged with the corresponding Science Pipelines release (plus ``w_latest`` or ``d_latest`` if the release was requested by that name).
+  This will build the container automatically.
+* If there are no changes (typically because you want to use an updated Science Pipelines container), go to the repository's `Actions tab <https://github.com/lsst-dm/prompt_processing/actions/workflows/build-base.yml>`_ and select "**Run workflow**". From the dropdown menu, select:
+
+  #. The branch whose container definition will be used
+  #. The label of the Science Pipelines container.
+  #. If using a quick-stack build, the Science Pipelines Container should be set to `ghcr.io/lsst/quick-stack <https://ghcr.io/lsst/quick-stack>`_.
+
+  New containers built from ``main`` are tagged with the corresponding Science Pipelines release (plus ``w_latest`` or ``d_latest`` if the release was requested by that name).
   For automatic ``main`` builds, or if the corresponding box in the manual build is checked, the new container also has the ``latest`` label.
   Containers built from a branch use the same scheme, but prefixed by the ticket number or, for user branches, the branch topic.
 
@@ -67,6 +71,12 @@ If this comes up, edit ``.github/workflows/_matrix-gen.yaml`` and append the des
 Any subsequent builds of the service container will build against both bases.
 
 This is the only situation in which a change to ``BASE_TAG_LIST`` should be committed to ``main``.
+
+It will sometimes be necessary to compile a container with the LSST Science Pipelines manually (called a Quick-Stack build).
+Generally, this only occurs if the intended daily or weekly stack does not compile.
+In these cases, the Science Pipelines themselves must be built ahead of the base container.
+Instructions for building the Science Pipelines are `here <https://github.com/lsst/gha_build/blob/main/README.md>`_.
+For Prompt Processing, we only need to build `lsst_distrib`.
 
 Release Management
 ==================
