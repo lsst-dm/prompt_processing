@@ -73,6 +73,8 @@ skymap_name = "ops_rehersal_prep_2k_v1"
 pipelines = PipelinesConfig([{"survey": "SURVEY",
                               "pipelines": ["${PROMPT_PROCESSING_DIR}/tests/data/ApPipe.yaml",
                                             "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml",
+                                            # Can run without flats
+                                            "${PROMPT_PROCESSING_DIR}/tests/data/ISR.yaml",
                                             ],
                               }])
 pipelines_minimal = PipelinesConfig([{"survey": "SURVEY",
@@ -197,6 +199,26 @@ def fake_eng_data(filename, dimensions, instrument, visit):
     return data_id, file_data
 
 
+# Can't find a way to do this with unittest.mock directly -- the mocks never take self as an argument
+def _filter_dataset_types(func, types):
+    """A decorator that removes specific dataset types from method results.
+
+    Parameters
+    ----------
+    types : set [`str`]
+        The dataset types to never return.
+    """
+    def wrapper(self, pipeline_file, include_optional=True):
+        return func(self, pipeline_file, include_optional) - types
+    return wrapper
+
+
+preprocessing_types = {"preloaded_ss_object", "preloaded_dia_source", "preloaded_dia_object",
+                       "preloaded_dia_forced_source", "loadDiaCatalogs_metadata",
+                       "loadDiaCatalogs_metadata_metrics",
+                       }
+
+
 class MiddlewareInterfaceTest(MockTestCase):
     """Test the MiddlewareInterface class with faked data.
     """
@@ -227,6 +249,12 @@ class MiddlewareInterfaceTest(MockTestCase):
         self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
                                                return_value=sim_deployment))
         self.deploy_id = sim_deployment
+        # Use new_callable instead of side_effect to make sure the right thing is patched
+        self.setup_patcher(unittest.mock.patch.object(MiddlewareInterface, "_get_pipeline_input_types",
+                                                      new_callable=_filter_dataset_types,
+                                                      func=MiddlewareInterface._get_pipeline_input_types,
+                                                      types=preprocessing_types,
+                                                      ))
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -410,17 +438,11 @@ class MiddlewareInterfaceTest(MockTestCase):
             private_sndStamp=datetime.datetime.fromisoformat("20150313T000000Z").timestamp(),
         )
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                as mock_pre:
+                as mock_pre, \
+                self.assertRaises(NoGoodPipelinesError):
             self.interface.prep_butler()
 
-        expected_shards = {166464, 177536}
-        with self.assertRaises((AssertionError, lsst.daf.butler.registry.MissingCollectionError)):
-            # Nothing should have been imported
-            self._check_imports(self.interface.butler, group="1", detector=4,
-                                expected_shards=expected_shards)
-
-        # Hard to test actual pipeline output, so just check we're calling it
-        mock_pre.assert_called_once()
+        mock_pre.assert_not_called()
 
     def test_prep_butler_nofilter(self):
         """Test that prep_butler can handle visits without a filter.
@@ -471,10 +493,6 @@ class MiddlewareInterfaceTest(MockTestCase):
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
 
-    # TODO: prep_butler doesn't know what kinds of calibs to expect, so can't
-    # tell that there are specifically, e.g., no flats. This test should pass
-    # as-is after DM-40245.
-    @unittest.expectedFailure
     def test_prep_butler_novalid(self):
         """Test that prep_butler raises if no calibs are currently valid.
         """
@@ -486,7 +504,7 @@ class MiddlewareInterfaceTest(MockTestCase):
         with warnings.catch_warnings():
             # Avoid "dubious year" warnings from using a 2050 date
             warnings.simplefilter("ignore", category=erfa.ErfaWarning)
-            with self.assertRaises(_MissingDatasetError), \
+            with self.assertRaises(NoGoodPipelinesError), \
                 unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
                     as mock_pre:
                 self.interface.prep_butler()
@@ -937,10 +955,6 @@ class MiddlewareInterfaceTest(MockTestCase):
         self._prepare_run_preprocessing()
         self._check_run_pipeline_fallback(self.interface._run_preprocessing, pipe_list, graph_list, expected)
 
-    def test_get_template_types(self):
-        template_types = self.interface._get_template_types()
-        self.assertEqual(template_types, {"template_coadd"})
-
     def _assert_in_collection(self, butler, collection, dataset_type, data_id):
         # Pass iff any dataset matches the query, no need to check them all.
         for dataset in butler.query_datasets(dataset_type, collections=collection, data_id=data_id,
@@ -1270,6 +1284,12 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
                                                return_value=sim_deployment))
         self.deploy_id = sim_deployment
+        # Use new_callable instead of side_effect to make sure the right thing is patched
+        self.setup_patcher(unittest.mock.patch.object(MiddlewareInterface, "_get_pipeline_input_types",
+                                                      new_callable=_filter_dataset_types,
+                                                      func=MiddlewareInterface._get_pipeline_input_types,
+                                                      types=preprocessing_types,
+                                                      ))
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485

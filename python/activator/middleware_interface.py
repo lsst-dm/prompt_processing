@@ -23,6 +23,7 @@ __all__ = ["get_central_butler", "make_local_repo", "flush_local_repo", "make_lo
            "MiddlewareInterface"]
 
 import collections.abc
+import functools
 import itertools
 import logging
 import os
@@ -287,9 +288,6 @@ class MiddlewareInterface:
 
     _collection_skymap = "skymaps"
     """The collection used for skymaps.
-    """
-    _collection_ml_model = "pretrained_models"
-    """The collection used for machine learning models.
     """
 
     @property
@@ -582,34 +580,159 @@ class MiddlewareInterface:
             The datasets to be exported, after any filtering.
         calibs : set [`~lsst.daf.butler.DatasetRef`]
             The subset of ``datasets`` representing calibs.
-
-        Raises
-        ------
-        RuntimeError
-            Raised if attempting the spatial preload with the input region being None.
         """
-        with lsst.utils.timer.time_this(_log, msg="prep_butler (find calibs)", level=logging.DEBUG):
-            calib_datasets = set(self._export_calibs(self.visit.detector, self.visit.filters))
+        net_types = set().union(*self._get_preloadable_types().values())
+        # Filter outputs made by preprocessing and consumed by main.
+        for pipeline_file in self._get_pre_pipeline_files():
+            net_types.difference_update(self._get_pipeline_output_types(pipeline_file))
 
-        all_datasets = calib_datasets
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find init-outputs)", level=logging.DEBUG):
-            all_datasets |= set(self._export_init_outputs())
-        with lsst.utils.timer.time_this(_log, msg="prep_butler (find ML models)", level=logging.DEBUG):
-            all_datasets |= set(self._export_ml_models())
+            all_datasets = set(self._find_init_outputs())
+        calib_datasets = set()
 
-        if region is not None:
-            with lsst.utils.timer.time_this(_log, msg="prep_butler (find refcats)", level=logging.DEBUG):
-                all_datasets |= set(self._export_refcats(region))
-            with lsst.utils.timer.time_this(_log, msg="prep_butler (find templates)", level=logging.DEBUG):
-                all_datasets |= set(self._export_skymap_and_templates(
-                    region, self.visit.filters))
-        return (all_datasets, calib_datasets)
+        present_types = net_types.copy()
+        with lsst.utils.timer.time_this(_log, msg="prep_butler (find inputs)", level=logging.DEBUG):
+            for type_name in net_types:
+                dstype = self.central_butler.registry.getDatasetType(type_name)
+                try:
+                    if dstype.isCalibration():
+                        new_calibs = self._find_calibs(dstype, self.visit.detector, self.visit.filters)
+                        calib_datasets.update(new_calibs)
+                        all_datasets.update(new_calibs)
+                    elif "htm7" in dstype.dimensions or "skypix" in dstype.dimensions:
+                        if region is not None:
+                            all_datasets.update(self._find_refcats(dstype, region))
+                    elif "tract" in dstype.dimensions:
+                        if region is not None:
+                            all_datasets.update(self._find_templates(dstype, region, self.visit.filters))
+                    else:
+                        all_datasets.update(self._find_generic_datasets(
+                            dstype, self.visit.detector, self.visit.filters))
+                except _MissingDatasetError:
+                    _log.warning("Found no source datasets of type %s.", type_name)
+                    present_types.remove(type_name)
 
-    def _export_refcats(self, region):
+        if self._is_main_pipeline_runnable(present_types):
+            return (all_datasets, calib_datasets)
+        else:
+            raise NoGoodPipelinesError("Cannot run any main pipeline.")
+
+    def _get_preloadable_types(self):
+        """Identify all types to attempt to preload.
+
+        Returns
+        -------
+        types : mapping [`str`, set [`str`]]
+            A mapping from each pipeline's path to the types to preload for
+            that pipeline.
+        """
+        input_types = {}
+        for pipeline_file in self._get_combined_pipeline_files():
+            inputs = self._get_pipeline_input_types(pipeline_file)
+            # Not preloaded
+            inputs.discard("regionTimeInfo")
+            inputs.discard("raw")
+            input_types[pipeline_file] = inputs
+        return input_types
+
+    def _is_main_pipeline_runnable(self, present_types):
+        """Determine if at least one pipeline can be run with the available data.
+
+        This method emits diagnostic logs as a side effect.
+
+        Parameters
+        ----------
+        present_types : set [`str`]
+            The types that are accounted for, either already present in the
+            local repo or marked for download.
+
+        Returns
+        -------
+        runnable : `bool`
+            `True` if and only if at least one pipeline has all inputs.
+        """
+        pre_outputs = set()
+        for pipeline_file in self._get_pre_pipeline_files():
+            input_types = self._get_pipeline_input_types(pipeline_file, include_optional=False)
+            input_types.discard("regionTimeInfo")
+            if input_types <= present_types:
+                _log.debug("Found inputs for %s.", pipeline_file)
+                pre_outputs.update(self._get_pipeline_output_types(pipeline_file))
+            else:
+                _log.debug("Missing inputs for %s: %s.", pipeline_file, input_types - present_types)
+        main_inputs = present_types | pre_outputs
+        for pipeline_file in self._get_main_pipeline_files():
+            input_types = self._get_pipeline_input_types(pipeline_file, include_optional=False)
+            input_types.discard("regionTimeInfo")
+            input_types.discard("raw")
+            if input_types <= main_inputs:
+                _log.debug("Found inputs for %s.", pipeline_file)
+                return True
+            else:
+                _log.debug("Missing inputs for %s: %s.", pipeline_file, input_types - main_inputs)
+        return False
+
+    def _get_pipeline_input_types(self, pipeline_file, include_optional=True):
+        """Identify the dataset types needed as inputs for a pipeline.
+
+        Parameters
+        ----------
+        pipeline_file : `str`
+            The pipeline whose inputs are desired.
+        include_optional : `bool`, optional
+            Whether to report optional inputs (the default) or only required
+            ones.
+
+        Returns
+        -------
+        input_types : set [`str`]
+            The types of preexisting datasets needed to run the pipeline.
+        """
+        try:
+            pipeline = self._prep_pipeline_graph(pipeline_file)
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Could not find pipeline {pipeline_file}.") from e
+
+        if include_optional:
+            task_inputs = {edge.parent_dataset_type_name
+                           for task in pipeline.tasks.values() for edge in task.iter_all_inputs()}
+        else:
+            task_inputs = {edge.parent_dataset_type_name
+                           for task in pipeline.tasks.values() for edge in task.iter_all_inputs()
+                           if not task.is_optional(edge.key[2])}
+        # Ignore inputs produced internally.
+        task_outputs = {edge.parent_dataset_type_name
+                        for task in pipeline.tasks.values() for edge in task.iter_all_outputs()}
+        return task_inputs - task_outputs
+
+    def _get_pipeline_output_types(self, pipeline_file):
+        """Identify the dataset types produced as outputs by a pipeline.
+
+        Parameters
+        ----------
+        pipeline_file : `str`
+            The pipeline whose inputs are desired.
+
+        Returns
+        -------
+        input_types : set [`str`]
+            The types of preexisting datasets needed to run the pipeline.
+        """
+        try:
+            pipeline = self._prep_pipeline_graph(pipeline_file)
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Could not find pipeline {pipeline_file}.") from e
+
+        return {edge.parent_dataset_type_name
+                for task in pipeline.tasks.values() for edge in task.iter_all_outputs()}
+
+    def _find_refcats(self, dataset_type, region):
         """Identify the refcats to export from the central butler.
 
         Parameters
         ----------
+        dataset_type : `lsst.daf.butler.DatasetType`
+            The type of refcat to search for.
         region : `lsst.sphgeom.Region`
             The region to find refcat shards in.
 
@@ -619,11 +742,9 @@ class MiddlewareInterface:
             The refcats to be exported, after any filtering.
         """
         # Get shards from all refcats that overlap this region.
-        possible_refcats = _get_refcat_types(self.central_butler)
-        _log.debug("Searching for refcats of types %s.", {t.name for t in possible_refcats})
         refcats = set(_filter_datasets(
                       self.central_butler, self.butler,
-                      _generic_query(possible_refcats,
+                      _generic_query([dataset_type],
                                      collections=self.instrument.makeRefCatCollectionName(),
                                      where="htm7.region OVERLAPS search_region",
                                      bind={"search_region": region},
@@ -632,107 +753,57 @@ class MiddlewareInterface:
                       all_callback=self._mark_dataset_usage,
                       ))
         if refcats:
-            for dataset_type, n_datasets in self._count_by_key(refcats, lambda ref: ref.datasetType.name):
-                _log.debug("Found %d new refcat datasets from catalog '%s'.", n_datasets, dataset_type)
-        else:
-            _log.debug("Found 0 new refcat datasets.")
+            _log.debug("Found %d new refcat datasets from catalog '%s'.", len(refcats), dataset_type.name)
         return refcats
 
-    def _export_skymap_and_templates(self, region, physical_filter):
-        """Identify the skymap and templates to export from the central butler.
+    def _find_templates(self, dataset_type, region, physical_filter):
+        """Identify the templates to export from the central butler.
 
         Parameters
         ----------
+        dataset_type : `lsst.daf.butler.DatasetType`
+            The type of template to search for.
         region : `lsst.sphgeom.Region`
-            The region to load the skyamp and templates tract/patches for.
+            The region to load the templates tract/patches for.
         physical_filter : `str`
             Physical filter for which to export templates. May be empty to
             indicate no specific filter.
 
         Returns
         -------
-        skymap_templates : iterable [`lsst.daf.butler.DatasetRef`]
+        templates : iterable [`lsst.daf.butler.DatasetRef`]
             The datasets to be exported, after any filtering.
         """
-        skymaps = set(_filter_datasets(
-            self.central_butler, self.butler,
-            _generic_query(["skyMap"],
-                           skymap=self.skymap_name,
-                           collections=self._collection_skymap,
-                           find_first=True,
-                           ),
-            all_callback=self._mark_dataset_usage,
-        ))
-        _log.debug("Found %d new skymap datasets.", len(skymaps))
-
         if not physical_filter:
             _log.warning("Preloading templates is not supported for visits without a specific filter.")
-            return skymaps
+            return set()
 
         data_id = {"instrument": self.instrument.getName(),
                    "skymap": self.skymap_name,
                    "physical_filter": physical_filter,
                    }
-        types = self._get_template_types()
-        if types:
-            try:
-                _log.debug("Searching for templates.")
-                templates = set(_filter_datasets(
-                    self.central_butler, self.butler,
-                    _generic_query(types,
-                                   collections=self._collection_template,
-                                   data_id=data_id,
-                                   where="patch.region OVERLAPS search_region",
-                                   bind={"search_region": region},
-                                   find_first=True,
-                                   ),
-                    all_callback=self._mark_dataset_usage,
-                ))
-            except _MissingDatasetError as err:
-                _log.error("Could not load templates: %s", err)
-                templates = set()
-            else:
-                _log.debug("Found %d new template datasets.", len(templates))
-        else:
-            templates = set()
-        return skymaps | templates
+        templates = set(_filter_datasets(
+            self.central_butler, self.butler,
+            _generic_query([dataset_type],
+                           collections=self._collection_template,
+                           data_id=data_id,
+                           where="patch.region OVERLAPS search_region",
+                           bind={"search_region": region},
+                           find_first=True,
+                           ),
+            all_callback=self._mark_dataset_usage,
+        ))
+        if templates:
+            _log.debug("Found %d new template datasets of type %s.", len(templates), dataset_type.name)
+        return templates
 
-    def _get_calib_types(self, physical_filter):
-        """Identify the specific calib types to query.
-
-        Parameters
-        ----------
-        physical_filter : `str`
-            Physical filter name of the upcoming visit. May be empty to indicate
-            no specific filter.
-
-        Returns
-        -------
-        type_names : collection [`str`]
-            The calib types of interest to Prompt Processing.
-        """
-        # Querying by specific types is much faster than querying by ...
-        # Some calibs have an exposure ID (of the source dataset?), but these can't be used in AP.
-        types = {t for t in self.central_butler.registry.queryDatasetTypes()
-                 if t.isCalibration() and "exposure" not in t.dimensions}
-        if not physical_filter:
-            _log.warning("Preloading filter-dependent calibs is not supported for visits "
-                         "without a specific filter.")
-            types = {t for t in types
-                     if "physical_filter" not in t.dimensions and "band" not in t.dimensions}
-        type_names = {t.name for t in types}
-        # For now, filter down to the dataset types that exist in the specific calib collection.
-        # TODO: A new query API after DM-45873 may replace or improve this usage.
-        # TODO: DM-40245 to identify the datasets.
-        collections_info = self.central_butler.collections.query_info(
-            self.instrument.makeCalibrationCollectionName(), include_summary=True)
-        return self.central_butler.collections._filter_dataset_types(type_names, collections_info)
-
-    def _export_calibs(self, detector_id, physical_filter):
+    def _find_calibs(self, dataset_type, detector_id, physical_filter):
         """Identify the calibs to export from the central butler.
 
         Parameters
         ----------
+        dataset_type : `lsst.daf.butler.DatasetType`
+            The type of calib to search for.
         detector_id : `int`
             Identifier of the detector to load calibs for.
         physical_filter : `str`
@@ -749,29 +820,30 @@ class MiddlewareInterface:
         data_id = {"instrument": self.instrument.getName(), "detector": detector_id}
         if physical_filter:
             data_id["physical_filter"] = physical_filter
-        type_names = self._get_calib_types(physical_filter)
+        elif "physical_filter" in dataset_type.dimensions or "band" in dataset_type.dimensions:
+            _log.warning("Preloading filter-dependent calibs is not supported for visits "
+                         "without a specific filter.")
+            return set()
 
         def query_calibs_by_date(butler, label):
-            with lsst.utils.timer.time_this(_log, msg=f"Calib query ({label})", level=logging.DEBUG), \
-                    butler.query() as query:
+            with butler.query() as query:
                 expr = query.expression_factory
                 query = query.where(data_id)
-                datasets = set()
-                for dataset_type in type_names:
-                    try:
-                        datasets |= set(
-                            query.datasets(dataset_type,
-                                           self.instrument.makeCalibrationCollectionName(),
-                                           find_first=True)
-                            # where needs to come after datasets to pick up the type
-                            .where(expr[dataset_type].timespan.overlaps(calib_date))
-                            .with_dimension_records()
-                        )
-                    except (DataIdValueError, MissingDatasetTypeError) as e:
-                        # Dimensions/dataset type often invalid for fresh local repo,
-                        # where there are no, and never have been, any matching datasets.
-                        # It *is* a problem for the central repo, but can be caught later.
-                        _log.debug("%s query failed with %s.", label, e)
+                try:
+                    datasets = set(
+                        query.datasets(dataset_type,
+                                       self.instrument.makeCalibrationCollectionName(),
+                                       find_first=True)
+                        # where needs to come after datasets to pick up the type
+                        .where(expr[dataset_type.name].timespan.overlaps(calib_date))
+                        .with_dimension_records()
+                    )
+                except (DataIdValueError, MissingDatasetTypeError) as e:
+                    # Dimensions/dataset type often invalid for fresh local repo,
+                    # where there are no, and never have been, any matching datasets.
+                    # It *is* a problem for the central repo, but can be caught later.
+                    _log.debug("%s query failed with %s.", label, e)
+                    datasets = set()
                 # Trace3 because, in many contexts, datasets is too large to print.
                 _log_trace3.debug("%s: %s", label, datasets)
                 return datasets
@@ -782,60 +854,68 @@ class MiddlewareInterface:
             all_callback=self._mark_dataset_usage,
         ))
         if calibs:
-            for dataset_type, n_datasets in self._count_by_key(calibs, lambda ref: ref.datasetType.name):
-                _log.debug("Found %d new calib datasets of type '%s'.", n_datasets, dataset_type)
-        else:
-            _log.debug("Found 0 new calib datasets.")
+            _log.debug("Found %d new calib datasets of type '%s'.", len(calibs), dataset_type.name)
         return calibs
 
-    def _export_ml_models(self):
-        """Identify the pretrained machine learning models to export from the
-        central butler.
+    def _find_generic_datasets(self, dataset_type, detector_id, physical_filter):
+        """Identify datasets to export from the central butler.
+
+        Parameters
+        ----------
+        dataset_type : `lsst.daf.butler.DatasetType`
+            The type of dataset to search for.
+        detector_id : `int`
+            Identifier of the detector to load calibs for.
+        physical_filter : `str`
+            Physical filter name of the upcoming visit. May be empty to indicate
+            no specific filter.
 
         Returns
         -------
-        models : iterable [`lsst.daf.butler.DatasetRef`]
+        datasets : iterable [`lsst.daf.butler.DatasetRef`]
             The datasets to be exported, after any filtering.
         """
-        # TODO: the dataset type name is subject to change (especially if more
-        # kinds of models are added in the future). Hardcoded names should
-        # become unnecessary with DM-40245.
-        try:
-            models = set(_filter_datasets(
-                self.central_butler, self.butler,
-                _generic_query(["pretrainedModelPackage"],
-                               collections=self._collection_ml_model,
-                               find_first=True,
-                               ),
-                all_callback=self._mark_dataset_usage,
-            ))
-        except _MissingDatasetError as err:
-            _log.error("Could not load ML models: %s", err)
-            models = set()
-        else:
-            _log.debug("Found %d new ML model datasets.", len(models))
-        return models
+        data_id = {"instrument": self.instrument.getName(),
+                   "skymap": self.skymap_name,
+                   "detector": detector_id,
+                   }
+        if physical_filter:
+            data_id["physical_filter"] = physical_filter
+        datasets = set(_filter_datasets(
+            self.central_butler, self.butler,
+            _generic_query([dataset_type],
+                           collections=self.instrument.makeUmbrellaCollectionName(),
+                           data_id=data_id,
+                           find_first=True,
+                           ),
+            all_callback=self._mark_dataset_usage,
+        ))
+        if datasets:
+            _log.debug("Found %d new datasets of type %s.", len(datasets), dataset_type.name)
+        return datasets
 
-    def _get_init_output_types(self, run):
+    def _get_init_output_types(self, pipeline_file):
         """Identify the specific init-output types to query.
 
         Parameters
         ----------
-        run : `str`
-            The name of an output run of the pipeline of interest. Different
-            pipelines may produce different sets of init-outputs.
+        pipeline_file : `str`
+            The pipeline of interest.
 
         Returns
         -------
         init_types : collection [`str`]
             The init-output types of interest to Prompt Processing.
         """
-        # Need to distinguish init-outputs from past visits' outputs.
-        all_names = self.central_butler.collections.get_info(run, include_summary=True).dataset_types
-        all_types = {self.central_butler.registry.getDatasetType(name) for name in all_names}
-        return {t.name for t in all_types if not t.dimensions}
+        try:
+            pipeline = self._prep_pipeline_graph(pipeline_file)
+        except FileNotFoundError as e:
+            raise RuntimeError(f"Could not find pipeline {pipeline_file}.") from e
 
-    def _export_init_outputs(self):
+        return {edge.parent_dataset_type_name
+                for task in pipeline.tasks.values() for edge in task.init.iter_all_outputs()}
+
+    def _find_init_outputs(self):
         """Identify the init-output datasets to export from the central butler.
 
         Returns
@@ -846,7 +926,7 @@ class MiddlewareInterface:
         datasets = set()
         for pipeline_file in self._get_combined_pipeline_files():
             run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
-            types = self._get_init_output_types(run)
+            types = self._get_init_output_types(pipeline_file)
             # Output runs are always cleared after execution, so _filter_datasets would always warn.
             # This also means the init-outputs don't need to be cached with _mark_dataset_usage.
             datasets.update(_generic_query(types, collections=run)(self.central_butler, "source datasets"))
@@ -1056,6 +1136,7 @@ class MiddlewareInterface:
         """
         return self.main_pipelines.get_pipeline_files(self.visit)
 
+    @functools.cache
     def _prep_pipeline(self, pipeline_file) -> lsst.pipe.base.Pipeline:
         """Setup the pipeline to be run, based on the configured instrument and
         details of the incoming visit.
@@ -1076,6 +1157,23 @@ class MiddlewareInterface:
         pipeline.addConfigOverride("parameters", "apdb_config", self._apdb_config)
 
         return pipeline
+
+    @functools.cache
+    def _prep_pipeline_graph(self, pipeline_file) -> lsst.pipe.base.PipelineGraph:
+        """Setup the pipeline to be run, based on the configured instrument and
+        details of the incoming visit.
+
+        Parameters
+        ----------
+        pipeline_file : `str`
+            The pipeline file to run.
+
+        Returns
+        -------
+        pipeline : `lsst.pipe.base.PipelineGraph`
+            The fully configured pipeline, in graph form.
+        """
+        return self._prep_pipeline(pipeline_file).to_graph()
 
     def _download(self, remote):
         """Download an image located on a remote store.
@@ -1637,27 +1735,6 @@ class MiddlewareInterface:
                                   ) for t in matching_types
         )
 
-    def _get_template_types(self) -> collections.abc.Set[str]:
-        """Identify the dataset types of possible templates in the main pipelines.
-
-        Returns
-        -------
-        template_types : set [`str`]
-            A set of template dataset types in the main pipelines.
-        """
-        template_types = set()
-        for pipeline_file in self._get_main_pipeline_files():
-            try:
-                pipeline = self._prep_pipeline(pipeline_file)
-            except FileNotFoundError as e:
-                raise RuntimeError from e
-            graph = pipeline.to_graph()
-            for dataset_type in graph.iter_overall_inputs():
-                # Avoid pulling in too many other sorts of coadds
-                if dataset_type[0] == "template_coadd" or dataset_type[0].endswith("Coadd"):
-                    template_types.add(dataset_type[0])
-        return template_types
-
     def clean_local_repo(self, exposure_ids: set[int]) -> None:
         """Remove local repo content that is only needed for a single visit.
 
@@ -1760,8 +1837,6 @@ def _filter_datasets(src_repo: Butler,
     # this operation.
     src_datasets = set(query(src_repo, "source datasets"))
     if not src_datasets:
-        # The downstream method decides what to do with empty results.
-        # DM-40245 and DM-46178 may change this.
         raise _MissingDatasetError("Source repo query found no matches.")
     if all_callback:
         all_callback(src_datasets)
@@ -1788,55 +1863,25 @@ def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler
         logging label and executes the dataset query, returning an iterable of
         fully expanded `~lsst.daf.butler.DatasetRef`.
     """
-    formatted_args = "dataset_types={}, {}, {}".format(
-        dataset_types,
-        ", ".join(repr(a) for a in args),
-        ", ".join(f"{k}={v!r}" for k, v in kwargs.items()),
-    )
-
     def query(butler: Butler, butler_name: str = ""):
-        # time_this automatically escalates its log to ERROR level if the code raises.
-        # Some errors are expected to happen sometimes, and we don't want those to log
-        # at the ERROR level and cause confusion.
         label = butler_name or str(butler)
-        with lsst.utils.timer.time_this(_log, msg=f"_generic_query({formatted_args}) ({label})",
-                                        level=logging.DEBUG):
-            datasets = set()
-            for dataset_type in dataset_types:
-                try:
-                    datasets |= set(butler.query_datasets(
-                        # explain=False because empty query result is ok here.
-                        dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
-                    ))
-                except (DataIdValueError, MissingDatasetTypeError) as e:
-                    # Dimensions/dataset type often invalid for fresh local repo,
-                    # where there are no, and never have been, any matching datasets.
-                    # It *is* a problem for the central repo, but can be caught later.
-                    _log.debug("%s query failed with %s.", label, e)
-            # Trace3 because, in many contexts, datasets is too large to print.
-            _log_trace3.debug("%s: %s", label, datasets)
-            return datasets
+        datasets = set()
+        for dataset_type in dataset_types:
+            try:
+                datasets |= set(butler.query_datasets(
+                    # explain=False because empty query result is ok here.
+                    dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
+                ))
+            except (DataIdValueError, MissingDatasetTypeError) as e:
+                # Dimensions/dataset type often invalid for fresh local repo,
+                # where there are no, and never have been, any matching datasets.
+                # It *is* a problem for the central repo, but can be caught later.
+                _log.debug("%s query failed with %s.", label, e)
+        # Trace3 because, in many contexts, datasets is too large to print.
+        _log_trace3.debug("%s: %s", label, datasets)
+        return datasets
 
     return query
-
-
-def _get_refcat_types(butler):
-    """Return the refcat dataset types known to a Butler.
-
-    Parameters
-    ---------
-    butler : `lsst.daf.butler.Butler`
-        The butler in which to search for refcat dataset types.
-
-    Returns
-    -------
-    refcat_types : iterable of `str` or `lsst.daf.butler.DatasetType`
-        The matching dataset type objects, or their names.
-    """
-    # Assume that any type that has ONLY a single spatial dimension, and a
-    # SimpleCatalog storage class, is a refcat.
-    return {t for t in butler.registry.queryDatasetTypes(...)
-            if t.storageClass_name == "SimpleCatalog" and len(t.dimensions) == 1 and t.dimensions.skypix}
 
 
 def _remove_run_completely(butler, run):
