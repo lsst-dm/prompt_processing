@@ -42,7 +42,7 @@ import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan, \
-    DataIdValueError, MissingDatasetTypeError
+    DataIdValueError, MissingDatasetTypeError, MissingCollectionError
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
@@ -1847,10 +1847,11 @@ def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler
                     # explain=False because empty query result is ok here.
                     dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
                 ))
-            except (DataIdValueError, MissingDatasetTypeError) as e:
+            except (DataIdValueError, MissingDatasetTypeError, MissingCollectionError) as e:
                 # Dimensions/dataset type often invalid for fresh local repo,
                 # where there are no, and never have been, any matching datasets.
-                # It *is* a problem for the central repo, but can be caught later.
+                # May have dimensions but no collections if a previous preload failed.
+                # These *are* a problem for the central repo, but can be caught later.
                 _log.debug("%s query failed with %s.", label, e)
         # Trace3 because, in many contexts, datasets is too large to print.
         _log_trace3.debug("%s: %s", label, datasets)
