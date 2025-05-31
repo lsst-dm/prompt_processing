@@ -1532,11 +1532,15 @@ class MiddlewareInterface:
             _log.info("Skipping central repo export for exposures %s.", exposure_ids)
             return
 
-        export_patterns = yaml.safe_load(os.environ.get("EXPORT_TYPE_REGEXP", "- .*"))
-        if not isinstance(export_patterns, list):
+        env_export_patterns = os.environ.get("EXPORT_TYPE_REGEXP", "- .*")
+        try:
+            export_patterns = yaml.safe_load(env_export_patterns)
+            if not isinstance(export_patterns, list):
+                raise ValueError
+        except ValueError:
             _log.error(
                 "Invalid EXPORT_TYPE_REGEXP=%s. Export all dataset types.",
-                os.environ.get("EXPORT_TYPE_REGEXP", "- .*")
+                env_export_patterns,
             )
             export_patterns = []
         export_types = set(
