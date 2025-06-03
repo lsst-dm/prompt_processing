@@ -34,6 +34,8 @@ import typing
 import yaml
 
 import astropy
+import botocore.exceptions
+import sqlalchemy.exc
 
 import lsst.utils.timer
 from lsst.resources import ResourcePath
@@ -51,6 +53,7 @@ import lsst.analysis.tools
 from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can't use fully-qualified name
 
 from shared.config import PipelinesConfig
+import shared.connect_utils as connect
 import shared.run_utils as runs
 from shared.visit import FannedOutVisit
 from .caching import DatasetCache
@@ -76,8 +79,11 @@ template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
 do_export = bool(int(os.environ.get("DEBUG_EXPORT_OUTPUTS", '1')))
 # The number of arcseconds to pad the region in preloading spatial datasets.
 padding = float(os.environ.get("PRELOAD_PADDING", 30))
+# The (jittered) number of seconds to delay retrying connections to the central Butler.
+repo_retry = float(os.environ.get("REPO_RETRY_DELAY", 30))
 
 
+@connect.retry(2, sqlalchemy.exc.OperationalError, wait=repo_retry)
 def get_central_butler(central_repo: str, instrument_class: str):
     """Provide a Butler that can access the given repository and read and write
     data for the given instrument.
@@ -353,6 +359,7 @@ class MiddlewareInterface:
         define_visits_config.groupExposures = "one-to-one"
         self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
 
+    @connect.retry(2, (sqlalchemy.exc.OperationalError, botocore.exceptions.ClientError), wait=repo_retry)
     def _init_governor_datasets(self, timestamp, skymap):
         """Load and store the camera and skymap for later use.
 
@@ -529,6 +536,7 @@ class MiddlewareInterface:
                         detector=self.visit.detector,
                         group=self.visit.groupId)
 
+    @connect.retry(2, sqlalchemy.exc.OperationalError, wait=repo_retry)
     def _find_data_to_preload(self, region):
         """Identify the datasets to export from the central repo.
 
@@ -903,6 +911,7 @@ class MiddlewareInterface:
             _log.debug("Found %d new init-output datasets from %s.", n_datasets, run)
         return datasets
 
+    @connect.retry(2, (sqlalchemy.exc.OperationalError, botocore.exceptions.ClientError), wait=repo_retry)
     def _transfer_data(self, datasets, calibs):
         """Transfer datasets and all associated collections from the central
         repo to the local repo.
@@ -1567,6 +1576,7 @@ class MiddlewareInterface:
         return [dstype.name for dstype in butler.registry.queryDatasetTypes(...)
                 if "detector" in dstype.dimensions]
 
+    @connect.retry(2, (sqlalchemy.exc.OperationalError, botocore.exceptions.ClientError), wait=repo_retry)
     def _export_subset(self, exposure_ids: set[int],
                        dataset_types: typing.Any, in_collections: typing.Any) -> None:
         """Copy datasets associated with a processing run back to the
