@@ -1916,7 +1916,7 @@ def _remove_run_completely(butler, run):
     """
     for chain in butler.registry.getCollectionParentChains(run):
         butler.collections.remove_from_chain(chain, [run])
-    butler.removeRuns([run], unstore=True)
+    butler.removeRuns([run])
 
 
 def _check_transfer_completion(expected, transferred, transfer_type):
