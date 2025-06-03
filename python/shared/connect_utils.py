@@ -24,13 +24,15 @@ __all__ = ["retry"]
 
 import functools
 import logging
+import random
+import time
 
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
-def retry(tries, exceptions):
+def retry(tries, exceptions, *, wait=0.0):
     """A decorator that retries a function/method call a fixed number of times
     on specific exceptions.
 
@@ -41,6 +43,9 @@ def retry(tries, exceptions):
     exceptions : `type` [`BaseException`] or `tuple` [`type`, ...]
         The exception(s) on which to retry the call. All other exceptions are
         passed through.
+    wait : `float`, optional
+        The average number of seconds to wait for retries. The actual wait time
+        is jittered by 25% to avoid the thundering herd problem.
 
     Raises
     ------
@@ -61,7 +66,13 @@ def retry(tries, exceptions):
                 except exceptions as e:
                     results.append(e)
                     if t < tries-1:
-                        _log.warning("%s failed with %r, retrying.", func.__name__, e)
+                        if wait > 0.0:
+                            this_wait = wait * random.uniform(0.75, 1.25)
+                            _log.warning("%s failed with %r. Waiting %.3f seconds before trying again.",
+                                         func.__name__, e, this_wait)
+                            time.sleep(this_wait)
+                        else:
+                            _log.warning("%s failed with %r, retrying.", func.__name__, e)
                     continue
             # Will be an ExceptionGroup if all exceptions are Exception
             raise BaseExceptionGroup("{func.__name__} failed in {tries} tries.", results)

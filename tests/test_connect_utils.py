@@ -20,6 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
+import time
 import unittest
 
 from shared.connect_utils import retry
@@ -60,3 +61,14 @@ class ConnectionUtilsTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             retry(0, RuntimeError)(dummy)
         retry(1, RuntimeError)(dummy)
+
+        dummy = unittest.mock.Mock(__name__="function", side_effect=ValueError)
+        wrapped = retry(2, ValueError, wait=5.0)(dummy)
+        start = time.time()
+        with self.assertRaises(ExceptionGroup):
+            wrapped()
+        stop = time.time()
+        self.assertEqual(dummy.call_count, 2)
+        # Should have only waited after the first call
+        self.assertGreaterEqual(stop - start, 3.75)
+        self.assertLessEqual(stop - start, 6.25)
