@@ -527,11 +527,6 @@ class MiddlewareInterface:
                                  "Spatial datasets won't be loaded.", self.visit, e)
                     region = None
 
-                # repos may have been modified by other MWI instances.
-                # TODO: get a proper synchronization API for Butler
-                self.central_butler.registry.refresh()
-                self.butler.registry.refresh()
-
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
                     all_datasets, calib_datasets = self._find_data_to_preload(region)
 
@@ -1091,7 +1086,6 @@ class MiddlewareInterface:
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
         """
-        self.butler.registry.refresh()
         self.butler.registry.registerCollection(
             runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
             CollectionType.RUN)
@@ -1625,9 +1619,6 @@ class MiddlewareInterface:
         datasets : collection [`~lsst.daf.butler.DatasetRef`]
             The datasets exported (may be empty).
         """
-        # local repo may have been modified by other MWI instances.
-        self.butler.registry.refresh()
-
         with lsst.utils.timer.time_this(_log, msg="export_outputs (find outputs)", level=logging.DEBUG):
             try:
                 datasets = set()
@@ -1648,11 +1639,6 @@ class MiddlewareInterface:
                     ))
             except lsst.daf.butler.registry.DataIdError as e:
                 raise ValueError("Invalid visit or exposures.") from e
-
-        with lsst.utils.timer.time_this(_log, msg="export_outputs (refresh)", level=logging.DEBUG):
-            # central repo may have been modified by other MWI instances.
-            # TODO: get a proper synchronization API for Butler
-            self.central_butler.registry.refresh()
 
         with lsst.utils.timer.time_this(_log, msg="export_outputs (transfer)", level=logging.DEBUG):
             # Transfer dimensions created by ingest in case it was never done in
