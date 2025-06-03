@@ -294,7 +294,8 @@ class MiddlewareInterface:
         self.pre_pipelines = pre_pipelines
         self.main_pipelines = main_pipelines
 
-        self._day_obs = runs.get_day_obs(astropy.time.Time.now())
+        now = astropy.time.Time.now()
+        self._day_obs = runs.get_day_obs(now)
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self.cache = local_cache  # DO NOT copy -- we want to persist this state!
@@ -302,7 +303,7 @@ class MiddlewareInterface:
         self._define_dimensions()
         self._init_ingester()
         self._init_visit_definer()
-        self._init_governor_datasets(skymap)
+        self._init_governor_datasets(now, skymap)
 
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
@@ -352,31 +353,28 @@ class MiddlewareInterface:
         define_visits_config.groupExposures = "one-to-one"
         self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
 
-    def _init_governor_datasets(self, skymap):
+    def _init_governor_datasets(self, timestamp, skymap):
         """Load and store the camera and skymap for later use.
 
         ``self._init_local_butler`` must have already been run.
 
         Parameters
         ----------
+        timestamp : `astropy.time.Time`
+            The time at which the camera must be valid.
         skymap : `str`
             The name of the skymap to load.
         """
-        # TODO: can replace this with find_dataset on DM-42825
-        try:
-            self.camera = self.central_butler.get(
-                "camera",
-                instrument=self.instrument.getName(),
-                collections=self.instrument.makeCalibrationCollectionName(),
-            )
-        except lsst.daf.butler.DatasetNotFoundError:
-            # Repos that don't allow retrieval of camera from <instrument>/calibs
-            # have <instrument>/calibs/unbounded.
-            self.camera = self.central_butler.get(
-                "camera",
-                instrument=self.instrument.getName(),
-                collections=self.instrument.makeUnboundedCalibrationRunName(),
-            )
+        # Camera is time-dependent, in principle, and may be available only
+        # through a calibration collection.
+        camera_ref = self.central_butler.find_dataset(
+            "camera",
+            instrument=self.instrument.getName(),
+            collections=self.instrument.makeCalibrationCollectionName(),
+            timespan=Timespan.fromInstant(timestamp)
+        )
+        self.camera = self.central_butler.get(camera_ref)
+
         self.skymap_name = skymap
         self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
                                               collections=self._collection_skymap)
