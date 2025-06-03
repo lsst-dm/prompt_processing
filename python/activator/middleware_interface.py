@@ -28,9 +28,11 @@ import itertools
 import logging
 import os
 import os.path
+import re
 import shutil
 import tempfile
 import typing
+import yaml
 
 import astropy
 
@@ -1530,6 +1532,24 @@ class MiddlewareInterface:
             _log.info("Skipping central repo export for exposures %s.", exposure_ids)
             return
 
+        env_export_patterns = os.environ.get("EXPORT_TYPE_REGEXP", "- .*")
+        try:
+            export_patterns = yaml.safe_load(env_export_patterns)
+            if not isinstance(export_patterns, list):
+                raise ValueError
+        except ValueError:
+            _log.error(
+                "Invalid EXPORT_TYPE_REGEXP=%s. Export all dataset types.",
+                env_export_patterns,
+            )
+            export_patterns = [".*"]
+        export_types = set(
+            data_type
+            for data_type in self._get_safe_dataset_types(self.butler)
+            for pattern in export_patterns
+            if re.fullmatch(pattern, data_type)
+        )
+        _log.debug(f"Will export datasets {export_types}")
         # Rather than determining which pipeline was run, just try to export all of them.
         output_runs = [runs.get_preload_run(self.instrument, self._deployment, self._day_obs)]
         for f in self._get_combined_pipeline_files():
@@ -1540,7 +1560,7 @@ class MiddlewareInterface:
                                               # TODO: find a way to merge datasets like *_config
                                               # or *_schema that are duplicated across multiple
                                               # workers.
-                                              self._get_safe_dataset_types(self.butler),
+                                              export_types,
                                               in_collections=output_runs,
                                               )
                 if exports:
@@ -1581,7 +1601,7 @@ class MiddlewareInterface:
         types : iterable [`str`]
             The dataset types to return.
         """
-        return [dstype for dstype in butler.registry.queryDatasetTypes(...)
+        return [dstype.name for dstype in butler.registry.queryDatasetTypes(...)
                 if "detector" in dstype.dimensions]
 
     def _export_subset(self, exposure_ids: set[int],
