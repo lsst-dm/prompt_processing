@@ -1785,6 +1785,26 @@ class MiddlewareInterface:
         """
         with lsst.utils.timer.time_this(_log, msg="clean_local_repo", level=logging.DEBUG):
             self.butler.registry.refresh()
+
+            _census = {}
+            with self.butler.registry.caching_context():
+                _all_types = sorted(self.butler.registry.queryDatasetTypes(...))
+                _collections = self.butler.collections.query('*', collection_types=CollectionType.RUN)
+                with self.butler.query() as _query:
+                    for _type in _all_types:
+                        _count = _query.datasets(_type, _collections, find_first=False).count()
+                        if _count:
+                            _census[_type.name] = _count
+            _log_trace.debug("Repo contents: %s",
+                             ", ".join(f"{_type}: {_count}" for _type, _count in _census.items())
+                             )
+            _repo_base = os.environ.get("LOCAL_REPOS", "/tmp")
+            _local_repos = [os.path.join(_repo_base, d)
+                            for d in os.listdir(os.environ.get("LOCAL_REPOS", "/tmp"))]
+            _size = subprocess.run(["du", "-hs"] + _local_repos,
+                                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            _log_trace.debug("Repo size:\n%s", _size.stdout)
+
             if exposure_ids:
                 raws = self.butler.query_datasets(
                     'raw',
