@@ -1198,6 +1198,31 @@ class MiddlewareInterface:
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
         return result[0].dataId["exposure"]
 
+    def get_observed_skyangle(self, exposure: int) -> astropy.coordinates.Angle:
+        """Determine the sky rotation angle with which an image was taken.
+
+        Parameters
+        ----------
+        exposure : `int`
+            The exposure to test. Must have already been ingested into the
+            local repo.
+
+        Returns
+        -------
+        angle : `astropy.coordinates.Angle` or `None`
+            The observed rotation angle.
+        """
+        records = self.butler.query_dimension_records("exposure",
+                                                      instrument=self.instrument.getName(),
+                                                      exposure=exposure,
+                                                      )
+        if not records:
+            raise ValueError(f"Unknown exposure {exposure}.")
+        elif len(records) > 1:
+            _log.warning("Found %d records for exposure %s.", len(records), exposure)
+        raw_angle = records[0].sky_angle
+        return astropy.coordinates.Angle(raw_angle, "deg") if raw_angle is not None else raw_angle
+
     def _get_graph_executor(self, butler, factory):
         """Create a QuantumGraphExecutor suitable for Prompt Processing.
 
