@@ -537,6 +537,10 @@ class MiddlewareInterface:
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
                     self._transfer_data(all_datasets, calib_datasets)
 
+                _size = subprocess.run(["du", "-hs"] + _local_repos,
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                _log_trace.debug("Repo size:\n%s", _size.stdout)
+
                 with time_this_to_bundle(bundle, action_id, "prep_butlerPreprocessTime"):
                     try:
                         self._run_preprocessing()
@@ -544,6 +548,10 @@ class MiddlewareInterface:
                         _log.exception("Preprocessing pipelines not runnable, trying main pipelines anyway.")
                     except (PipelinePreExecutionError, PipelineExecutionError):
                         _log.exception("Preprocessing pipeline failed, trying main pipelines anyway.")
+
+                _size = subprocess.run(["du", "-hs"] + _local_repos,
+                                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                _log_trace.debug("Repo size:\n%s", _size.stdout)
 
         # IMPORTANT: do not remove or rename entries in this list. New entries can be added as needed.
         enforce_schema(bundle, {action_id: ["prep_butlerTotalTime",
