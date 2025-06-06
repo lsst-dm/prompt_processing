@@ -49,6 +49,7 @@ import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
 import lsst.pipe.base
+from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilderError
 import lsst.analysis.tools
 from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can't use fully-qualified name
 
@@ -1320,7 +1321,7 @@ class MiddlewareInterface:
                     # If this is a fresh (local) repo, then types like calexp,
                     # *Diff_diaSrcTable, etc. have not been registered.
                     qgraph.pipeline_graph.register_dataset_types(exec_butler)
-            except (FileNotFoundError, MissingDatasetTypeError):
+            except (QuantumGraphBuilderError, FileNotFoundError, MissingDatasetTypeError):
                 _log.exception(f"Building quantum graph for {pipeline_file} failed.")
                 continue
             if len(qgraph) == 0:
