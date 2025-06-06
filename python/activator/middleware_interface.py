@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["get_central_butler", "make_local_repo", "flush_local_repo", "make_local_cache",
+__all__ = ["get_central_butler", "make_local_repo", "make_local_cache",
            "MiddlewareInterface"]
 
 import collections.abc
@@ -29,12 +29,13 @@ import logging
 import os
 import os.path
 import re
-import shutil
 import tempfile
 import typing
 import yaml
 
 import astropy
+import botocore.exceptions
+import sqlalchemy.exc
 
 import lsst.utils.timer
 from lsst.resources import ResourcePath
@@ -43,7 +44,7 @@ import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan, \
-    DataIdValueError, MissingDatasetTypeError
+    DataIdValueError, MissingDatasetTypeError, MissingCollectionError
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
@@ -52,6 +53,7 @@ import lsst.analysis.tools
 from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can't use fully-qualified name
 
 from shared.config import PipelinesConfig
+import shared.connect_utils as connect
 import shared.run_utils as runs
 from shared.visit import FannedOutVisit
 from .caching import DatasetCache
@@ -77,8 +79,11 @@ template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
 do_export = bool(int(os.environ.get("DEBUG_EXPORT_OUTPUTS", '1')))
 # The number of arcseconds to pad the region in preloading spatial datasets.
 padding = float(os.environ.get("PRELOAD_PADDING", 30))
+# The (jittered) number of seconds to delay retrying connections to the central Butler.
+repo_retry = float(os.environ.get("REPO_RETRY_DELAY", 30))
 
 
+@connect.retry(2, sqlalchemy.exc.OperationalError, wait=repo_retry)
 def get_central_butler(central_repo: str, instrument_class: str):
     """Provide a Butler that can access the given repository and read and write
     data for the given instrument.
@@ -106,45 +111,6 @@ def get_central_butler(central_repo: str, instrument_class: str):
                   writeable=True,
                   inferDefaults=False,
                   )
-
-
-def flush_local_repo(repo_dir: str, central_butler: Butler):
-    """Clean up a local repository abandoned by a different PP instance.
-
-    The function attempts to pass datasets to the local repo; as with
-    `MiddlewareInterface.export_outputs`, only datasets that would not collide
-    with other pods are handled at this time.
-
-    Parameters
-    ----------
-    repo_dir : `str`
-        An absolute path to a local repo that is *not* being managed by
-        TemporaryDirectory or similar.
-    central_butler : `lsst.daf.butler.Butler`
-        Butler repo to which to attempt to flush the local repo's contents.
-    """
-    try:
-        butler = Butler(repo_dir, writeable=True)
-        with lsst.utils.timer.time_this(_log, msg="flush_local_repo (find datasets)", level=logging.DEBUG):
-            safe_types = MiddlewareInterface._get_safe_dataset_types(butler)
-            # Exclude calibs, templates, and other input datasets
-            datasets = set()
-            for dataset_type in safe_types:
-                datasets |= set(
-                    butler.query_datasets(dataset_type, collections="*/prompt/*", find_first=False)
-                )
-        with lsst.utils.timer.time_this(_log, msg="flush_local_repo (transfer)", level=logging.DEBUG):
-            MiddlewareInterface._export_exposure_dimensions(butler, central_butler)
-            transferred = central_butler.transfer_from(butler, datasets,
-                                                       transfer="copy", transfer_dimensions=False)
-            # Not necessarily a problem -- we might be transferring datasets
-            # that have already been (partially?) transferred.
-            _check_transfer_completion(datasets, transferred, "Uploaded")
-    except Exception:
-        _log.exception("Could not sync outputs from %s; they will be lost.", repo_dir)
-    finally:
-        # If deletion fails, raise and let the activator handle it.
-        shutil.rmtree(repo_dir)
 
 
 def make_local_repo(local_storage: str, central_butler: Butler, instrument: str):
@@ -334,7 +300,8 @@ class MiddlewareInterface:
         self.pre_pipelines = pre_pipelines
         self.main_pipelines = main_pipelines
 
-        self._day_obs = runs.get_day_obs(astropy.time.Time.now())
+        now = astropy.time.Time.now()
+        self._day_obs = runs.get_day_obs(now)
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
         self.cache = local_cache  # DO NOT copy -- we want to persist this state!
@@ -342,25 +309,7 @@ class MiddlewareInterface:
         self._define_dimensions()
         self._init_ingester()
         self._init_visit_definer()
-
-        # TODO: can replace this with find_dataset on DM-42825
-        try:
-            self.camera = self.central_butler.get(
-                "camera",
-                instrument=self.instrument.getName(),
-                collections=self.instrument.makeCalibrationCollectionName(),
-            )
-        except lsst.daf.butler.DatasetNotFoundError:
-            # Repos that don't allow retrieval of camera from <instrument>/calibs
-            # have <instrument>/calibs/unbounded.
-            self.camera = self.central_butler.get(
-                "camera",
-                instrument=self.instrument.getName(),
-                collections=self.instrument.makeUnboundedCalibrationRunName(),
-            )
-        self.skymap_name = skymap
-        self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
-                                              collections=self._collection_skymap)
+        self._init_governor_datasets(now, skymap)
 
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
@@ -409,6 +358,33 @@ class MiddlewareInterface:
                                              define_visits_config)
         define_visits_config.groupExposures = "one-to-one"
         self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
+
+    @connect.retry(2, (sqlalchemy.exc.OperationalError, botocore.exceptions.ClientError), wait=repo_retry)
+    def _init_governor_datasets(self, timestamp, skymap):
+        """Load and store the camera and skymap for later use.
+
+        ``self._init_local_butler`` must have already been run.
+
+        Parameters
+        ----------
+        timestamp : `astropy.time.Time`
+            The time at which the camera must be valid.
+        skymap : `str`
+            The name of the skymap to load.
+        """
+        # Camera is time-dependent, in principle, and may be available only
+        # through a calibration collection.
+        camera_ref = self.central_butler.find_dataset(
+            "camera",
+            instrument=self.instrument.getName(),
+            collections=self.instrument.makeCalibrationCollectionName(),
+            timespan=Timespan.fromInstant(timestamp)
+        )
+        self.camera = self.central_butler.get(camera_ref)
+
+        self.skymap_name = skymap
+        self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
+                                              collections=self._collection_skymap)
 
     def _define_dimensions(self):
         """Define any dimensions that must be computed from this object's visit.
@@ -527,11 +503,6 @@ class MiddlewareInterface:
                                  "Spatial datasets won't be loaded.", self.visit, e)
                     region = None
 
-                # repos may have been modified by other MWI instances.
-                # TODO: get a proper synchronization API for Butler
-                self.central_butler.registry.refresh()
-                self.butler.registry.refresh()
-
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
                     all_datasets, calib_datasets = self._find_data_to_preload(region)
 
@@ -565,6 +536,7 @@ class MiddlewareInterface:
                         detector=self.visit.detector,
                         group=self.visit.groupId)
 
+    @connect.retry(2, sqlalchemy.exc.OperationalError, wait=repo_retry)
     def _find_data_to_preload(self, region):
         """Identify the datasets to export from the central repo.
 
@@ -939,6 +911,7 @@ class MiddlewareInterface:
             _log.debug("Found %d new init-output datasets from %s.", n_datasets, run)
         return datasets
 
+    @connect.retry(2, (sqlalchemy.exc.OperationalError, botocore.exceptions.ClientError), wait=repo_retry)
     def _transfer_data(self, datasets, calibs):
         """Transfer datasets and all associated collections from the central
         repo to the local repo.
@@ -1091,7 +1064,6 @@ class MiddlewareInterface:
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
         """
-        self.butler.registry.refresh()
         self.butler.registry.registerCollection(
             runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
             CollectionType.RUN)
@@ -1604,6 +1576,7 @@ class MiddlewareInterface:
         return [dstype.name for dstype in butler.registry.queryDatasetTypes(...)
                 if "detector" in dstype.dimensions]
 
+    @connect.retry(2, (sqlalchemy.exc.OperationalError, botocore.exceptions.ClientError), wait=repo_retry)
     def _export_subset(self, exposure_ids: set[int],
                        dataset_types: typing.Any, in_collections: typing.Any) -> None:
         """Copy datasets associated with a processing run back to the
@@ -1625,9 +1598,6 @@ class MiddlewareInterface:
         datasets : collection [`~lsst.daf.butler.DatasetRef`]
             The datasets exported (may be empty).
         """
-        # local repo may have been modified by other MWI instances.
-        self.butler.registry.refresh()
-
         with lsst.utils.timer.time_this(_log, msg="export_outputs (find outputs)", level=logging.DEBUG):
             try:
                 datasets = set()
@@ -1648,11 +1618,6 @@ class MiddlewareInterface:
                     ))
             except lsst.daf.butler.registry.DataIdError as e:
                 raise ValueError("Invalid visit or exposures.") from e
-
-        with lsst.utils.timer.time_this(_log, msg="export_outputs (refresh)", level=logging.DEBUG):
-            # central repo may have been modified by other MWI instances.
-            # TODO: get a proper synchronization API for Butler
-            self.central_butler.registry.refresh()
 
         with lsst.utils.timer.time_this(_log, msg="export_outputs (transfer)", level=logging.DEBUG):
             # Transfer dimensions created by ingest in case it was never done in
@@ -1892,10 +1857,11 @@ def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler
                     # explain=False because empty query result is ok here.
                     dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
                 ))
-            except (DataIdValueError, MissingDatasetTypeError) as e:
+            except (DataIdValueError, MissingDatasetTypeError, MissingCollectionError) as e:
                 # Dimensions/dataset type often invalid for fresh local repo,
                 # where there are no, and never have been, any matching datasets.
-                # It *is* a problem for the central repo, but can be caught later.
+                # May have dimensions but no collections if a previous preload failed.
+                # These *are* a problem for the central repo, but can be caught later.
                 _log.debug("%s query failed with %s.", label, e)
         # Trace3 because, in many contexts, datasets is too large to print.
         _log_trace3.debug("%s: %s", label, datasets)
@@ -1916,7 +1882,7 @@ def _remove_run_completely(butler, run):
     """
     for chain in butler.registry.getCollectionParentChains(run):
         butler.collections.remove_from_chain(chain, [run])
-    butler.removeRuns([run], unstore=True)
+    butler.removeRuns([run])
 
 
 def _check_transfer_completion(expected, transferred, transfer_type):

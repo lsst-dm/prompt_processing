@@ -30,17 +30,23 @@ import os
 import yaml
 
 import astropy.time
+import botocore.exceptions
+import sqlalchemy.exc
 
 import lsst.daf.butler
 import lsst.pipe.base
 
 from shared.config import PipelinesConfig
+from shared import connect_utils
 from shared.logger import setup_usdf_logger
 from shared import run_utils
 
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
+
+# The (jittered) number of seconds to delay retrying connections to the central Butler.
+repo_retry = float(os.environ.get("REPO_RETRY_DELAY", 30))
 
 
 def _config_from_yaml(yaml_string):
@@ -73,6 +79,18 @@ def make_parser():
     return parser
 
 
+@connect_utils.retry(2, sqlalchemy.exc.OperationalError, wait=repo_retry)
+def _connect_butler(repo):
+    """Connect to a particular repo.
+
+    Parameters
+    ----------
+    repo : `str`
+        The URI for the repo to connect to.
+    """
+    return lsst.daf.butler.Butler(repo, writeable=True)
+
+
 def main(args=None):
     """Generate init-outputs for a particular Prompt Processing configuration.
 
@@ -89,7 +107,7 @@ def main(args=None):
 
         parsed = make_parser().parse_args(args)
         # URI to the repository that should contain init-outputs.
-        butler = lsst.daf.butler.Butler(repo, writeable=True)
+        butler = _connect_butler(repo)
         # The preprocessing pipelines to execute and the conditions in which to choose them.
         pre_pipelines = _config_from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
         # The main pipelines to execute and the conditions in which to choose them.
@@ -128,6 +146,7 @@ def _get_current_day_obs() -> str:
     return run_utils.get_day_obs(astropy.time.Time.now())
 
 
+@connect_utils.retry(2, (sqlalchemy.exc.OperationalError, botocore.exceptions.ClientError), wait=repo_retry)
 def _make_init_outputs(base_butler: lsst.daf.butler.Butler,
                        instrument: lsst.obs.base.Instrument,
                        apdb: str,
@@ -181,6 +200,7 @@ def _make_init_outputs(base_butler: lsst.daf.butler.Butler,
     return run
 
 
+@connect_utils.retry(2, sqlalchemy.exc.OperationalError, wait=repo_retry)
 def _make_output_chain(butler: lsst.daf.butler.Butler,
                        instrument: lsst.obs.base.Instrument,
                        runs: collections.abc.Sequence[str],
