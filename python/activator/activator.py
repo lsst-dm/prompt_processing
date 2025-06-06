@@ -955,17 +955,14 @@ def process_visit(expected_visit: FannedOutVisit):
                     _log.info("Running pipeline...")
                     try:
                         mwi.run_pipeline(expid_set)
-                        try:
-                            mwi.export_outputs(expid_set)
-                        except Exception as e:
-                            raise NonRetriableError("APDB and possibly alerts or central repo modified") \
-                                from e
                     except RetriableError:
                         # Do not export, to leave room for the next attempt
                         raise
                     except Exception:
                         _try_export(mwi, expid_set, _log)
                         raise
+                    else:
+                        _try_export(mwi, expid_set, _log)
             else:
                 raise RuntimeError("Timed out waiting for images.")
 
