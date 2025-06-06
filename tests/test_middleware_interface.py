@@ -604,6 +604,16 @@ class MiddlewareInterfaceTest(MockTestCase):
                                                              explain=False))
         self.assertEqual(datasets, [])
 
+    def test_get_observed_skyangle(self):
+        sci_exposure = int(self.next_visit.groupId)
+        eng_exposure = 42
+
+        self._prepare_run_pipeline()
+        # Test repo is designed with accurate nextVisit, so we can just use it as the oracle.
+        self.assertAlmostEqual(self.interface.get_observed_skyangle(sci_exposure),
+                               astropy.coordinates.Angle(self.next_visit.cameraAngle*u.degree))
+        self.assertIsNone(self.interface.get_observed_skyangle(eng_exposure))
+
     def _prepare_run_preprocessing(self):
         # Have to setup the data so that we can create the pipeline executor.
         self.interface.prep_butler()
