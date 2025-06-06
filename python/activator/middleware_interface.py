@@ -1720,15 +1720,10 @@ class MiddlewareInterface:
                                   ) for t in matching_types
         )
 
-    def clean_local_repo(self, exposure_ids: set[int]) -> None:
+    def clean_local_repo(self) -> None:
         """Remove local repo content that is only needed for a single visit.
 
         This includes raws and pipeline outputs.
-
-        Parameter
-        ---------
-        exposure_ids : `set` [`int`]
-            Identifiers of the exposures to be removed.
         """
         with lsst.utils.timer.time_this(_log, msg="clean_local_repo", level=logging.DEBUG):
             self.butler.registry.refresh()
