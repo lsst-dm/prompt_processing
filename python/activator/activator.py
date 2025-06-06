@@ -943,28 +943,27 @@ def process_visit(expected_visit: FannedOutVisit):
             except GracefulShutdownInterrupt as e:
                 raise RetriableError("Processing interrupted before pipeline execution") from e
 
-            if expid_set:
-                with log_factory.add_context(exposures=expid_set):
-                    # Got at least some snaps; run the pipeline.
-                    # If this is only a partial set, the processed results may still be
-                    # useful for quality purposes.
-                    # If nimages == 0, any positive number of snaps is OK.
-                    if len(expid_set) < expected_visit.nimages:
-                        _log.warning(f"Processing {len(expid_set)} snaps, "
-                                     f"expected {expected_visit.nimages}.")
-                    _log.info("Running pipeline...")
-                    try:
-                        mwi.run_pipeline(expid_set)
-                    except RetriableError:
-                        # Do not export, to leave room for the next attempt
-                        raise
-                    except Exception:
-                        _try_export(mwi, expid_set, _log)
-                        raise
-                    else:
-                        _try_export(mwi, expid_set, _log)
-            else:
+            if not expid_set:
                 raise RuntimeError("Timed out waiting for images.")
+            # If nimages == 0, any positive number of snaps is OK.
+            if len(expid_set) < expected_visit.nimages:
+                _log.warning(f"Found {len(expid_set)} snaps, expected {expected_visit.nimages}.")
+
+            with log_factory.add_context(exposures=expid_set):
+                # Got at least some snaps; run the pipeline.
+                # If this is only a partial set, the processed results may still be
+                # useful for quality purposes.
+                _log.info("Running main pipeline...")
+                try:
+                    mwi.run_pipeline(expid_set)
+                except RetriableError:
+                    # Do not export, to leave room for the next attempt
+                    raise
+                except Exception:
+                    _try_export(mwi, expid_set, _log)
+                    raise
+                else:
+                    _try_export(mwi, expid_set, _log)
 
 
 def invalid_visit(e: InvalidVisitError) -> tuple[str, int]:
