@@ -878,7 +878,7 @@ def process_visit(expected_visit: FannedOutVisit):
                                           _get_local_repo().name,
                                           _get_local_cache())
                 # TODO: pipeline execution requires a clean run until DM-38041.
-                cleanups.callback(mwi.clean_local_repo, expid_set)
+                cleanups.callback(mwi.clean_local_repo)
                 # Copy calibrations for this detector/visit
                 mwi.prep_butler()
 
