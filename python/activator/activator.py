@@ -26,6 +26,7 @@ import contextlib
 import functools
 import json
 import logging
+import math
 import os
 import signal
 import socket
@@ -753,6 +754,41 @@ def _parse_bucket_notifications(payload):
             _log.error("Invalid S3 bucket notification: %s", e)
 
 
+def _filter_exposures(exposures, visit, mwi):
+    """Check exposures against the nextVisit and remove any that aren't safe
+    to process.
+
+    Parameters
+    ----------
+    exposures : collection [`int`]
+        The exposures to filter. Must have been ingested.
+    visit : `shared.visit.FannedOutVisit`
+        The nextVisit for the exposures.
+    mwi : `activator.middleware_interface.MiddlewareInterface`
+        An interface for checking metadata against the local repo.
+
+    Returns
+    -------
+    filtered : set [`int`]
+        The exposures to process.
+    """
+    to_drop = set()
+    if visit.rotationSystem != FannedOutVisit.RotSys.NONE:
+        expected_angle = visit.get_rotation_sky()
+        for expid in exposures:
+            angle = mwi.get_observed_skyangle(expid)
+            if angle is not None and not math.isnan(angle.degree):
+                diff = (angle - expected_angle).wrap_at("180d")
+                if abs(diff).degree > 1.0:
+                    _log.warning("Exposure %d had sky rotation %.1f, expected %.1f. Discarding.".
+                                 expid, angle.degree, expected_angle.degree)
+                    to_drop.add(expid)
+            else:
+                _log.warning("Exposure %d is missing metadata. Discarding.", expid)
+                to_drop.add(expid)
+    return set(exposures) - to_drop
+
+
 def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logger) -> bool:
     """Attempt to export pipeline products, logging any failure.
 
@@ -948,6 +984,10 @@ def process_visit(expected_visit: FannedOutVisit):
             # If nimages == 0, any positive number of snaps is OK.
             if len(expid_set) < expected_visit.nimages:
                 _log.warning(f"Found {len(expid_set)} snaps, expected {expected_visit.nimages}.")
+
+            expid_set = _filter_exposures(expid_set, expected_visit, mwi)
+            if not expid_set:
+                raise RuntimeError("All images rejected as unprocessable.")
 
             with log_factory.add_context(exposures=expid_set):
                 # Got at least some snaps; run the pipeline.
