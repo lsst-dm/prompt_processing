@@ -1837,7 +1837,7 @@ def _filter_datasets(src_repo: Butler,
     -------
     datasets : iterable [`lsst.daf.butler.DatasetRef`]
         The datasets that exist in ``src_repo`` but not ``dest_repo``.
-        datasetRefs are guaranteed to be fully expanded if any only if
+        datasetRefs are guaranteed to be fully expanded if and only if
         ``query`` guarantees it.
 
     Raises
@@ -1845,7 +1845,7 @@ def _filter_datasets(src_repo: Butler,
     _MissingDatasetError
         Raised if the query on ``src_repo`` failed to find any datasets.
     """
-    known_datasets = query(dest_repo, "known datasets")
+    known_datasets = set(query(dest_repo, "known datasets"))
 
     # Let exceptions from src_repo query raise: if it fails, that invalidates
     # this operation.
@@ -1854,7 +1854,10 @@ def _filter_datasets(src_repo: Butler,
         raise _MissingDatasetError("Source repo query found no matches.")
     if all_callback:
         all_callback(src_datasets)
-    return itertools.filterfalse(lambda ref: ref in known_datasets, src_datasets)
+    missing = src_datasets - known_datasets
+    _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
+                     len(src_datasets), len(src_datasets & known_datasets), len(missing))
+    return missing
 
 
 def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler.DatasetType],
