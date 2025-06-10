@@ -49,6 +49,7 @@ import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
 import lsst.pipe.base
+from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilderError
 import lsst.analysis.tools
 from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can't use fully-qualified name
 
@@ -1198,6 +1199,31 @@ class MiddlewareInterface:
         _log.info("Ingested one %s with dataId=%s", result[0].datasetType.name, result[0].dataId)
         return result[0].dataId["exposure"]
 
+    def get_observed_skyangle(self, exposure: int) -> astropy.coordinates.Angle:
+        """Determine the sky rotation angle with which an image was taken.
+
+        Parameters
+        ----------
+        exposure : `int`
+            The exposure to test. Must have already been ingested into the
+            local repo.
+
+        Returns
+        -------
+        angle : `astropy.coordinates.Angle` or `None`
+            The observed rotation angle.
+        """
+        records = self.butler.query_dimension_records("exposure",
+                                                      instrument=self.instrument.getName(),
+                                                      exposure=exposure,
+                                                      )
+        if not records:
+            raise ValueError(f"Unknown exposure {exposure}.")
+        elif len(records) > 1:
+            _log.warning("Found %d records for exposure %s.", len(records), exposure)
+        raw_angle = records[0].sky_angle
+        return astropy.coordinates.Angle(raw_angle, "deg") if raw_angle is not None else raw_angle
+
     def _get_graph_executor(self, butler, factory):
         """Create a QuantumGraphExecutor suitable for Prompt Processing.
 
@@ -1295,7 +1321,7 @@ class MiddlewareInterface:
                     # If this is a fresh (local) repo, then types like calexp,
                     # *Diff_diaSrcTable, etc. have not been registered.
                     qgraph.pipeline_graph.register_dataset_types(exec_butler)
-            except (FileNotFoundError, MissingDatasetTypeError):
+            except (QuantumGraphBuilderError, FileNotFoundError, MissingDatasetTypeError):
                 _log.exception(f"Building quantum graph for {pipeline_file} failed.")
                 continue
             if len(qgraph) == 0:
