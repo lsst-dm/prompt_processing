@@ -1074,7 +1074,11 @@ def process_visit(expected_visit: FannedOutVisit):
                     _try_export(mwi, expid_set, _log)
                     raise
                 else:
-                    _try_export(mwi, expid_set, _log)
+                    try:
+                        mwi.export_outputs(expid_set)
+                    except Exception as e:
+                        raise NonRetriableError("APDB and possibly alerts or central repo modified") \
+                            from e
 
 
 def invalid_visit(e: InvalidVisitError) -> tuple[str, int]:
