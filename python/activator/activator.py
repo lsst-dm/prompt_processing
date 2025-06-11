@@ -1003,7 +1003,9 @@ def process_visit(expected_visit: FannedOutVisit):
                     _try_export(mwi, expid_set, _log)
                     raise
                 else:
-                    _try_export(mwi, expid_set, _log)
+                    exported = _try_export(mwi, expid_set, _log)
+                    if not exported:
+                        raise
 
 
 def invalid_visit(e: InvalidVisitError) -> tuple[str, int]:
