@@ -6,8 +6,8 @@ ARG KAFKA=python-confluent-kafka
 RUN <<EOT
   set -ex
   source /opt/lsst/software/stack/loadLSST.bash
-  mamba install -y flask gunicorn
-  mamba list ${KAFKA} | grep ${KAFKA} || mamba install -y "${KAFKA}=2.4.0"
+  conda install -y flask gunicorn
+  conda list ${KAFKA} | grep ${KAFKA} || conda install -y "${KAFKA}=2.4.0"
   pip install --no-input cloudevents
   pip install --no-input prometheus-client
   pip install --no-input redis
