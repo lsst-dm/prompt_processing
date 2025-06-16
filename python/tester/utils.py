@@ -359,6 +359,7 @@ def send_next_visit(url, group, visit_infos):
         value_schema_level = dict(value_schema_id=SCHEMA_ID, records=[records_level])
 
         r = requests.post(url, data=json.dumps(value_schema_level), headers=header)
+        r.raise_for_status()
         _log.debug(f"Kafka proxy post status code {r.status_code} and response {r.content}")
 
 
