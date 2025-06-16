@@ -49,6 +49,10 @@ _log.setLevel(logging.DEBUG)
 repo_retry = float(os.environ.get("REPO_RETRY_DELAY", 30))
 
 
+SQL_EXCEPTIONS = (sqlalchemy.exc.OperationalError, sqlalchemy.exc.InterfaceError)
+DATASTORE_EXCEPTIONS = SQL_EXCEPTIONS + (botocore.exceptions.ClientError, )
+
+
 def _config_from_yaml(yaml_string):
     """Initialize a PipelinesConfig from a YAML-formatted string.
 
@@ -79,7 +83,7 @@ def make_parser():
     return parser
 
 
-@connect_utils.retry(2, sqlalchemy.exc.OperationalError, wait=repo_retry)
+@connect_utils.retry(2, SQL_EXCEPTIONS, wait=repo_retry)
 def _connect_butler(repo):
     """Connect to a particular repo.
 
@@ -146,7 +150,7 @@ def _get_current_day_obs() -> str:
     return run_utils.get_day_obs(astropy.time.Time.now())
 
 
-@connect_utils.retry(2, (sqlalchemy.exc.OperationalError, botocore.exceptions.ClientError), wait=repo_retry)
+@connect_utils.retry(2, DATASTORE_EXCEPTIONS, wait=repo_retry)
 def _make_init_outputs(base_butler: lsst.daf.butler.Butler,
                        instrument: lsst.obs.base.Instrument,
                        apdb: str,
@@ -200,7 +204,7 @@ def _make_init_outputs(base_butler: lsst.daf.butler.Butler,
     return run
 
 
-@connect_utils.retry(2, sqlalchemy.exc.OperationalError, wait=repo_retry)
+@connect_utils.retry(2, SQL_EXCEPTIONS, wait=repo_retry)
 def _make_output_chain(butler: lsst.daf.butler.Butler,
                        instrument: lsst.obs.base.Instrument,
                        runs: collections.abc.Sequence[str],
