@@ -89,6 +89,8 @@ bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
 bucket_notification_kafka_offset_reset = os.environ.get("BUCKET_NOTIFICATION_KAFKA_OFFSET_RESET", "latest")
 # Max requests to handle before restarting. 0 means no limit.
 max_requests = int(os.environ.get("WORKER_RESTART_FREQ", 0))
+# The number of seconds to delay retrying connections to the Redis stream.
+redis_retry = float(os.environ.get("REDIS_RETRY_DELAY", 30))
 
 # Conditionally load keda environment variables
 if platform == "keda":
@@ -234,7 +236,12 @@ class RedisStreamSession:
         redis_client : `redis.Redis`
             Initialized Redis client.
         """
-        return redis.Redis(host=self.host)
+        policy = redis.retry.Retry(redis.backoff.ConstantBackoff(redis_retry),
+                                   1,
+                                   # Bare ConnectionError covers things like DNS problems
+                                   (redis.exceptions.ConnectionError, ),
+                                   )
+        return redis.Redis(host=self.host, retry=policy)
 
     @staticmethod
     def _close_on_error(func):
