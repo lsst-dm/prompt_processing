@@ -508,11 +508,14 @@ class MiddlewareInterface:
                     _collections = self.butler.collections.query('*', collection_types=CollectionType.RUN)
                     with self.butler.query() as _query:
                         for _type in _all_types:
-                            _count = _query.datasets(_type, _collections, find_first=False).count()
-                            if _count:
-                                _census[_type.name] = _count
+                            _datasets = _query.datasets(_type, _collections, find_first=False)
+                            if _datasets.any():
+                                _count = _datasets.count()
+                                _size = max(self.butler.getURI(ref).size() for ref in _datasets)
+                                _census[_type.name] = (_count, _size)
                 _log_trace.debug("Repo contents: %s",
-                                 ", ".join(f"{_type}: {_count}" for _type, _count in _census.items())
+                                 ", ".join(f"{_type}: {_count} up to {_size}"
+                                           for _type, (_count, _size) in _census.items())
                                  )
                 _repo_base = os.environ.get("LOCAL_REPOS", "/tmp")
                 _local_repos = [os.path.join(_repo_base, d)
@@ -1800,11 +1803,14 @@ class MiddlewareInterface:
                 _collections = self.butler.collections.query('*', collection_types=CollectionType.RUN)
                 with self.butler.query() as _query:
                     for _type in _all_types:
-                        _count = _query.datasets(_type, _collections, find_first=False).count()
-                        if _count:
-                            _census[_type.name] = _count
+                        _datasets = _query.datasets(_type, _collections, find_first=False)
+                        if _datasets.any():
+                            _count = _datasets.count()
+                            _size = max(self.butler.getURI(ref).size() for ref in _datasets)
+                            _census[_type.name] = (_count, _size)
             _log_trace.debug("Repo contents: %s",
-                             ", ".join(f"{_type}: {_count}" for _type, _count in _census.items())
+                             ", ".join(f"{_type}: {_count} up to {_size}"
+                                       for _type, (_count, _size) in _census.items())
                              )
             _repo_base = os.environ.get("LOCAL_REPOS", "/tmp")
             _local_repos = [os.path.join(_repo_base, d)
