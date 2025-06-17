@@ -64,7 +64,7 @@ INSTRUMENTS = {
     "LSSTCam-imSim": Instrument(1, 189, 999),
 }
 # The schema ID of the ``next_visit`` message in the Sasquatch REST Proxy.
-SCHEMA_ID = 99
+SCHEMA_ID = 170
 
 max_exposure = {
     "HSC": 21474800,
