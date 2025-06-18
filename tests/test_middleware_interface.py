@@ -228,11 +228,9 @@ class MiddlewareInterfaceTest(MockTestCase):
         self.central_repo = os.path.join(self.data_dir, "central_repo")
         self.umbrella = f"{instname}/defaults"
         self.read_butler = Butler(self.central_repo,
-                                  collections=[self.umbrella],
                                   writeable=False,
                                   inferDefaults=False)
         self.write_butler = Butler(self.central_repo,
-                                   collections=[self.umbrella],
                                    writeable=False,  # A safety in case the tests try to overwrite testdir
                                    inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
@@ -298,9 +296,8 @@ class MiddlewareInterfaceTest(MockTestCase):
                        ]:
             # TODO: better way to test repo location?
             self.assertTrue(
-                butler.getURI("skyMap", skymap=skymap_name, run="foo", predict=True).ospath
+                butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
                 .startswith(self.central_repo))
-            self.assertEqual(list(butler.collections.defaults), [f"{instname}/defaults"])
             self.assertTrue(butler.isWriteable())
 
     def test_make_local_repo(self):
@@ -1274,12 +1271,10 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         read_butler = Butler(self.central_repo.name,
                              instrument=instname,
                              skymap=skymap_name,
-                             collections=[f"{instname}/defaults"],
                              writeable=False)
         write_butler = Butler(self.central_repo.name,
                               instrument=instname,
                               skymap=skymap_name,
-                              collections=[f"{instname}/defaults"],
                               writeable=True)
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.input_data = os.path.join(data_dir, "input_data")

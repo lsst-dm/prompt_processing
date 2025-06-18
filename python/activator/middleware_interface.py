@@ -109,12 +109,7 @@ def get_central_butler(central_repo: str, instrument_class: str):
         A Butler for ``central_repo`` pre-configured to load and store
         ``instrument_name`` data.
     """
-    # TODO: how much overhead do we take on from asking the central repo about
-    # the instrument instead of handling it internally?
-    registry = Butler(central_repo).registry
-    instrument = lsst.obs.base.Instrument.from_string(instrument_class, registry)
     return Butler(central_repo,
-                  collections=[instrument.makeUmbrellaCollectionName()],
                   writeable=True,
                   inferDefaults=False,
                   )
@@ -233,10 +228,10 @@ class MiddlewareInterface:
     read_butler : `lsst.daf.butler.Butler`
         Butler repo containing the calibration and other data needed for
         processing images as they are received. This butler must be created
-        with the default instrument, skymap, and collections assigned.
+        with the default instrument and skymap assigned.
     write_butler : `lsst.daf.butler.Butler`
         Butler repo to which pipeline outputs should be written. This butler
-        must be created with the default instrument and collections assigned.
+        must be created with the default instrument assigned.
         May be the same object as ``read_butler``.
     image_bucket : `str`
         Storage bucket where images will be written to as they arrive.
