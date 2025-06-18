@@ -230,10 +230,14 @@ class MiddlewareInterface:
 
     Parameters
     ----------
-    central_butler : `lsst.daf.butler.Butler`
+    read_butler : `lsst.daf.butler.Butler`
         Butler repo containing the calibration and other data needed for
         processing images as they are received. This butler must be created
         with the default instrument, skymap, and collections assigned.
+    write_butler : `lsst.daf.butler.Butler`
+        Butler repo to which pipeline outputs should be written. This butler
+        must be created with the default instrument and collections assigned.
+        May be the same object as ``read_butler``.
     image_bucket : `str`
         Storage bucket where images will be written to as they arrive.
         See also ``prefix``.
@@ -285,7 +289,7 @@ class MiddlewareInterface:
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
 
-    def __init__(self, central_butler: Butler, image_bucket: str, visit: FannedOutVisit,
+    def __init__(self, read_butler: Butler, write_butler: Butler, image_bucket: str, visit: FannedOutVisit,
                  pre_pipelines: PipelinesConfig, main_pipelines: PipelinesConfig,
                  # TODO: encapsulate relationship between local_repo and local_cache
                  skymap: str, local_repo: str, local_cache: DatasetCache,
@@ -295,8 +299,8 @@ class MiddlewareInterface:
         self._apdb_config = os.environ["CONFIG_APDB"]
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = runs.get_deployment(self._apdb_config)
-        self.read_central_butler = central_butler
-        self.write_central_butler = central_butler
+        self.read_central_butler = read_butler
+        self.write_central_butler = write_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
         if not self.image_host.startswith("file"):

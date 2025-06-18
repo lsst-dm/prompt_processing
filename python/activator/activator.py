@@ -913,6 +913,7 @@ def process_visit(expected_visit: FannedOutVisit):
                 # Create a fresh MiddlewareInterface object to avoid accidental
                 # "cross-talk" between different visits.
                 mwi = MiddlewareInterface(_get_central_butler(),
+                                          _get_central_butler(),
                                           image_bucket,
                                           expected_visit,
                                           pre_pipelines,
