@@ -1382,13 +1382,13 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
                                          for k, v in self.second_data_id.required.items()}
         # Dataset types defined for local Butler on pipeline run, but code
         # assumes output types already exist in central repo.
-        butler_tests.addDatasetType(self.interface.central_butler, "promptPreload_metrics",
+        butler_tests.addDatasetType(self.interface.write_central_butler, "promptPreload_metrics",
                                     {"instrument", "group", "detector"},
                                     "MetricMeasurementBundle")
-        butler_tests.addDatasetType(self.interface.central_butler, "regionTimeInfo",
+        butler_tests.addDatasetType(self.interface.write_central_butler, "regionTimeInfo",
                                     {"instrument", "group", "detector"},
                                     "RegionTimeInfo")
-        butler_tests.addDatasetType(self.interface.central_butler, "history_diaSource",
+        butler_tests.addDatasetType(self.interface.write_central_butler, "history_diaSource",
                                     {"instrument", "group", "detector"},
                                     "ArrowAstropy")
         butler_tests.addDatasetType(self.interface.butler, "history_diaSource",
@@ -1397,7 +1397,7 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         butler_tests.addDatasetType(self.second_interface.butler, "history_diaSource",
                                     {"instrument", "group", "detector"},
                                     "ArrowAstropy")
-        butler_tests.addDatasetType(self.interface.central_butler, "calexp",
+        butler_tests.addDatasetType(self.interface.write_central_butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
         butler_tests.addDatasetType(self.interface.butler, "calexp",

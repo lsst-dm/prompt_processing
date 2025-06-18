@@ -295,7 +295,8 @@ class MiddlewareInterface:
         self._apdb_config = os.environ["CONFIG_APDB"]
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = runs.get_deployment(self._apdb_config)
-        self.central_butler = central_butler
+        self.read_central_butler = central_butler
+        self.write_central_butler = central_butler
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
         if not self.image_host.startswith("file"):
@@ -303,7 +304,8 @@ class MiddlewareInterface:
         else:
             self._download_store = None
         # TODO: how much overhead do we pick up from going through the registry?
-        self.instrument = lsst.obs.base.Instrument.from_string(visit.instrument, central_butler.registry)
+        self.instrument = lsst.obs.base.Instrument.from_string(
+            visit.instrument, self.read_central_butler.registry)
         self.pre_pipelines = pre_pipelines
         self.main_pipelines = main_pipelines
 
@@ -381,17 +383,17 @@ class MiddlewareInterface:
         """
         # Camera is time-dependent, in principle, and may be available only
         # through a calibration collection.
-        camera_ref = self.central_butler.find_dataset(
+        camera_ref = self.read_central_butler.find_dataset(
             "camera",
             instrument=self.instrument.getName(),
             collections=self.instrument.makeCalibrationCollectionName(),
             timespan=Timespan.fromInstant(timestamp)
         )
-        self.camera = self.central_butler.get(camera_ref)
+        self.camera = self.read_central_butler.get(camera_ref)
 
         self.skymap_name = skymap
-        self.skymap = self.central_butler.get("skyMap", skymap=self.skymap_name,
-                                              collections=self._collection_skymap)
+        self.skymap = self.read_central_butler.get("skyMap", skymap=self.skymap_name,
+                                                   collections=self._collection_skymap)
 
     def _define_dimensions(self):
         """Define any dimensions that must be computed from this object's visit.
@@ -574,7 +576,7 @@ class MiddlewareInterface:
         present_types = net_types.copy()
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find inputs)", level=logging.DEBUG):
             for type_name in net_types:
-                dstype = self.central_butler.registry.getDatasetType(type_name)
+                dstype = self.read_central_butler.registry.getDatasetType(type_name)
                 try:
                     if dstype.isCalibration():
                         new_calibs = self._find_calibs(dstype, self.visit.detector, self.visit.filters)
@@ -724,7 +726,7 @@ class MiddlewareInterface:
         """
         # Get shards from all refcats that overlap this region.
         refcats = set(_filter_datasets(
-                      self.central_butler, self.butler,
+                      self.read_central_butler, self.butler,
                       _generic_query([dataset_type],
                                      collections=self.instrument.makeRefCatCollectionName(),
                                      where="htm7.region OVERLAPS search_region",
@@ -764,7 +766,7 @@ class MiddlewareInterface:
                    "physical_filter": physical_filter,
                    }
         templates = set(_filter_datasets(
-            self.central_butler, self.butler,
+            self.read_central_butler, self.butler,
             _generic_query([dataset_type],
                            collections=self._collection_template,
                            data_id=data_id,
@@ -830,7 +832,7 @@ class MiddlewareInterface:
                 return datasets
 
         calibs = set(_filter_datasets(
-            self.central_butler, self.butler,
+            self.read_central_butler, self.butler,
             query_calibs_by_date,
             all_callback=self._mark_dataset_usage,
         ))
@@ -863,7 +865,7 @@ class MiddlewareInterface:
         if physical_filter:
             data_id["physical_filter"] = physical_filter
         datasets = set(_filter_datasets(
-            self.central_butler, self.butler,
+            self.read_central_butler, self.butler,
             _generic_query([dataset_type],
                            collections=self.instrument.makeUmbrellaCollectionName(),
                            data_id=data_id,
@@ -910,7 +912,8 @@ class MiddlewareInterface:
             types = self._get_init_output_types(pipeline_file)
             # Output runs are always cleared after execution, so _filter_datasets would always warn.
             # This also means the init-outputs don't need to be cached with _mark_dataset_usage.
-            datasets.update(_generic_query(types, collections=run)(self.central_butler, "source datasets"))
+            query = _generic_query(types, collections=run)
+            datasets.update(query(self.read_central_butler, "source datasets"))
         if not datasets:
             raise _MissingDatasetError("Source repo query found no matches.")
 
@@ -931,7 +934,7 @@ class MiddlewareInterface:
             The calibs to re-certify into the local repo.
         """
         with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)", level=logging.DEBUG):
-            transferred = self.butler.transfer_from(self.central_butler,
+            transferred = self.butler.transfer_from(self.read_central_butler,
                                                     datasets,
                                                     transfer="copy",
                                                     skip_missing=True,
@@ -969,7 +972,7 @@ class MiddlewareInterface:
             The collection to be exported. It is usually a CHAINED collection
             and can have many children.
         """
-        src = self.central_butler.registry
+        src = self.read_central_butler.registry
         dest = self.butler.registry
 
         # Store collection chains after all children guaranteed to exist
@@ -998,9 +1001,9 @@ class MiddlewareInterface:
             certified in ``calib_collection`` in the central repo, and must
             exist in the local repo.
         """
-        collections = self.central_butler.collections
-        with self.central_butler.query() as query, \
-                self.central_butler.registry.caching_context():  # Nested loops produce lots of queries
+        collections = self.read_central_butler.collections
+        with self.read_central_butler.query() as query, \
+                self.read_central_butler.registry.caching_context():  # Nested loops produce lots of queries
             for dataset in datasets:
                 dtype = dataset.datasetType
                 result = query.where(dataset.dataId) \
@@ -1659,14 +1662,14 @@ class MiddlewareInterface:
             # so handle those manually.
             self._export_exposure_dimensions(
                 self.butler,
-                self.central_butler,
+                self.write_central_butler,
                 where="exposure in (exposure_ids)",
                 bind={"exposure_ids": exposure_ids},
                 instrument=self.instrument.getName(),
                 detector=self.visit.detector,
             )
-            transferred = self.central_butler.transfer_from(self.butler, datasets,
-                                                            transfer="copy", transfer_dimensions=False)
+            transferred = self.write_central_butler.transfer_from(
+                self.butler, datasets, transfer="copy", transfer_dimensions=False)
             _check_transfer_completion(datasets, transferred, "Uploaded")
 
         return transferred
