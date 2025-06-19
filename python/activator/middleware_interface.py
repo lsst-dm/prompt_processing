@@ -514,7 +514,7 @@ class MiddlewareInterface:
                                 _size = max(self.butler.getURI(ref).size() for ref in _datasets)
                                 _census[_type.name] = (_count, _size)
                 _log_trace.debug("Repo contents: %s",
-                                 ", ".join(f"{_type}: {_count} up to {_size}"
+                                 ", ".join(f"{_type}: {_count} up to {_size} B"
                                            for _type, (_count, _size) in _census.items())
                                  )
                 _repo_base = os.environ.get("LOCAL_REPOS", "/tmp")
@@ -1809,7 +1809,7 @@ class MiddlewareInterface:
                             _size = max(self.butler.getURI(ref).size() for ref in _datasets)
                             _census[_type.name] = (_count, _size)
             _log_trace.debug("Repo contents: %s",
-                             ", ".join(f"{_type}: {_count} up to {_size}"
+                             ", ".join(f"{_type}: {_count} up to {_size} B"
                                        for _type, (_count, _size) in _census.items())
                              )
             _repo_base = os.environ.get("LOCAL_REPOS", "/tmp")
