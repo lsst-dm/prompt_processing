@@ -106,7 +106,7 @@ def main(args=None):
     instrument_name = os.environ["RUBIN_INSTRUMENT"]
     setup_usdf_logger(labels={"instrument": instrument_name},)
     try:
-        repo = os.environ["CALIB_REPO"]
+        repo = os.environ["CENTRAL_REPO"]
         _log.info("Preparing init-outputs for %s in %s.", instrument_name, repo)
 
         parsed = make_parser().parse_args(args)

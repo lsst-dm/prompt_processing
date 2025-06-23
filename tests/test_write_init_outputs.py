@@ -189,7 +189,7 @@ class InitOutputsTest(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, {"RUBIN_INSTRUMENT": "LSSTComCamSim",
                                                    "PREPROCESSING_PIPELINES_CONFIG": pre_pipelines,
                                                    "MAIN_PIPELINES_CONFIG": pipelines,
-                                                   "CALIB_REPO": self.repo.name,
+                                                   "CENTRAL_REPO": self.repo.name,
                                                    "CONFIG_APDB": self.config_file.name,
                                                    }), \
                 unittest.mock.patch("initializer.write_init_outputs._make_init_outputs",

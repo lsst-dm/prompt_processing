@@ -65,8 +65,10 @@ platform = os.environ["PLATFORM"].lower()
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
 # The skymap to use in the central repo
 skymap = os.environ["SKYMAP"]
+# URI to the main repository to contain processing results
+write_repo = os.environ["CENTRAL_REPO"]
 # URI to the main repository containing calibs and templates
-calib_repo = os.environ["CALIB_REPO"]
+read_repo = os.environ.get("READ_CENTRAL_REPO", write_repo)
 # S3 Endpoint for Buckets; needed for direct Boto access but not Butler
 s3_endpoint = os.environ["S3_ENDPOINT_URL"]
 # URI of raw image microservice
@@ -168,9 +170,16 @@ def _get_storage_client():
 
 
 @functools.cache
-def _get_central_butler():
-    """Lazy initialization of central Butler."""
-    return get_central_butler(calib_repo, instrument_name)
+def _get_central_butler(uri):
+    """Lazy initialization of central Butler.
+
+    Parameters
+    ----------
+    uri : `str`
+        The URI of the repository to load. Only one Butler object is
+        constructed for any repository.
+    """
+    return get_central_butler(uri, instrument_name)
 
 
 @functools.cache
@@ -183,7 +192,7 @@ def _get_local_repo():
         The directory containing the repo, to be removed when the
         process exits.
     """
-    repo = make_local_repo(local_repos, _get_central_butler(), instrument_name)
+    repo = make_local_repo(local_repos, _get_central_butler(read_repo), instrument_name)
     tracker = LocalRepoTracker.get()
     tracker.register(os.getpid(), repo.name)
     return repo
@@ -443,7 +452,8 @@ def create_app():
         # Check initialization and abort early
         _get_consumer()
         _get_storage_client()
-        _get_central_butler()
+        _get_central_butler(read_repo)
+        _get_central_butler(write_repo)
         _get_local_repo()
 
         app = flask.Flask(__name__)
@@ -490,7 +500,8 @@ def keda_start():
         # Check initialization and abort early
         _get_consumer()
         _get_storage_client()
-        _get_central_butler()
+        _get_central_butler(read_repo)
+        _get_central_butler(write_repo)
         _get_local_repo()
 
         redis_session = RedisStreamSession(
@@ -912,8 +923,8 @@ def process_visit(expected_visit: FannedOutVisit):
 
                 # Create a fresh MiddlewareInterface object to avoid accidental
                 # "cross-talk" between different visits.
-                mwi = MiddlewareInterface(_get_central_butler(),
-                                          _get_central_butler(),
+                mwi = MiddlewareInterface(_get_central_butler(read_repo),
+                                          _get_central_butler(write_repo),
                                           image_bucket,
                                           expected_visit,
                                           pre_pipelines,
