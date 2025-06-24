@@ -316,10 +316,9 @@ def get_samples_lsst(bucket, instrument):
             exposure_num = LsstBaseTranslator.compute_exposure_id(int(day_obs), int(seq_num))
             sal_index = exposure_num
 
-        # ComCam currently sets the FILTBAND header to null.
-        physical_filter = md["FILTBAND"] or md["FILTER"]
-        if instrument == "LATISS" and len(physical_filter) == 1:
-            physical_filter = f"SDSS{physical_filter}_65mm~empty"
+        physical_filter = md["FILTER"]
+        if instrument == "LATISS":
+            physical_filter = f"{physical_filter}~empty"
         # LSSTCam currently only has lab data, no real sky angle
         # TODO: remove when switching to on-sky data
         if instrument == "LSSTCam":
