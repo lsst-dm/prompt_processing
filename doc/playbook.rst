@@ -509,7 +509,7 @@ Testers
 =======
 
 ``python/tester/upload.py`` and ``python/tester/upload_from_repo.py`` are scripts that simulate the CCS image writer.
-It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
+It can be run from ``rubin-devl``.
 
 You must have a profile set up for the ``rubin-pp-dev`` bucket (see `Buckets`_, above).
 
@@ -523,15 +523,15 @@ Install the Prompt Processing code, and set it up before use:
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin-pp-dev`` S3 bucket, simulating incoming raw images.
 
-``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, LSSTComCamSim, LSSTCam, and LSSTCam-imSim), number of groups of images to send, and the platform (KEDA only).
+``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, LSSTComCamSim, LSSTCam, and LSSTCam-imSim), and the number of groups of images to send.
 
 Sample command line:
 
 .. code-block:: sh
 
-   python upload.py LATISS 3 KEDA
-   python upload.py LSSTCam 2 KEDA
-   python upload.py LSSTCam-imSim 2 KEDA
+   python upload.py LATISS 3
+   python upload.py LSSTCam 2
+   python upload.py LSSTCam-imSim 2
 
 This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 
@@ -544,15 +544,14 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 * For LSSTCam, 2 groups, in total 2 raw fits files and their corresponding json metadata files, are curated.
 * For LSSTCam-imSim, 2 groups, in total 3 raw fits files and custom-made json metadata files, are curated.
 
-``python/tester/upload_from_repo.py``: Command line arguments are a configuration file, the number of groups of images to send, and the
-platform (KEDA only).
+``python/tester/upload_from_repo.py``: Command line arguments are a configuration file, and the number of groups of images to send.
 
 Sample command line:
 
 .. code-block:: sh
 
-   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/HSC.yaml 3 KEDA
-   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LSSTComCamSim.yaml 2 KEDA --ordered
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/HSC.yaml 3
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LSSTComCamSim.yaml 2 --ordered
 
 This scripts draws images from a butler repository as defined in the input configuration file.
 A butler query constrains the data selection.
@@ -572,11 +571,11 @@ To implement schema changes in the development environment:
 * Update the ``*Visit`` classes in ``python/activator/visit.py`` accordingly.
 * Update the upload tester scripts ``python/tester/upload.py`` and ``python/tester/upload_from_repo.py`` where simulated ``next_visit`` events originate.
 * Update relevant unit tests.
-* Register the new schema to the Sasquatch's schema registry for the ``test.next-visit`` topic.
+* Register the new schema to the Sasquatch's schema registry for the ``test.next-visit-job`` topic.
   The `Sasquatch documentation <https://sasquatch.lsst.io/user-guide/avro.html>`_ describes the schema evolution.
   The script ``test-msg-dev.sh`` in the `next_visit_fan_out`_ repo can be run on ``rubin-devl`` to send a test event with the new schema; the `Sasquatch REST Proxy <https://sasquatch.lsst.io/user-guide/restproxy.html>`_ will register the new schema and the new schema id will be sent back as ``value_schema_id`` in the HTTP response.
   Use the new schema id in the ``send_next_visit`` utility function used in the testers.
-  The test events can be viewed on `Kafdrop <https://usdf-rsp-dev.slac.stanford.edu/kafdrop/topic/test.next-visit>`_.
+  The test events can be viewed on `Kafdrop <https://usdf-rsp-dev.slac.stanford.edu/kafdrop/topic/test.next-visit-job>`_.
 * Update the schema used in the `next_visit_fan_out`_ service.
 * Re-deploy and test services.
 

@@ -116,21 +116,16 @@ def process_group(kafka_url, visit_infos, uploader, start_time):
 
 
 def main():
-    if len(sys.argv) < 4:
-        print(f"Usage: {sys.argv[0]} INSTRUMENT N_GROUPS PLATFORM")
+    if len(sys.argv) < 3:
+        print(f"Usage: {sys.argv[0]} INSTRUMENT N_GROUPS")
         sys.exit(1)
     instrument = sys.argv[1]
     n_groups = int(sys.argv[2])
-    platform = sys.argv[3].upper()
 
     date = time.strftime("%Y%m%d")
 
-    if platform == "KNATIVE":
-        _log.info("Running upload for Knative platform")
-        kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
-    elif platform == "KEDA":
-        _log.info("Running upload for Keda platform")
-        kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit-job"
+    _log.info("Running upload for Keda platform")
+    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit-job"
 
     endpoint_url = "https://s3dfrgw.slac.stanford.edu"
     s3 = boto3.resource("s3", endpoint_url=endpoint_url)
@@ -316,10 +311,9 @@ def get_samples_lsst(bucket, instrument):
             exposure_num = LsstBaseTranslator.compute_exposure_id(int(day_obs), int(seq_num))
             sal_index = exposure_num
 
-        # ComCam currently sets the FILTBAND header to null.
-        physical_filter = md["FILTBAND"] or md["FILTER"]
-        if instrument == "LATISS" and len(physical_filter) == 1:
-            physical_filter = f"SDSS{physical_filter}_65mm~empty"
+        physical_filter = md["FILTER"]
+        if instrument == "LATISS":
+            physical_filter = f"{physical_filter}~empty"
         # LSSTCam currently only has lab data, no real sky angle
         # TODO: remove when switching to on-sky data
         if instrument == "LSSTCam":
