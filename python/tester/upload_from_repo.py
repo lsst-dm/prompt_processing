@@ -97,11 +97,6 @@ def _make_parser():
         help="The number of groups to upload.",
     )
     parser.add_argument(
-        "platform",
-        type=str,
-        help="KNATIVE or KEDA for the the platform",
-    )
-    parser.add_argument(
         "--ordered",
         action="store_true",
         help="Upload the exposures following the order of the "
@@ -115,14 +110,10 @@ def main():
     with open(args.config) as file:
         configs = yaml.safe_load(file)
     instrument = configs["instrument"]
-    platform = args.platform.upper()
 
     date = time.strftime("%Y%m%d")
 
-    if platform == "KNATIVE":
-        kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit"
-    elif platform == "KEDA":
-        kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit-job"
+    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit-job"
 
     _set_s3_bucket()
 
