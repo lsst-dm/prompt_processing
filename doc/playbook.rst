@@ -509,7 +509,7 @@ Testers
 =======
 
 ``python/tester/upload.py`` and ``python/tester/upload_from_repo.py`` are scripts that simulate the CCS image writer.
-It can be run from ``rubin-devl``, but requires the user to install the ``confluent_kafka`` package in their environment.
+It can be run from ``rubin-devl``.
 
 You must have a profile set up for the ``rubin-pp-dev`` bucket (see `Buckets`_, above).
 
