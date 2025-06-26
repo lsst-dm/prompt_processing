@@ -40,7 +40,7 @@ butler collection-chain "$REPO" LSSTComCamSim/defaults LSSTComCamSim/calib skyma
 # UI designed to be run from container, not command line
 export RUBIN_INSTRUMENT=LSSTComCamSim
 export TEMP_APDB=apdb.db  # Needed for persistent metadata table
-export CALIB_REPO="$REPO"
+export CENTRAL_REPO="$REPO"
 export CONFIG_APDB=foo.yaml
 export PREPROCESSING_PIPELINES_CONFIG="- survey: SURVEY
   pipelines:

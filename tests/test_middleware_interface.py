@@ -227,12 +227,14 @@ class MiddlewareInterfaceTest(MockTestCase):
         self.data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.central_repo = os.path.join(self.data_dir, "central_repo")
         self.umbrella = f"{instname}/defaults"
-        self.central_butler = Butler(self.central_repo,
-                                     collections=[self.umbrella],
-                                     writeable=False,
-                                     inferDefaults=False)
+        self.read_butler = Butler(self.central_repo,
+                                  writeable=False,
+                                  inferDefaults=False)
+        self.write_butler = Butler(self.central_repo,
+                                   writeable=False,  # A safety in case the tests try to overwrite testdir
+                                   inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
-        self.local_repo = make_local_repo(tempfile.gettempdir(), self.central_butler, instname)
+        self.local_repo = make_local_repo(tempfile.gettempdir(), self.read_butler, instname)
         self.local_cache = DatasetCache(3, {"uw_stars_20240524": 10, "template_coadd": 30})
         self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
 
@@ -280,7 +282,8 @@ class MiddlewareInterfaceTest(MockTestCase):
                                          private_sndStamp=1718661900.7165175,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
-        self.interface = MiddlewareInterface(self.central_butler, self.input_data, self.next_visit,
+        self.interface = MiddlewareInterface(self.read_butler, self.write_butler,
+                                             self.input_data, self.next_visit,
                                              # Use empty preprocessing to avoid slowing down tests
                                              # with real pipelines (adds 20s)
                                              pre_pipelines_empty, pipelines, skymap_name,
@@ -293,9 +296,8 @@ class MiddlewareInterfaceTest(MockTestCase):
                        ]:
             # TODO: better way to test repo location?
             self.assertTrue(
-                butler.getURI("skyMap", skymap=skymap_name, run="foo", predict=True).ospath
+                butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
                 .startswith(self.central_repo))
-            self.assertEqual(list(butler.collections.defaults), [f"{instname}/defaults"])
             self.assertTrue(butler.isWriteable())
 
     def test_make_local_repo(self):
@@ -525,7 +527,8 @@ class MiddlewareInterfaceTest(MockTestCase):
 
         # Second visit with everything same except group.
         second_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
-        second_interface = MiddlewareInterface(self.central_butler, self.input_data, second_visit,
+        second_interface = MiddlewareInterface(self.read_butler, self.write_butler,
+                                               self.input_data, second_visit,
                                                pre_pipelines_empty, pipelines, skymap_name,
                                                self.local_repo.name, self.local_cache,
                                                prefix="file://")
@@ -548,7 +551,8 @@ class MiddlewareInterfaceTest(MockTestCase):
                                           position=[self.next_visit.position[0] - 0.2,
                                                     self.next_visit.position[1] - 0.1],
                                           )
-        third_interface = MiddlewareInterface(self.central_butler, self.input_data, third_visit,
+        third_interface = MiddlewareInterface(self.read_butler, self.write_butler,
+                                              self.input_data, third_visit,
                                               pre_pipelines_empty, pipelines, skymap_name,
                                               self.local_repo.name, self.local_cache,
                                               prefix="file://")
@@ -1087,7 +1091,7 @@ class MiddlewareInterfaceTest(MockTestCase):
         """Test that _filter_datasets provides the correct values.
         """
         # Much easier to create DatasetRefs with a real repo.
-        registry = self.central_butler.registry
+        registry = self.read_butler.registry
         data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 5},
                                         "dummy")
         data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 0},
@@ -1121,7 +1125,7 @@ class MiddlewareInterfaceTest(MockTestCase):
         destination repository.
         """
         # Much easier to create DatasetRefs with a real repo.
-        registry = self.central_butler.registry
+        registry = self.read_butler.registry
         data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 1},
                                         "dummy")
 
@@ -1148,7 +1152,7 @@ class MiddlewareInterfaceTest(MockTestCase):
             self.assertEqual(expected, incoming)
 
         # Much easier to create DatasetRefs with a real repo.
-        registry = self.central_butler.registry
+        registry = self.read_butler.registry
         data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 5},
                                         "dummy")
         data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 0},
@@ -1194,7 +1198,7 @@ class MiddlewareInterfaceTest(MockTestCase):
 
     def test_generic_query(self):
         # Much easier to create DatasetRefs with a real repo.
-        registry = self.central_butler.registry
+        registry = self.read_butler.registry
         data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 5},
                                         "dummy")
         data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 0},
@@ -1264,17 +1268,20 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
 
     def setUp(self):
         self._create_copied_repo()
-        central_butler = Butler(self.central_repo.name,
-                                instrument=instname,
-                                skymap=skymap_name,
-                                collections=[f"{instname}/defaults"],
-                                writeable=True)
+        read_butler = Butler(self.central_repo.name,
+                             instrument=instname,
+                             skymap=skymap_name,
+                             writeable=False)
+        write_butler = Butler(self.central_repo.name,
+                              instrument=instname,
+                              skymap=skymap_name,
+                              writeable=True)
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.input_data = os.path.join(data_dir, "input_data")
 
-        local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
+        local_repo = make_local_repo(tempfile.gettempdir(), read_butler, instname)
         self.local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "template_coadd": 30})
-        second_local_repo = make_local_repo(tempfile.gettempdir(), central_butler, instname)
+        second_local_repo = make_local_repo(tempfile.gettempdir(), read_butler, instname)
         self.second_local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "template_coadd": 30})
         # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
         # getting garbage-collected.
@@ -1327,7 +1334,7 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         self.logger_name = "lsst.activator.middleware_interface"
 
         # Populate repository.
-        self.interface = MiddlewareInterface(central_butler, self.input_data, self.next_visit,
+        self.interface = MiddlewareInterface(read_butler, write_butler, self.input_data, self.next_visit,
                                              pre_pipelines_full, pipelines, skymap_name, local_repo.name,
                                              self.local_cache,
                                              prefix="file://")
@@ -1350,7 +1357,7 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         self.second_group_data_id = {(k if k != "exposure" else "group"): (v if k != "exposure" else str(v))
                                      for k, v in self.second_data_id.required.items()}
         self.second_interface = MiddlewareInterface(
-            central_butler, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
+            read_butler, write_butler, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
             skymap_name, second_local_repo.name, self.second_local_cache, prefix="file://")
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.second_interface.prep_butler()
@@ -1382,13 +1389,13 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
                                          for k, v in self.second_data_id.required.items()}
         # Dataset types defined for local Butler on pipeline run, but code
         # assumes output types already exist in central repo.
-        butler_tests.addDatasetType(self.interface.central_butler, "promptPreload_metrics",
+        butler_tests.addDatasetType(self.interface.write_central_butler, "promptPreload_metrics",
                                     {"instrument", "group", "detector"},
                                     "MetricMeasurementBundle")
-        butler_tests.addDatasetType(self.interface.central_butler, "regionTimeInfo",
+        butler_tests.addDatasetType(self.interface.write_central_butler, "regionTimeInfo",
                                     {"instrument", "group", "detector"},
                                     "RegionTimeInfo")
-        butler_tests.addDatasetType(self.interface.central_butler, "history_diaSource",
+        butler_tests.addDatasetType(self.interface.write_central_butler, "history_diaSource",
                                     {"instrument", "group", "detector"},
                                     "ArrowAstropy")
         butler_tests.addDatasetType(self.interface.butler, "history_diaSource",
@@ -1397,7 +1404,7 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         butler_tests.addDatasetType(self.second_interface.butler, "history_diaSource",
                                     {"instrument", "group", "detector"},
                                     "ArrowAstropy")
-        butler_tests.addDatasetType(self.interface.central_butler, "calexp",
+        butler_tests.addDatasetType(self.interface.write_central_butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
         butler_tests.addDatasetType(self.interface.butler, "calexp",
@@ -1437,13 +1444,14 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         """Test that extra collections in the chain will not lead to MissingCollectionError
         even if they do not carry useful data.
         """
-        central_butler = Butler(self.central_repo.name, writeable=True)
-        central_butler.registry.registerCollection("emptyrun", CollectionType.RUN)
-        central_butler.collections.prepend_chain("refcats", ["emptyrun"])
+        write_butler = Butler(self.central_repo.name, writeable=True)
+        write_butler.registry.registerCollection("emptyrun", CollectionType.RUN)
+        write_butler.collections.prepend_chain("refcats", ["emptyrun"])
+        read_butler = Butler(self.central_repo.name, writeable=False)
 
         # Avoid collisions with other calls to prep_butler
-        with make_local_repo(tempfile.gettempdir(), central_butler, instname) as local_repo:
-            interface = MiddlewareInterface(central_butler, self.input_data,
+        with make_local_repo(tempfile.gettempdir(), read_butler, instname) as local_repo:
+            interface = MiddlewareInterface(read_butler, write_butler, self.input_data,
                                             dataclasses.replace(self.next_visit, groupId="42"),
                                             pre_pipelines_empty, pipelines, skymap_name, local_repo,
                                             DatasetCache(3, {"uw_stars_20240524": 10, "template_coadd": 30}),
