@@ -299,7 +299,6 @@ def get_samples_lsst(bucket, instrument):
             raise RuntimeError(f"Unable to retrieve JSON sidecar: {sidecar}")
         with sidecar.open("r") as f:
             md = json.load(f)
-        angle_sys = FannedOutVisit.RotSys.SKY
 
         sal_index = INSTRUMENTS[instrument].sal_index
         # Use special sal_index to indicate a subset of detectors
@@ -314,11 +313,6 @@ def get_samples_lsst(bucket, instrument):
         physical_filter = md["FILTER"]
         if instrument == "LATISS":
             physical_filter = f"{physical_filter}~empty"
-        # LSSTCam currently only has lab data, no real sky angle
-        # TODO: remove when switching to on-sky data
-        if instrument == "LSSTCam":
-            angle_sys = FannedOutVisit.RotSys.NONE
-            md["ROTPA"] = 0.0
         visit = FannedOutVisit(
             instrument=instrument,
             detector=_DETECTOR_FROM_RS[instrument][m["raft_sensor"]],
@@ -328,7 +322,7 @@ def get_samples_lsst(bucket, instrument):
             coordinateSystem=FannedOutVisit.CoordSys.ICRS,
             position=[md["RA"], md["DEC"]],
             startTime=astropy.time.Time(md["DATE-BEG"], format="isot", scale="tai").unix_tai,
-            rotationSystem=angle_sys,
+            rotationSystem=FannedOutVisit.RotSys.SKY,
             cameraAngle=md["ROTPA"],
             survey="SURVEY",
             salIndex=sal_index,
