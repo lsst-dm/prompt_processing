@@ -232,6 +232,8 @@ The bucket ``rubin-pp-dev-users`` holds:
 
 * ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload scripts can draw from to create incoming raws.
 
+* ``rubin-pp-dev-users/apdb_config/`` contains the canonical configs identifying the development APDBs.
+
 ``rubin-pp-dev`` has notifications configured for new file arrival; these publish to the Kafka topic ``prompt-processing-dev``.
 The notifications can be viewed at `Kafdrop <https://k8s.slac.stanford.edu/usdf-prompt-processing-dev/kafdrop>`_.
 
