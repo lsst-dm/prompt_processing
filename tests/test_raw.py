@@ -96,7 +96,7 @@ class RawBase:
     def test_snap(self):
         path = get_raw_path(self.instrument, self.detector, self.group,
                             self.snap, self.exposure, self.filter)
-        assert is_path_consistent(path, self.visit)
+        self.assertTrue(is_path_consistent(path, self.visit))
 
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
@@ -119,8 +119,8 @@ class LsstBase(RawBase):
             warnings.filterwarnings("ignore", "S3 does not support flushing objects", UserWarning)
             with json_path.open("w") as f:
                 json.dump(dict(GROUPID=self.group, CURINDEX=self.snap + 1), f)
-        assert is_path_consistent(path, self.visit)
-        assert get_group_id_from_oid(path) == self.group
+        self.assertTrue(is_path_consistent(path, self.visit))
+        self.assertEqual(get_group_id_from_oid(path), self.group)
 
     def test_writeread(self):
         """Test that raw module can parse the paths it creates.
