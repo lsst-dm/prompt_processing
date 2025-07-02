@@ -180,7 +180,11 @@ def _get_write_butler():
 def _get_read_butler():
     """Lazy initialization of central Butler.
     """
-    return get_central_butler(read_repo, instrument_name, writeable=False)
+    if read_repo != write_repo:
+        return get_central_butler(read_repo, instrument_name, writeable=False)
+    else:
+        # Don't initialize an extra Butler from scratch
+        return _get_write_butler()
 
 
 @functools.cache
