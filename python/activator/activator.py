@@ -44,6 +44,7 @@ import flask
 import prometheus_client as prometheus
 import redis
 
+from shared.astropy import import_iers_cache
 from shared.config import PipelinesConfig
 from shared.logger import setup_usdf_logger
 from shared.raw import (
@@ -456,6 +457,7 @@ def create_app():
         )
 
         # Check initialization and abort early
+        import_iers_cache()
         _get_consumer()
         _get_storage_client()
         _get_read_butler()
@@ -504,6 +506,7 @@ def keda_start():
         registry.init_tracker()
 
         # Check initialization and abort early
+        import_iers_cache()
         _get_consumer()
         _get_storage_client()
         _get_read_butler()
