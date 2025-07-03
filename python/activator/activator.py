@@ -170,16 +170,21 @@ def _get_storage_client():
 
 
 @functools.cache
-def _get_central_butler(uri):
+def _get_write_butler():
     """Lazy initialization of central Butler.
-
-    Parameters
-    ----------
-    uri : `str`
-        The URI of the repository to load. Only one Butler object is
-        constructed for any repository.
     """
-    return get_central_butler(uri, instrument_name)
+    return get_central_butler(write_repo, instrument_name, writeable=True)
+
+
+@functools.cache
+def _get_read_butler():
+    """Lazy initialization of central Butler.
+    """
+    if read_repo != write_repo:
+        return get_central_butler(read_repo, instrument_name, writeable=False)
+    else:
+        # Don't initialize an extra Butler from scratch
+        return _get_write_butler()
 
 
 @functools.cache
@@ -192,7 +197,7 @@ def _get_local_repo():
         The directory containing the repo, to be removed when the
         process exits.
     """
-    repo = make_local_repo(local_repos, _get_central_butler(read_repo), instrument_name)
+    repo = make_local_repo(local_repos, _get_read_butler(), instrument_name)
     tracker = LocalRepoTracker.get()
     tracker.register(os.getpid(), repo.name)
     return repo
@@ -452,8 +457,8 @@ def create_app():
         # Check initialization and abort early
         _get_consumer()
         _get_storage_client()
-        _get_central_butler(read_repo)
-        _get_central_butler(write_repo)
+        _get_read_butler()
+        _get_write_butler()
         _get_local_repo()
 
         app = flask.Flask(__name__)
@@ -500,8 +505,8 @@ def keda_start():
         # Check initialization and abort early
         _get_consumer()
         _get_storage_client()
-        _get_central_butler(read_repo)
-        _get_central_butler(write_repo)
+        _get_read_butler()
+        _get_write_butler()
         _get_local_repo()
 
         redis_session = RedisStreamSession(
@@ -923,8 +928,8 @@ def process_visit(expected_visit: FannedOutVisit):
 
                 # Create a fresh MiddlewareInterface object to avoid accidental
                 # "cross-talk" between different visits.
-                mwi = MiddlewareInterface(_get_central_butler(read_repo),
-                                          _get_central_butler(write_repo),
+                mwi = MiddlewareInterface(_get_read_butler(),
+                                          _get_write_butler(),
                                           image_bucket,
                                           expected_visit,
                                           pre_pipelines,

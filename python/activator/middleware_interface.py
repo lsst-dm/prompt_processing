@@ -91,7 +91,7 @@ DATASTORE_EXCEPTIONS = SQL_EXCEPTIONS + (botocore.exceptions.ClientError, )
 
 
 @connect.retry(2, SQL_EXCEPTIONS, wait=repo_retry)
-def get_central_butler(central_repo: str, instrument_class: str):
+def get_central_butler(central_repo: str, instrument_class: str, writeable: bool):
     """Provide a Butler that can access the given repository and read and write
     data for the given instrument.
 
@@ -102,6 +102,8 @@ def get_central_butler(central_repo: str, instrument_class: str):
     instrument_class : `str`
         The name of the instrument whose data will be retrieved or written. May
         be either the fully qualified class name or the short name.
+    writeable : `bool`
+        Whether or not it's safe to attempt writes to this Butler.
 
     Returns
     -------
@@ -110,7 +112,7 @@ def get_central_butler(central_repo: str, instrument_class: str):
         ``instrument_name`` data.
     """
     return Butler(central_repo,
-                  writeable=True,
+                  writeable=writeable,
                   inferDefaults=False,
                   )
 

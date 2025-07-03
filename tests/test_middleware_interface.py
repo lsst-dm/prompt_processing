@@ -291,14 +291,21 @@ class MiddlewareInterfaceTest(MockTestCase):
                                              prefix="file://")
 
     def test_get_butler(self):
-        for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstComCamSim"),
-                       get_central_butler(self.central_repo, instname),
+        for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstComCamSim", writeable=True),
+                       get_central_butler(self.central_repo, instname, writeable=True),
                        ]:
             # TODO: better way to test repo location?
             self.assertTrue(
                 butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
                 .startswith(self.central_repo))
             self.assertTrue(butler.isWriteable())
+        for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstComCamSim", writeable=False),
+                       get_central_butler(self.central_repo, instname, writeable=False),
+                       ]:
+            self.assertTrue(
+                butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
+                .startswith(self.central_repo))
+            self.assertFalse(butler.isWriteable())
 
     def test_make_local_repo(self):
         for inst in [instname, "lsst.obs.lsst.LsstComCamSim"]:
