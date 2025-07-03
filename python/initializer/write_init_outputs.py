@@ -36,6 +36,7 @@ import sqlalchemy.exc
 import lsst.daf.butler
 import lsst.pipe.base
 
+from shared.astropy import import_iers_cache
 from shared.config import PipelinesConfig
 from shared import connect_utils
 from shared.logger import setup_usdf_logger
@@ -107,6 +108,7 @@ def main(args=None):
     setup_usdf_logger(labels={"instrument": instrument_name},)
     try:
         repo = os.environ["CENTRAL_REPO"]
+        import_iers_cache()  # Should not be needed, but best to be consistent
         _log.info("Preparing init-outputs for %s in %s.", instrument_name, repo)
 
         parsed = make_parser().parse_args(args)

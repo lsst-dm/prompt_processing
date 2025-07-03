@@ -195,7 +195,8 @@ class InitOutputsTest(unittest.TestCase):
                 unittest.mock.patch("initializer.write_init_outputs._make_init_outputs",
                                     side_effect=_make_init_outputs) as mock_make, \
                 unittest.mock.patch("initializer.write_init_outputs._get_current_day_obs",
-                                    return_value=""):
+                                    return_value=""), \
+                unittest.mock.patch("initializer.write_init_outputs.import_iers_cache"):
             main(["--deploy-id", self.deploy_id])
 
         # The preload collection is not associated with a pipeline

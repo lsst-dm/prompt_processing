@@ -35,7 +35,6 @@ from tester.utils import (
     decode_group,
     increment_group,
 )
-from test_utils import MockTestCase
 
 try:
     import boto3
@@ -49,7 +48,7 @@ except ImportError:
 
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
-class TesterUtilsTest(MockTestCase):
+class TesterUtilsTest(unittest.TestCase):
     """Test components in tester.
     """
     bucket_name = "testBucketName"
@@ -61,7 +60,7 @@ class TesterUtilsTest(MockTestCase):
 
     def setUp(self):
         self.enterContext(lsst.resources.s3utils.clean_test_environment_for_s3())
-        self.setup_patcher(self.mock_aws)
+        self.enterContext(self.mock_aws)
         s3 = boto3.resource("s3")
         s3.create_bucket(Bucket=self.bucket_name)
 
