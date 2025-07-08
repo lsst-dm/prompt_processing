@@ -56,7 +56,7 @@ from shared.visit import FannedOutVisit
 from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
     NonRetriableError, RetriableError
 from .middleware_interface import get_central_butler, \
-    make_local_repo, make_local_cache, MiddlewareInterface
+    make_local_repo, make_local_cache, MiddlewareInterface, ButlerWriter, DirectButlerWriter
 from .repo_tracker import LocalRepoTracker
 
 # Platform that prompt processing will run on
@@ -186,6 +186,10 @@ def _get_read_butler():
         # Don't initialize an extra Butler from scratch
         return _get_write_butler()
 
+@functools.cache
+def _get_butler_writer() -> ButlerWriter:
+    """Lazy initialization of Butler writer."""
+    return DirectButlerWriter(_get_write_butler())
 
 @functools.cache
 def _get_local_repo():
@@ -458,7 +462,7 @@ def create_app():
         _get_consumer()
         _get_storage_client()
         _get_read_butler()
-        _get_write_butler()
+        _get_butler_writer()
         _get_local_repo()
 
         app = flask.Flask(__name__)
@@ -506,7 +510,7 @@ def keda_start():
         _get_consumer()
         _get_storage_client()
         _get_read_butler()
-        _get_write_butler()
+        _get_butler_writer()
         _get_local_repo()
 
         redis_session = RedisStreamSession(
@@ -929,7 +933,7 @@ def process_visit(expected_visit: FannedOutVisit):
                 # Create a fresh MiddlewareInterface object to avoid accidental
                 # "cross-talk" between different visits.
                 mwi = MiddlewareInterface(_get_read_butler(),
-                                          _get_write_butler(),
+                                          _get_butler_writer(),
                                           image_bucket,
                                           expected_visit,
                                           pre_pipelines,
