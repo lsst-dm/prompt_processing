@@ -43,7 +43,7 @@ import lsst.sphgeom
 import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
-from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan, \
+from lsst.daf.butler import Butler, CollectionType, DatasetType, DatasetRef, Timespan, \
     DataIdValueError, DimensionRecord, MissingDatasetTypeError, MissingCollectionError
 import lsst.dax.apdb
 import lsst.geom
@@ -206,6 +206,61 @@ def _get_sasquatch_dispatcher():
     namespace = os.environ.get("DAF_BUTLER_SASQUATCH_NAMESPACE", "lsst.prompt")
     return SasquatchDispatcher(url=url, token=token, namespace=namespace)
 
+GroupedDimensionRecords: typing.TypeAlias = dict[str, list[DimensionRecord]]
+"""Dictionary from dimension name to list of dimension records for that
+dimension.
+"""
+
+class ButlerWriter(typing.Protocol):
+    """Interface defining functions for writing output datasets back to the central
+    Butler repository.
+    """
+
+    def transfer_outputs(
+        self, local_butler: Butler, dimension_records: GroupedDimensionRecords, datasets: list[DatasetRef]
+    ) -> list[DatasetRef]:
+        """Transfer outputs back to the central repository.
+
+        Parameters
+        ----------
+        local_butler : `lsst.daf.butler.Butler`
+            Local Butler repository from which output datasets will be
+            transferred.
+        dimension_records : `activator.middleware_interface.GroupedDimensionRecords`
+            Dimension records to write to the central Butler repository.
+        datasets : `list` [ `lsst.daf.butler.DatasetRef` ]
+            Output datasets to transfer to the central Butler repository.
+
+        Returns
+        -------
+        transferred : `list` [ `DatasetRef` ]
+            List of datasets actually transferred.
+        """
+
+class DirectButlerWriter(ButlerWriter):
+    def __init__(self, central_butler: Butler) -> None:
+        """
+        Writes Butler outputs back to the central repository by connecting
+        directly to the Butler database.
+
+        Parameters
+        ----------
+        central_butler : `lsst.daf.butler.Butler`
+            Butler repo to which pipeline outputs should be written. This
+            butler must be created with the default instrument assigned.
+        """
+        self._central_butler = central_butler
+
+    def transfer_outputs(
+        self, local_butler: Butler, dimension_records: GroupedDimensionRecords, datasets: list[DatasetRef]
+    ) -> list[DatasetRef]:
+        for dimension, records in dimension_records.items():
+            # If records don't match, this is not an error, and central takes precedence.
+            self._central_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
+
+        return self._central_butler.transfer_from(
+            local_butler, datasets, transfer="copy", transfer_dimensions=False)
+
 
 class MiddlewareInterface:
     """Interface layer between the Butler middleware and the prompt processing
@@ -231,9 +286,9 @@ class MiddlewareInterface:
         Butler repo containing the calibration and other data needed for
         processing images as they are received. This butler must be created
         with the default instrument and skymap assigned.
-    write_butler : `lsst.daf.butler.Butler`
-        Butler repo to which pipeline outputs should be written. This butler
-        must be created with the default instrument assigned.
+    butler_writer : `activator.middleware_interface.ButlerWriter`
+        Object that will be used to write the pipeline outputs back to the 
+        central Butler repository.
         May be the same object as ``read_butler``.
     image_bucket : `str`
         Storage bucket where images will be written to as they arrive.
@@ -286,7 +341,7 @@ class MiddlewareInterface:
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
 
-    def __init__(self, read_butler: Butler, write_butler: Butler, image_bucket: str, visit: FannedOutVisit,
+    def __init__(self, read_butler: Butler, butler_writer: ButlerWriter, image_bucket: str, visit: FannedOutVisit,
                  pre_pipelines: PipelinesConfig, main_pipelines: PipelinesConfig,
                  # TODO: encapsulate relationship between local_repo and local_cache
                  skymap: str, local_repo: str, local_cache: DatasetCache,
@@ -297,7 +352,7 @@ class MiddlewareInterface:
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = runs.get_deployment(self._apdb_config)
         self.read_central_butler = read_butler
-        self.write_central_butler = write_butler
+        self._butler_writer = butler_writer
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
         if not self.image_host.startswith("file"):
@@ -1669,17 +1724,13 @@ class MiddlewareInterface:
             )
 
         with lsst.utils.timer.time_this(_log, msg="export_outputs (transfer)", level=logging.DEBUG):
-            for dimension, records in dimension_records.items():
-                # If records don't match, this is not an error, and central takes precedence.
-                self.write_central_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
-            transferred = self.write_central_butler.transfer_from(
-                self.butler, datasets, transfer="copy", transfer_dimensions=False)
+            transferred = self._butler_writer.transfer_outputs(self.butler, dimension_records, list(datasets))
             _check_transfer_completion(datasets, transferred, "Uploaded")
 
         return transferred
 
     @staticmethod
-    def _export_exposure_dimensions(src_butler, **kwargs) -> dict[str, list[DimensionRecord]]:
+    def _export_exposure_dimensions(src_butler, **kwargs) -> GroupedDimensionRecords:
         """Retrieve dimension records generated from an exposure that need to
         be transferred to the central repo.
 
@@ -1716,8 +1767,9 @@ class MiddlewareInterface:
             extra_dimensions.extend(universe.get_elements_populated_by(universe[d]))
         sorted_dimensions = universe.sorted(full_dimensions + extra_dimensions)
 
+        records = {}
         for dimension in sorted_dimensions:
-            records = src_butler.query_dimension_records(dimension, explain=False, **kwargs)
+            records[dimension] = src_butler.query_dimension_records(dimension, explain=False, **kwargs)
         return records
 
     def _query_datasets_by_storage_class(self, butler, exposure_ids, collections, storage_class):
