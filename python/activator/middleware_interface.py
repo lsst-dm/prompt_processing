@@ -1614,7 +1614,7 @@ class MiddlewareInterface:
 
     @connect.retry(2, DATASTORE_EXCEPTIONS, wait=repo_retry)
     def _export_subset(self, exposure_ids: set[int],
-                       dataset_types: typing.Any, in_collections: typing.Any) -> None:
+                       dataset_types: typing.Any, in_collections: typing.Any) -> list[DatasetRef]:
         """Copy datasets associated with a processing run back to the
         central Butler.
 
