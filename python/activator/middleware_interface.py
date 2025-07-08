@@ -44,7 +44,7 @@ import lsst.afw.cameraGeom
 import lsst.ctrl.mpexec
 from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan, \
-    DataIdValueError, MissingDatasetTypeError, MissingCollectionError
+    DataIdValueError, DimensionRecord, MissingDatasetTypeError, MissingCollectionError
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
@@ -1655,20 +1655,23 @@ class MiddlewareInterface:
             except lsst.daf.butler.registry.DataIdError as e:
                 raise ValueError("Invalid visit or exposures.") from e
 
-        with lsst.utils.timer.time_this(_log, msg="export_outputs (transfer)", level=logging.DEBUG):
             # Transfer dimensions created by ingest in case it was never done in
             # central repo (which is normal for dev).
             # Transferring governor dimensions in parallel can cause deadlocks in
             # central registry. We need to transfer our exposure/visit dimensions,
             # so handle those manually.
-            self._export_exposure_dimensions(
+            dimension_records = self._export_exposure_dimensions(
                 self.butler,
-                self.write_central_butler,
                 where="exposure in (exposure_ids)",
                 bind={"exposure_ids": exposure_ids},
                 instrument=self.instrument.getName(),
                 detector=self.visit.detector,
             )
+
+        with lsst.utils.timer.time_this(_log, msg="export_outputs (transfer)", level=logging.DEBUG):
+            for dimension, records in dimension_records.items():
+                # If records don't match, this is not an error, and central takes precedence.
+                self.write_central_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
             transferred = self.write_central_butler.transfer_from(
                 self.butler, datasets, transfer="copy", transfer_dimensions=False)
             _check_transfer_completion(datasets, transferred, "Uploaded")
@@ -1676,8 +1679,9 @@ class MiddlewareInterface:
         return transferred
 
     @staticmethod
-    def _export_exposure_dimensions(src_butler, dest_butler, **kwargs):
-        """Transfer dimensions generated from an exposure to the central repo.
+    def _export_exposure_dimensions(src_butler, **kwargs) -> dict[str, list[DimensionRecord]]:
+        """Retrieve dimension records generated from an exposure that need to
+        be transferred to the central repo.
 
         In many cases the exposure records will already exist in the central
         repo, but this is not guaranteed (especially in dev environments).
@@ -1688,12 +1692,15 @@ class MiddlewareInterface:
         ----------
         src_butler : `lsst.daf.butler.Butler`
             The butler from which to transfer dimension records.
-        dest_butler : `lsst.daf.butler.Butler`
-            The butler to which to transfer records.
         **kwargs
             Any data ID parameters to select specific records. They have the
             same meanings as the parameters of
             `lsst.daf.butler.Butler.query_dimension_records`.
+
+        Returns
+        -------
+        dimension_records : `dict` [ `str` , `list` [ `lsst.daf.butler.DimensionRecord` ] ]
+            Dictionary from dimension name to list of dimension records for that dimension.
         """
         core_dimensions = ["group",
                            "day_obs",
@@ -1711,8 +1718,7 @@ class MiddlewareInterface:
 
         for dimension in sorted_dimensions:
             records = src_butler.query_dimension_records(dimension, explain=False, **kwargs)
-            # If records don't match, this is not an error, and central takes precedence.
-            dest_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
+        return records
 
     def _query_datasets_by_storage_class(self, butler, exposure_ids, collections, storage_class):
         """Identify all datasets with a particular storage class, regardless of
