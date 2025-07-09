@@ -803,7 +803,7 @@ def _filter_exposures(exposures, visit, mwi):
             if angle is not None and not math.isnan(angle.degree):
                 diff = (angle - expected_angle).wrap_at("180d")
                 if abs(diff).degree > 1.0:
-                    _log.warning("Exposure %d had sky rotation %.1f, expected %.1f. Discarding.".
+                    _log.warning("Exposure %d had sky rotation %.1f, expected %.1f. Discarding.",
                                  expid, angle.degree, expected_angle.degree)
                     to_drop.add(expid)
             else:
