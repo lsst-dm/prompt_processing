@@ -56,7 +56,8 @@ from shared.visit import FannedOutVisit
 from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
     NonRetriableError, RetriableError
 from .middleware_interface import get_central_butler, \
-    make_local_repo, make_local_cache, MiddlewareInterface
+    make_local_repo, make_local_cache, MiddlewareInterface, ButlerWriter, DirectButlerWriter
+from .kafka_butler_writer import KafkaButlerWriter
 from .repo_tracker import LocalRepoTracker
 
 # Platform that prompt processing will run on
@@ -87,6 +88,16 @@ kafka_group_id = str(uuid.uuid4())
 visit_expire = float(os.environ.get("MESSAGE_EXPIRATION", 3600))
 # The topic on which to listen to updates to image_bucket
 bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
+# Topic used to transfer output datasets to the central repository.
+# Used if USE_KAFKA_OUTPUT_WRITER is set to '1'.
+output_topic = os.environ.get("OUTPUT_TOPIC", "rubin-prompt-processing-butler-output")
+# URI to the path where output datasets will be written when using the Kafka
+# writer to transfer outputs to the central Butler repository.
+# This will generally be in the same S3 bucket used by the central Butler.
+file_output_path = os.environ.get("OUTPUT_FILE_PATH")
+# If '1', sends outputs to a service for transfer into the central Butler
+# repository instead of writing to the database directly.
+use_kafka_output_writer = os.environ.get("USE_KAFKA_OUTPUT_WRITER", "0") == "1"
 # Offset for Kafka bucket notification.
 bucket_notification_kafka_offset_reset = os.environ.get("BUCKET_NOTIFICATION_KAFKA_OFFSET_RESET", "latest")
 # Max requests to handle before restarting. 0 means no limit.
@@ -160,6 +171,12 @@ def _get_consumer():
         "auto.offset.reset": bucket_notification_kafka_offset_reset,
     })
 
+@functools.cache
+def _get_producer():
+    """Lazy initialization of shared Kafka Producer."""
+    return kafka.Producer({
+        "bootstrap.servers": kafka_cluster,
+    })
 
 @functools.cache
 def _get_storage_client():
@@ -186,6 +203,16 @@ def _get_read_butler():
         # Don't initialize an extra Butler from scratch
         return _get_write_butler()
 
+@functools.cache
+def _get_butler_writer() -> ButlerWriter:
+    """Lazy initialization of Butler writer."""
+    assert file_output_path is not None
+    if use_kafka_output_writer:
+        return KafkaButlerWriter(
+            _get_producer(), output_topic=output_topic, file_output_path=file_output_path
+        )
+    else:
+        return DirectButlerWriter(_get_write_butler())
 
 @functools.cache
 def _get_local_repo():
@@ -458,7 +485,7 @@ def create_app():
         _get_consumer()
         _get_storage_client()
         _get_read_butler()
-        _get_write_butler()
+        _get_butler_writer()
         _get_local_repo()
 
         app = flask.Flask(__name__)
@@ -506,7 +533,7 @@ def keda_start():
         _get_consumer()
         _get_storage_client()
         _get_read_butler()
-        _get_write_butler()
+        _get_butler_writer()
         _get_local_repo()
 
         redis_session = RedisStreamSession(
@@ -929,7 +956,7 @@ def process_visit(expected_visit: FannedOutVisit):
                 # Create a fresh MiddlewareInterface object to avoid accidental
                 # "cross-talk" between different visits.
                 mwi = MiddlewareInterface(_get_read_butler(),
-                                          _get_write_butler(),
+                                          _get_butler_writer(),
                                           image_bucket,
                                           expected_visit,
                                           pre_pipelines,
