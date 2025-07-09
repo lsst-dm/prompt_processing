@@ -39,7 +39,6 @@ from shared.raw import (
     get_raw_path,
 )
 from shared.visit import FannedOutVisit
-from test_utils import MockTestCase
 
 try:
     import boto3
@@ -63,7 +62,7 @@ class RawBase:
         super().setUp()
 
         self.enterContext(s3utils.clean_test_environment_for_s3())
-        self.setup_patcher(self.mock_aws)
+        self.enterContext(self.mock_aws)
         s3 = boto3.resource("s3")
         self.bucket = "test-bucket-test"
         s3.create_bucket(Bucket=self.bucket)
@@ -96,7 +95,7 @@ class RawBase:
     def test_snap(self):
         path = get_raw_path(self.instrument, self.detector, self.group,
                             self.snap, self.exposure, self.filter)
-        assert is_path_consistent(path, self.visit)
+        self.assertTrue(is_path_consistent(path, self.visit))
 
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
@@ -119,8 +118,8 @@ class LsstBase(RawBase):
             warnings.filterwarnings("ignore", "S3 does not support flushing objects", UserWarning)
             with json_path.open("w") as f:
                 json.dump(dict(GROUPID=self.group, CURINDEX=self.snap + 1), f)
-        assert is_path_consistent(path, self.visit)
-        assert get_group_id_from_oid(path) == self.group
+        self.assertTrue(is_path_consistent(path, self.visit))
+        self.assertEqual(get_group_id_from_oid(path), self.group)
 
     def test_writeread(self):
         """Test that raw module can parse the paths it creates.
@@ -210,7 +209,7 @@ class LsstBase(RawBase):
         self.assertTrue(any(error_msg in line for line in recorder.output))
 
 
-class LatissTest(LsstBase, MockTestCase):
+class LatissTest(LsstBase, unittest.TestCase):
     def setUp(self):
         self.instrument = "LATISS"
         self.detector = 0
@@ -228,7 +227,7 @@ class LatissTest(LsstBase, MockTestCase):
         )
 
 
-class LsstComCamTest(LsstBase, MockTestCase):
+class LsstComCamTest(LsstBase, unittest.TestCase):
     def setUp(self):
         self.instrument = "LSSTComCam"
         self.detector = 4
@@ -246,7 +245,7 @@ class LsstComCamTest(LsstBase, MockTestCase):
         )
 
 
-class LsstCamTest(LsstBase, MockTestCase):
+class LsstCamTest(LsstBase, unittest.TestCase):
     def setUp(self):
         self.instrument = "LSSTCam"
         self.detector = 42
@@ -264,7 +263,7 @@ class LsstCamTest(LsstBase, MockTestCase):
         )
 
 
-class LsstCamImSimTest(LsstBase, MockTestCase):
+class LsstCamImSimTest(LsstBase, unittest.TestCase):
     def setUp(self):
         self.instrument = "LSSTCam-imSim"
         self.group = "2022-03-21T00:00:00.000088"
@@ -294,7 +293,7 @@ class LsstCamImSimTest(LsstBase, MockTestCase):
 
 
 @unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
-class HscTest(RawBase, MockTestCase):
+class HscTest(RawBase, unittest.TestCase):
     def setUp(self):
         self.instrument = "HSC"
         self.group = "2022032100001"
