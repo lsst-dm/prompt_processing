@@ -49,6 +49,7 @@ from shared.logger import setup_usdf_logger
 from shared.raw import (
     check_for_snap,
     is_path_consistent,
+    get_exp_id_from_oid,
     get_group_id_from_oid,
 )
 from shared.run_utils import get_day_obs
@@ -747,8 +748,10 @@ def _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set):
         )
         if oid:
             _log.debug("Found object %s already present", oid)
-            exp_id = mwi.ingest_image(oid)
-            expid_set.add(exp_id)
+            exp_id = get_exp_id_from_oid(oid)
+            if exp_id not in expid_set:
+                exp_id = mwi.ingest_image(oid)
+                expid_set.add(exp_id)
 
 
 def _filter_messages(messages):
@@ -800,9 +803,10 @@ def _consume_messages(messages, consumer, expected_visit, mwi, expid_set):
                     _log.debug("Received %r", oid)
                     group_id = get_group_id_from_oid(oid)
                     if group_id == expected_visit.groupId:
-                        # Ingest the snap
-                        exp_id = mwi.ingest_image(oid)
-                        expid_set.add(exp_id)
+                        exp_id = get_exp_id_from_oid(oid)
+                        if exp_id not in expid_set:
+                            exp_id = mwi.ingest_image(oid)
+                            expid_set.add(exp_id)
             except ValueError:
                 _log.error(f"Failed to match object id '{oid}'")
         # Commits are per-group, so this can't interfere with other
