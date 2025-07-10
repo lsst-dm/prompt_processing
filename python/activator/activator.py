@@ -721,6 +721,36 @@ def parse_next_visit(http_request):
     return visit
 
 
+def _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set):
+    """Check if any snaps have already arrived, and ingest raws if found.
+
+    Parameters
+    ----------
+    expected_visit : `shared.visit.FannedOutVisit`
+        The nextVisit being processed.
+    expected_snaps : `int`
+        The number of snaps to check for this visit.
+    mwi : `activator.middleware_interface.MiddlewareInterface`
+        The MiddlewareInterface object for this visit.
+    expid_set : set [`int`]
+        The IDs of already ingested exposures. This set is modified in place.
+    """
+    for snap in range(expected_snaps):
+        oid = check_for_snap(
+            _get_storage_client(),
+            image_bucket,
+            raw_microservice,
+            expected_visit.instrument,
+            expected_visit.groupId,
+            snap,
+            expected_visit.detector,
+        )
+        if oid:
+            _log.debug("Found object %s already present", oid)
+            exp_id = mwi.ingest_image(oid)
+            expid_set.add(exp_id)
+
+
 def _filter_messages(messages):
     """Split Kafka output into proper messages and errors.
 
@@ -948,21 +978,7 @@ def process_visit(expected_visit: FannedOutVisit):
                 # include the currently executing script, then add time to transfer
                 # the last image.
                 timeout = expected_visit.duration * 2 + image_timeout
-                # Check to see if any snaps have already arrived
-                for snap in range(expected_snaps):
-                    oid = check_for_snap(
-                        _get_storage_client(),
-                        image_bucket,
-                        raw_microservice,
-                        expected_visit.instrument,
-                        expected_visit.groupId,
-                        snap,
-                        expected_visit.detector,
-                    )
-                    if oid:
-                        _log.debug("Found object %s already present", oid)
-                        exp_id = mwi.ingest_image(oid)
-                        expid_set.add(exp_id)
+                _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set)
 
                 _log.debug("Waiting for snaps...")
                 start = time.time()
