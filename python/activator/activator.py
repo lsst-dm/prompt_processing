@@ -1019,7 +1019,12 @@ def process_visit(expected_visit: FannedOutVisit):
                         # should be caught by the "already arrived" check.
                         consumer.commit(message=received)
                 if len(expid_set) < expected_snaps:
-                    _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
+                    _log.debug("Received %d out of %d expected snaps. Check again",
+                               len(expid_set), expected_snaps)
+                    # Retry in case of race condition with microservice.
+                    _check_raw_presence_and_ingest(expected_visit, expected_snaps, mwi, expid_set)
+                    if len(expid_set) < expected_snaps:
+                        _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
             except GracefulShutdownInterrupt as e:
                 raise RetriableError("Processing interrupted before pipeline execution") from e
 
