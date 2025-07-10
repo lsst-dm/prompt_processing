@@ -1038,6 +1038,11 @@ def process_visit(expected_visit: FannedOutVisit):
 
                     _consume_messages(messages, consumer, expected_visit, mwi, expid_set)
                 if len(expid_set) < expected_snaps:
+                    _log.debug("Received %d out of %d expected snaps. Check again.",
+                               len(expid_set), expected_snaps)
+                    # Retry in case of race condition with microservice.
+                    _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set)
+                if len(expid_set) < expected_snaps:
                     _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
             except GracefulShutdownInterrupt as e:
                 raise RetriableError("Processing interrupted before pipeline execution") from e
