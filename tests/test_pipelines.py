@@ -33,6 +33,7 @@ class PipelineDefintionsTestSuite(unittest.TestCase):
     def setUp(self):
         self.path = os.path.join(getPackageDir("prompt_processing"), "pipelines")
 
+    @unittest.mock.patch.dict(os.environ, {"SATTLE_URI_BASE": "fake_host:1234"})
     def test_graph_build(self):
         """Test that each pipeline definition file can be
         used to build a graph.
