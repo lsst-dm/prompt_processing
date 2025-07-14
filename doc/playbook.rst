@@ -530,7 +530,7 @@ Sample command line:
 .. code-block:: sh
 
    python upload.py LATISS 3
-   python upload.py LSSTCam 2
+   python upload.py LSSTCam 5
    python upload.py LSSTCam-imSim 2
 
 This script draws images stored in the ``rubin-pp-dev-users`` bucket.
@@ -541,7 +541,7 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
   One of the files, the unobserved group `2024-09-04T05:59:29.342`, has no templates and is known to fail `calibrateImage` in determining PSF.
   This visit can test pipeline fallback features.
 * For LSSTComCamSim, 2 groups, in total 18 raw fits files and their corresponding json metadata files, are curated.
-* For LSSTCam, 2 groups, in total 2 raw fits files and their corresponding json metadata files, are curated.
+* For LSSTCam, 5 groups, in total 10 raw fits files and their corresponding json metadata files, are curated.
 * For LSSTCam-imSim, 2 groups, in total 3 raw fits files and custom-made json metadata files, are curated.
 
 ``python/tester/upload_from_repo.py``: Command line arguments are a configuration file, and the number of groups of images to send.
