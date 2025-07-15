@@ -776,6 +776,42 @@ def _filter_messages(messages):
     return cleaned
 
 
+def _consume_messages(messages, consumer, expected_visit, mwi, expid_set):
+    """Parse the file arrival messages, ingest the matching images, and commit.
+
+    Parameters
+    ----------
+    messages : `list` [`confluent_kafka.Message`]
+        The messages to process and consume.
+    consumer: `confluent_kafka.Consumer`
+        The Kafka Consumer instance to commit the messages when done processing.
+    expected_visit : `shared.visit.FannedOutVisit`
+        The nextVisit being processed.
+    mwi : `activator.middleware_interface.MiddlewareInterface`
+        The MiddlewareInterface object for this visit.
+    expid_set : set [`int`]
+        The IDs of already ingested exposures. This set is modified in place.
+    """
+    # Not all notifications are for this group/detector.
+    for received in messages:
+        for oid in _parse_bucket_notifications(received.value()):
+            try:
+                if is_path_consistent(oid, expected_visit):
+                    _log.debug("Received %r", oid)
+                    group_id = get_group_id_from_oid(oid)
+                    if group_id == expected_visit.groupId:
+                        # Ingest the snap
+                        exp_id = mwi.ingest_image(oid)
+                        expid_set.add(exp_id)
+            except ValueError:
+                _log.error(f"Failed to match object id '{oid}'")
+        # Commits are per-group, so this can't interfere with other
+        # workers. This may wipe messages associated with a next_visit
+        # that will later be assigned to this worker, but those cases
+        # should be caught by the "already arrived" check.
+        consumer.commit(message=received)
+
+
 def _parse_bucket_notifications(payload):
     """Extract object IDs from an S3 notification.
 
@@ -996,24 +1032,7 @@ def process_visit(expected_visit: FannedOutVisit):
                         continue
                     startup_response = []
 
-                    # Not all notifications are for this group/detector
-                    for received in messages:
-                        for oid in _parse_bucket_notifications(received.value()):
-                            try:
-                                if is_path_consistent(oid, expected_visit):
-                                    _log.debug("Received %r", oid)
-                                    group_id = get_group_id_from_oid(oid)
-                                    if group_id == expected_visit.groupId:
-                                        # Ingest the snap
-                                        exp_id = mwi.ingest_image(oid)
-                                        expid_set.add(exp_id)
-                            except ValueError:
-                                _log.error(f"Failed to match object id '{oid}'")
-                        # Commits are per-group, so this can't interfere with other
-                        # workers. This may wipe messages associated with a next_visit
-                        # that will later be assigned to this worker, but those cases
-                        # should be caught by the "already arrived" check.
-                        consumer.commit(message=received)
+                    _consume_messages(messages, consumer, expected_visit, mwi, expid_set)
                 if len(expid_set) < expected_snaps:
                     _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
             except GracefulShutdownInterrupt as e:
