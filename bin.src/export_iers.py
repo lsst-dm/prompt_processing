@@ -41,8 +41,8 @@ IERS_URLS = [iers.IERS_A_URL, iers.IERS_B_URL, iers.IERS_LEAP_SECOND_URL]
 
 def _make_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("destination",
-                        help="The path or URI to put the exported IERS cache. Should be a zip file.")
+    parser.add_argument("destination", nargs="+",
+                        help="The path(s) or URI(s) to put the exported IERS cache. Should be a zip file.")
     return parser
 
 
@@ -55,10 +55,12 @@ def main():
         astropy.utils.data.download_file(url, cache="update")
     with tempfile.NamedTemporaryFile(suffix=".zip") as local_cache:
         astropy.utils.data.export_download_cache(local_cache, IERS_URLS, overwrite=True)
-        dest = lsst.resources.ResourcePath(args.destination)
         src = lsst.resources.ResourcePath(local_cache.name, isTemporary=True)
         # Any errors past this point may invalidate the remote cache
-        dest.transfer_from(src, "copy", overwrite=True)
+        for d in args.destination:
+            logging.info("Writing %s...", d)
+            dest = lsst.resources.ResourcePath(d)
+            dest.transfer_from(src, "copy", overwrite=True)
 
 
 if __name__ == "__main__":
