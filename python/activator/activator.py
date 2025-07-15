@@ -49,6 +49,7 @@ from shared.logger import setup_usdf_logger
 from shared.raw import (
     check_for_snap,
     is_path_consistent,
+    get_exp_id_from_oid,
     get_group_id_from_oid,
 )
 from shared.run_utils import get_day_obs
@@ -721,6 +722,38 @@ def parse_next_visit(http_request):
     return visit
 
 
+def _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set):
+    """Check if any snaps have already arrived, and ingest raws if found.
+
+    Parameters
+    ----------
+    expected_visit : `shared.visit.FannedOutVisit`
+        The nextVisit being processed.
+    expected_snaps : `int`
+        The number of snaps to check for this visit.
+    mwi : `activator.middleware_interface.MiddlewareInterface`
+        The MiddlewareInterface object for this visit.
+    expid_set : set [`int`]
+        The IDs of already ingested exposures. This set is modified in place.
+    """
+    for snap in range(expected_snaps):
+        oid = check_for_snap(
+            _get_storage_client(),
+            image_bucket,
+            raw_microservice,
+            expected_visit.instrument,
+            expected_visit.groupId,
+            snap,
+            expected_visit.detector,
+        )
+        if oid:
+            _log.debug("Found object %s already present", oid)
+            exp_id = get_exp_id_from_oid(oid)
+            if exp_id not in expid_set:
+                exp_id = mwi.ingest_image(oid)
+                expid_set.add(exp_id)
+
+
 def _filter_messages(messages):
     """Split Kafka output into proper messages and errors.
 
@@ -744,6 +777,43 @@ def _filter_messages(messages):
         else:
             cleaned.append(msg)
     return cleaned
+
+
+def _consume_messages(messages, consumer, expected_visit, mwi, expid_set):
+    """Parse the file arrival messages, ingest the matching images, and commit.
+
+    Parameters
+    ----------
+    messages : `list` [`confluent_kafka.Message`]
+        The messages to process and consume.
+    consumer: `confluent_kafka.Consumer`
+        The Kafka Consumer instance to commit the messages when done processing.
+    expected_visit : `shared.visit.FannedOutVisit`
+        The nextVisit being processed.
+    mwi : `activator.middleware_interface.MiddlewareInterface`
+        The MiddlewareInterface object for this visit.
+    expid_set : set [`int`]
+        The IDs of already ingested exposures. This set is modified in place.
+    """
+    # Not all notifications are for this group/detector.
+    for received in messages:
+        for oid in _parse_bucket_notifications(received.value()):
+            try:
+                if is_path_consistent(oid, expected_visit):
+                    _log.debug("Received %r", oid)
+                    group_id = get_group_id_from_oid(oid)
+                    if group_id == expected_visit.groupId:
+                        exp_id = get_exp_id_from_oid(oid)
+                        if exp_id not in expid_set:
+                            exp_id = mwi.ingest_image(oid)
+                            expid_set.add(exp_id)
+            except ValueError:
+                _log.error(f"Failed to match object id '{oid}'")
+        # Commits are per-group, so this can't interfere with other
+        # workers. This may wipe messages associated with a next_visit
+        # that will later be assigned to this worker, but those cases
+        # should be caught by the "already arrived" check.
+        consumer.commit(message=received)
 
 
 def _parse_bucket_notifications(payload):
@@ -948,21 +1018,7 @@ def process_visit(expected_visit: FannedOutVisit):
                 # include the currently executing script, then add time to transfer
                 # the last image.
                 timeout = expected_visit.duration * 2 + image_timeout
-                # Check to see if any snaps have already arrived
-                for snap in range(expected_snaps):
-                    oid = check_for_snap(
-                        _get_storage_client(),
-                        image_bucket,
-                        raw_microservice,
-                        expected_visit.instrument,
-                        expected_visit.groupId,
-                        snap,
-                        expected_visit.detector,
-                    )
-                    if oid:
-                        _log.debug("Found object %s already present", oid)
-                        exp_id = mwi.ingest_image(oid)
-                        expid_set.add(exp_id)
+                _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set)
 
                 _log.debug("Waiting for snaps...")
                 start = time.time()
@@ -980,24 +1036,12 @@ def process_visit(expected_visit: FannedOutVisit):
                         continue
                     startup_response = []
 
-                    # Not all notifications are for this group/detector
-                    for received in messages:
-                        for oid in _parse_bucket_notifications(received.value()):
-                            try:
-                                if is_path_consistent(oid, expected_visit):
-                                    _log.debug("Received %r", oid)
-                                    group_id = get_group_id_from_oid(oid)
-                                    if group_id == expected_visit.groupId:
-                                        # Ingest the snap
-                                        exp_id = mwi.ingest_image(oid)
-                                        expid_set.add(exp_id)
-                            except ValueError:
-                                _log.error(f"Failed to match object id '{oid}'")
-                        # Commits are per-group, so this can't interfere with other
-                        # workers. This may wipe messages associated with a next_visit
-                        # that will later be assigned to this worker, but those cases
-                        # should be caught by the "already arrived" check.
-                        consumer.commit(message=received)
+                    _consume_messages(messages, consumer, expected_visit, mwi, expid_set)
+                if len(expid_set) < expected_snaps:
+                    _log.debug("Received %d out of %d expected snaps. Check again.",
+                               len(expid_set), expected_snaps)
+                    # Retry in case of race condition with microservice.
+                    _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set)
                 if len(expid_set) < expected_snaps:
                     _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
             except GracefulShutdownInterrupt as e:
