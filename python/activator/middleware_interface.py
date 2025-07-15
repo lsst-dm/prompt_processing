@@ -1771,8 +1771,9 @@ class MiddlewareInterface:
             extra_dimensions.extend(universe.get_elements_populated_by(universe[d]))
         sorted_dimensions = universe.sorted(full_dimensions + extra_dimensions)
 
+        records = {}
         for dimension in sorted_dimensions:
-            records = src_butler.query_dimension_records(dimension, explain=False, **kwargs)
+            records[dimension] = src_butler.query_dimension_records(dimension, explain=False, **kwargs)
         return records
 
     def _query_datasets_by_storage_class(self, butler, exposure_ids, collections, storage_class):
