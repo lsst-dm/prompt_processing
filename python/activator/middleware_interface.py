@@ -206,10 +206,12 @@ def _get_sasquatch_dispatcher():
     namespace = os.environ.get("DAF_BUTLER_SASQUATCH_NAMESPACE", "lsst.prompt")
     return SasquatchDispatcher(url=url, token=token, namespace=namespace)
 
+
 GroupedDimensionRecords: typing.TypeAlias = dict[str, list[DimensionRecord]]
 """Dictionary from dimension name to list of dimension records for that
 dimension.
 """
+
 
 class ButlerWriter(typing.Protocol):
     """Interface defining functions for writing output datasets back to the central
@@ -236,6 +238,7 @@ class ButlerWriter(typing.Protocol):
         transferred : `list` [ `DatasetRef` ]
             List of datasets actually transferred.
         """
+
 
 class DirectButlerWriter(ButlerWriter):
     def __init__(self, central_butler: Butler) -> None:
@@ -287,7 +290,7 @@ class MiddlewareInterface:
         processing images as they are received. This butler must be created
         with the default instrument and skymap assigned.
     butler_writer : `activator.middleware_interface.ButlerWriter`
-        Object that will be used to write the pipeline outputs back to the 
+        Object that will be used to write the pipeline outputs back to the
         central Butler repository.
         May be the same object as ``read_butler``.
     image_bucket : `str`
@@ -341,7 +344,8 @@ class MiddlewareInterface:
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
 
-    def __init__(self, read_butler: Butler, butler_writer: ButlerWriter, image_bucket: str, visit: FannedOutVisit,
+    def __init__(self, read_butler: Butler, butler_writer: ButlerWriter, image_bucket: str,
+                 visit: FannedOutVisit,
                  pre_pipelines: PipelinesConfig, main_pipelines: PipelinesConfig,
                  # TODO: encapsulate relationship between local_repo and local_cache
                  skymap: str, local_repo: str, local_cache: DatasetCache,

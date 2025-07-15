@@ -45,7 +45,9 @@ class KafkaButlerWriter:
         self._output_topic = output_topic
         self._file_output_path = ResourcePath(file_output_path, forceDirectory=True)
 
-    def transfer_outputs(self, local_butler: Butler, dimension_records: list[DimensionRecord], datasets: list[DatasetRef]) -> None:
+    def transfer_outputs(
+        self, local_butler: Butler, dimension_records: list[DimensionRecord], datasets: list[DatasetRef]
+    ) -> None:
         # Create a subdirectory in the output root distinct to this processing
         # run.
         date_string = date.today().strftime("%Y-%m-%d")

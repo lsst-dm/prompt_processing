@@ -173,12 +173,14 @@ def _get_consumer():
         "auto.offset.reset": bucket_notification_kafka_offset_reset,
     })
 
+
 @functools.cache
 def _get_producer():
     """Lazy initialization of shared Kafka Producer."""
     return kafka.Producer({
         "bootstrap.servers": kafka_cluster,
     })
+
 
 @functools.cache
 def _get_storage_client():
@@ -205,6 +207,7 @@ def _get_read_butler():
         # Don't initialize an extra Butler from scratch
         return _get_write_butler()
 
+
 @functools.cache
 def _get_butler_writer() -> ButlerWriter:
     """Lazy initialization of Butler writer."""
@@ -215,6 +218,7 @@ def _get_butler_writer() -> ButlerWriter:
         )
     else:
         return DirectButlerWriter(_get_write_butler())
+
 
 @functools.cache
 def _get_local_repo():
