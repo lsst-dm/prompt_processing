@@ -58,7 +58,6 @@ from activator.middleware_interface import get_central_butler, make_local_repo, 
 from shared.config import PipelinesConfig
 from shared.run_utils import get_output_run
 from shared.visit import FannedOutVisit
-from test_utils import MockTestCase
 
 # The short name of the instrument used in the test repo.
 instname = "LSSTComCamSim"
@@ -220,7 +219,7 @@ preprocessing_types = {"preloaded_ss_object", "preloaded_dia_source", "preloaded
                        }
 
 
-class MiddlewareInterfaceTest(MockTestCase):
+class MiddlewareInterfaceTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
     """
     def setUp(self):
@@ -243,21 +242,21 @@ class MiddlewareInterfaceTest(MockTestCase):
         self.addCleanup(config_file.close)
         config.save(config_file.name)
 
-        self.setup_patcher(unittest.mock.patch.dict(os.environ,
-                                                    {"CONFIG_APDB": config_file.name,
-                                                     # Disable external queries
-                                                     "MP_SKY_URL": ""
-                                                     }))
-        self.setup_patcher(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
-        self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
-                                               return_value=sim_deployment))
+        self.enterContext(unittest.mock.patch.dict(os.environ,
+                                                   {"CONFIG_APDB": config_file.name,
+                                                    # Disable external queries
+                                                    "MP_SKY_URL": ""
+                                                    }))
+        self.enterContext(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
+        self.enterContext(unittest.mock.patch("shared.run_utils.get_deployment",
+                                              return_value=sim_deployment))
         self.deploy_id = sim_deployment
         # Use new_callable instead of side_effect to make sure the right thing is patched
-        self.setup_patcher(unittest.mock.patch.object(MiddlewareInterface, "_get_pipeline_input_types",
-                                                      new_callable=_filter_dataset_types,
-                                                      func=MiddlewareInterface._get_pipeline_input_types,
-                                                      types=preprocessing_types,
-                                                      ))
+        self.enterContext(unittest.mock.patch.object(MiddlewareInterface, "_get_pipeline_input_types",
+                                                     new_callable=_filter_dataset_types,
+                                                     func=MiddlewareInterface._get_pipeline_input_types,
+                                                     types=preprocessing_types,
+                                                     ))
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
@@ -1237,7 +1236,7 @@ class MiddlewareInterfaceTest(MockTestCase):
         self.assertEqual(result, set())
 
 
-class MiddlewareInterfaceWriteableTest(MockTestCase):
+class MiddlewareInterfaceWriteableTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
 
     This class creates a fresh test repository for writing to. This means test
@@ -1300,21 +1299,21 @@ class MiddlewareInterfaceWriteableTest(MockTestCase):
         self.addCleanup(config_file.close)
         config.save(config_file.name)
 
-        self.setup_patcher(unittest.mock.patch.dict(os.environ,
-                                                    {"CONFIG_APDB": config_file.name,
-                                                     # Disable external queries
-                                                     "MP_SKY_URL": ""
-                                                     }))
-        self.setup_patcher(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
-        self.setup_patcher(unittest.mock.patch("shared.run_utils.get_deployment",
-                                               return_value=sim_deployment))
+        self.enterContext(unittest.mock.patch.dict(os.environ,
+                                                   {"CONFIG_APDB": config_file.name,
+                                                    # Disable external queries
+                                                    "MP_SKY_URL": ""
+                                                    }))
+        self.enterContext(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
+        self.enterContext(unittest.mock.patch("shared.run_utils.get_deployment",
+                                              return_value=sim_deployment))
         self.deploy_id = sim_deployment
         # Use new_callable instead of side_effect to make sure the right thing is patched
-        self.setup_patcher(unittest.mock.patch.object(MiddlewareInterface, "_get_pipeline_input_types",
-                                                      new_callable=_filter_dataset_types,
-                                                      func=MiddlewareInterface._get_pipeline_input_types,
-                                                      types=preprocessing_types,
-                                                      ))
+        self.enterContext(unittest.mock.patch.object(MiddlewareInterface, "_get_pipeline_input_types",
+                                                     new_callable=_filter_dataset_types,
+                                                     func=MiddlewareInterface._get_pipeline_input_types,
+                                                     types=preprocessing_types,
+                                                     ))
 
         # coordinates from OR4 visit 7024061700046
         ra = 215.82729413263485
