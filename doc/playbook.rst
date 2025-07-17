@@ -228,7 +228,7 @@ The bucket ``rubin-pp-dev`` holds incoming raw images.
 The bucket ``rubin-pp-dev-users`` holds:
 
 * ``rubin-pp-dev-users/central_repo_2/`` contains the central repository described in `DMTN-219`_.
-  This repository currently contains HSC, LATISS, LSSTComCamSim, LSSTCam, and LSSTCam-imSim data, uploaded with ``make_export.py``.
+  This repository currently contains HSC, LATISS, and LSSTCam data, uploaded with ``make_export.py``.
 
 * ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload scripts can draw from to create incoming raws.
 
@@ -346,7 +346,7 @@ To inspect table permissions:
    set search_path to <namespace>;
    \dp
 
-Most tables should grant the SELECT (r) and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, ``lsstcam_prompt``, and ``lsstcomcamsim_prompt``).
+Most tables should grant the SELECT (r) and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcam_prompt``).
 Some tables also need INSERT (a) and DELETE (d).
 
 We need SELECT (r) and USAGE (U) permissions for the sequence ``collection_seq_collection_id``, but *not* for ``dataset_calibs_*_seq_id``, ``dataset_type_seq_id``, or ``dimension_graph_key_seq_id``.
@@ -356,7 +356,7 @@ If any tables are missing permissions, run:
 
 .. code-block:: psql
 
-   GRANT insert, select, update ON TABLE "<table1>", "<table2>" TO hsc_prompt, latiss_prompt, lsstcam_prompt, lsstcomcamsim_prompt;
+   GRANT insert, select, update ON TABLE "<table1>", "<table2>" TO hsc_prompt, latiss_prompt, lsstcam_prompt;
 
 See the `GRANT command`_ for other options.
 
@@ -373,8 +373,8 @@ One raw was ingested, visit-defined, and kept in the development central repo, s
 .. code-block:: sh
 
    apdb-cli create-sql "sqlite:///apdb.db" apdb_config.yaml
-   pipetask run -b s3://rubin-pp-dev-users/central_repo_2 -i LSSTComCamSim/raw/all,LSSTComCamSim/defaults,LSSTComCamSim/templates -o u/${USER}/add-dataset-types -d "instrument='LSSTComCamSim' and exposure=7024062700235 and detector=8" -p $AP_PIPE_DIR/pipelines/LSSTComCamSim/ApPipe.yaml -c parameters:apdb_config=apdb_config.yaml -c associateApdb:doPackageAlerts=False --register-dataset-types --init-only
-   pipetask run -b s3://rubin-pp-dev-users/central_repo_2 -i LSSTComCamSim/raw/all,LSSTComCamSim/defaults,LSSTComCamSim/templates -o u/${USER}/add-dataset-types -d "instrument='LSSTComCamSim' and exposure=7024062700235 and detector=8" -p $AP_PIPE_DIR/pipelines/LSSTComCamSim/SingleFrame.yaml -c parameters:apdb_config=apdb_config.yaml --register-dataset-types --init-only
+   pipetask run -b s3://rubin-pp-dev-users/central_repo_2 -i LSSTCam/raw/all,LSSTCam/defaults,LSSTCam/templates -o u/${USER}/add-dataset-types -d "instrument='LSSTCam' and exposure=2025050100367 and detector=30" -p $AP_PIPE_DIR/pipelines/LSSTCam/ApPipe.yaml -c parameters:apdb_config=apdb_config.yaml -c associateApdb:doPackageAlerts=False --register-dataset-types --init-only
+   pipetask run -b s3://rubin-pp-dev-users/central_repo_2 -i LSSTCam/raw/all,LSSTCam/defaults,LSSTCam/templates -o u/${USER}/add-dataset-types -d "instrument='LSSTCam' and exposure=2025050100367 and detector=30" -p $AP_PIPE_DIR/pipelines/LSSTCam/SingleFrame.yaml -c parameters:apdb_config=apdb_config.yaml --register-dataset-types --init-only
 
 .. note::
 
@@ -528,7 +528,7 @@ Install the Prompt Processing code, and set it up before use:
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin-pp-dev`` S3 bucket, simulating incoming raw images.
 
-``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, LSSTComCamSim, LSSTCam, and LSSTCam-imSim), and the number of groups of images to send.
+``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, and LSSTCam), and the number of groups of images to send.
 
 Sample command line:
 
@@ -536,7 +536,6 @@ Sample command line:
 
    python upload.py LATISS 3
    python upload.py LSSTCam 5
-   python upload.py LSSTCam-imSim 2
 
 This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 
@@ -545,9 +544,7 @@ This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 * For LATISS, 3 groups, in total 3 raw fits files and their corresponding json metadata files, are curated.
   One of the files, the unobserved group `2024-09-04T05:59:29.342`, has no templates and is known to fail `calibrateImage` in determining PSF.
   This visit can test pipeline fallback features.
-* For LSSTComCamSim, 2 groups, in total 18 raw fits files and their corresponding json metadata files, are curated.
 * For LSSTCam, 5 groups, in total 10 raw fits files and their corresponding json metadata files, are curated.
-* For LSSTCam-imSim, 2 groups, in total 3 raw fits files and custom-made json metadata files, are curated.
 
 ``python/tester/upload_from_repo.py``: Command line arguments are a configuration file, and the number of groups of images to send.
 
@@ -556,7 +553,7 @@ Sample command line:
 .. code-block:: sh
 
    python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/HSC.yaml 3
-   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LSSTComCamSim.yaml 2 --ordered
+   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LATISS.yaml 2 --ordered
 
 This scripts draws images from a butler repository as defined in the input configuration file.
 A butler query constrains the data selection.
@@ -763,9 +760,6 @@ Redis Streams are created using the `Redis CLI`_.  The ``XGROUP CREATE`` command
    XGROUP CREATE instrument:hsc hsc_consumer_group $ mkstream
    XGROUP CREATE instrument:latiss latiss_consumer_group $ mkstream
    XGROUP CREATE instrument:lsstcam lsstcam_consumer_group $ mkstream
-   XGROUP CREATE instrument:lsstcamimsim lsstcamimsim_consumer_group $ mkstream
-   XGROUP CREATE instrument:lsstcomcam lsstcomcam_consumer_group $ mkstream
-   XGROUP CREATE instrument:lsstcomcamsim lsstcomcamsim_consumer_group $ mkstream
 
 For Prod:
 
@@ -777,13 +771,13 @@ For Prod:
 Viewing Messages Statistics
 ---------------------------
 
-Prompt Processing is configured to ignore messages that have already been read by another consumer. To view messages statistics for a consumer group enter ``XINFO GROUPS <consumer_group_name>`` with the `Redis CLI`_.  An example below with the ComCamSim consumer group.  The ``lag`` is ``9`` so 9 messages have not been acknowledged.  To manually clear these messages see `Clear Redis Stream`_
+Prompt Processing is configured to ignore messages that have already been read by another consumer. To view messages statistics for a consumer group enter ``XINFO GROUPS <consumer_group_name>`` with the `Redis CLI`_.  An example below with the LSSTCam consumer group.  The ``lag`` is ``9`` so 9 messages have not been acknowledged.  To manually clear these messages see `Clear Redis Stream`_
 
 .. code-block:: sh
 
-   127.0.0.1:6379> XINFO GROUPS instrument:lsstcomcamsim
+   127.0.0.1:6379> XINFO GROUPS instrument:lsstcam
    1)  1) "name"
-      2) "lsstcomcamsim_consumer_group"
+      2) "lsstcam_consumer_group"
       3) "consumers"
       4) (integer) 704
       5) "pending"
@@ -799,13 +793,13 @@ In the above example there are 72 ``entries-read`` which is 72 messages acknowle
 
 Clear Redis Stream
 ------------------
-To delete all the events in a Redis stream the ``DEL`` command can be used.  Below is an example with ComCamSim to delete and recreate the Redis Stream.  Please note there will be errors generated by Keda any Scaled Jobs connected to the stream when the stream is deleted.
+To delete all the events in a Redis stream the ``DEL`` command can be used.  Below is an example with LSSTCam to delete and recreate the Redis Stream.  Please note there will be errors generated by Keda any Scaled Jobs connected to the stream when the stream is deleted.
 
 .. code-block:: sh
 
-   127.0.0.1:6379> DEL instrument:lsstcomcamsim
+   127.0.0.1:6379> DEL instrument:lsstcam
    
    (integer) 1
-   127.0.0.1:6379> XGROUP CREATE instrument:lsstcomcamsim lsstcomcamsim_consumer_group $ mkstream
+   127.0.0.1:6379> XGROUP CREATE instrument:lsstcam lsstcam_consumer_group $ mkstream
    
    OK
