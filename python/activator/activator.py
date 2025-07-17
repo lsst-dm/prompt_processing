@@ -90,22 +90,31 @@ kafka_group_id = str(uuid.uuid4())
 visit_expire = float(os.environ.get("MESSAGE_EXPIRATION", 3600))
 # The topic on which to listen to updates to image_bucket
 bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
-# Topic used to transfer output datasets to the central repository.
-# Used if USE_KAFKA_OUTPUT_WRITER is set to '1'.
-output_topic = os.environ.get("OUTPUT_TOPIC", "rubin-prompt-processing-butler-output")
-# URI to the path where output datasets will be written when using the Kafka
-# writer to transfer outputs to the central Butler repository.
-# This will generally be in the same S3 bucket used by the central Butler.
-file_output_path = os.environ.get("OUTPUT_FILE_PATH")
-# If '1', sends outputs to a service for transfer into the central Butler
-# repository instead of writing to the database directly.
-use_kafka_output_writer = os.environ.get("USE_KAFKA_OUTPUT_WRITER", "0") == "1"
 # Offset for Kafka bucket notification.
 bucket_notification_kafka_offset_reset = os.environ.get("BUCKET_NOTIFICATION_KAFKA_OFFSET_RESET", "latest")
 # Max requests to handle before restarting. 0 means no limit.
 max_requests = int(os.environ.get("WORKER_RESTART_FREQ", 0))
 # The number of seconds to delay retrying connections to the Redis stream.
 redis_retry = float(os.environ.get("REDIS_RETRY_DELAY", 30))
+
+# If '1', sends outputs to a service for transfer into the central Butler
+# repository instead of writing to the database directly.
+use_kafka_butler_writer = os.environ.get("USE_KAFKA_BUTLER_WRITER", "0") == "1"
+# Hostname of the Kafka cluster used by the Butler writer.
+# Used if USE_KAFKA_BUTLER_WRITER is set to '1'.
+butler_writer_kafka_cluster = os.environ.get("BUTLER_WRITER_KAFKA_CLUSTER")
+# Username for authentication to BUTLER_WRITER_KAFKA_CLUSTER.
+butler_writer_kafka_username = os.environ.get("BUTLER_WRITER_KAFKA_USERNAME")
+# Password for authentication to BUTLER_WRITER_KAFKA_CLUSTER.
+butler_writer_kafka_password = os.environ.get("BUTLER_WRITER_KAFKA_PASSWORD")
+# Topic used to transfer output datasets to the central repository.
+# Used if USE_KAFKA_BUTLER_WRITER is set to '1'.
+butler_writer_kafka_topic = os.environ.get("BUTLER_WRITER_KAFKA_TOPIC")
+# URI to the path where output datasets will be written when using the Kafka
+# writer to transfer outputs to the central Butler repository.
+# This will generally be in the same S3 bucket used by the central Butler.
+# Used if USE_KAFKA_BUTLER_WRITER is set to '1'.
+butler_writer_file_output_path = os.environ.get("BUTLER_WRITER_FILE_OUTPUT_PATH")
 
 # Conditionally load keda environment variables
 if platform == "keda":
@@ -176,9 +185,17 @@ def _get_consumer():
 
 @functools.cache
 def _get_producer():
-    """Lazy initialization of shared Kafka Producer."""
+    """Lazy initialization of Kafka Producer for Butler writer."""
+    assert butler_writer_kafka_cluster
+    assert butler_writer_kafka_username
+    assert butler_writer_kafka_password
+
     return kafka.Producer({
-        "bootstrap.servers": kafka_cluster,
+        "bootstrap.servers": butler_writer_kafka_cluster,
+        "security.protocol": "sasl_plaintext",
+        "sasl.mechanism": "SCRAM-SHA-512",
+        "sasl.username": butler_writer_kafka_username,
+        "sasl.password": butler_writer_kafka_password
     })
 
 
@@ -211,10 +228,12 @@ def _get_read_butler():
 @functools.cache
 def _get_butler_writer() -> ButlerWriter:
     """Lazy initialization of Butler writer."""
-    assert file_output_path is not None
-    if use_kafka_output_writer:
+    assert butler_writer_file_output_path
+    if use_kafka_butler_writer:
         return KafkaButlerWriter(
-            _get_producer(), output_topic=output_topic, file_output_path=file_output_path
+            _get_producer(),
+            output_topic=butler_writer_kafka_topic,
+            file_output_path=butler_writer_file_output_path
         )
     else:
         return DirectButlerWriter(_get_write_butler())
