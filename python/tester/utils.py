@@ -22,7 +22,6 @@
 __all__ = [
     "get_last_group",
     "make_exposure_id",
-    "make_imsim_time_headers",
     "replace_header_key",
     "send_next_visit",
     "make_group",
@@ -37,7 +36,6 @@ import logging
 import requests
 
 from astropy.io import fits
-from astropy.time import Time, TimeDelta
 
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 
@@ -61,14 +59,12 @@ INSTRUMENTS = {
     "LATISS": Instrument(1, 1, 2),
     "DECam": Instrument(1, 62),
     "HSC": Instrument(1, 112, 999),
-    "LSSTCam-imSim": Instrument(1, 189, 999),
 }
 # The schema ID of the ``next_visit`` message in the Sasquatch REST Proxy.
 SCHEMA_ID = 170
 
 max_exposure = {
     "HSC": 21474800,
-    "LSSTCam-imSim": 9999999,
 }
 """A mapping of instrument to exposure_max (`dict` [`str`, `int`]).
 
@@ -110,10 +106,7 @@ def get_last_group(bucket, instrument, date):
         blobs = bucket.objects.filter(
             Prefix=f"{instrument}/{date}/",
         )
-        if instrument == "LSSTCam-imSim":
-            numbers = [int(blob.key.split("/")[2][-4:]) for blob in blobs]
-        else:
-            numbers = [int(blob.key.split("/")[2].split("_")[-1]) for blob in blobs]
+        numbers = [int(blob.key.split("/")[2].split("_")[-1]) for blob in blobs]
         if numbers:
             last_number = max(numbers)
         else:
@@ -190,9 +183,7 @@ def make_exposure_id(instrument, group_id, snap):
         The header key-value pairs to accompany with the exposure ID in the
         format for ``instrument``'s header.
     """
-    if instrument == "LSSTCam-imSim":
-        return make_imsim_id(group_id, snap)
-    elif instrument in _LSST_CAMERA_LIST:
+    if instrument in _LSST_CAMERA_LIST:
         abbrev = _CAMERA_ABBREV[instrument]
         return make_lsst_id(group_id, snap, abbrev)
     elif instrument == "HSC":
@@ -265,75 +256,6 @@ def make_lsst_id(group_id, snap, abbrev):
         "OBSID": obs_id,
         "GROUPID": group_id,
         "CONTRLLR": controller,
-    }
-
-
-def make_imsim_id(group_id, snap):
-    """Generate an exposure ID that the Butler can parse as a valid LSSTCam-imSim ID.
-
-    Parameters
-    ----------
-    group_id : `str`
-        The mocked group ID.
-    snap : `int`
-        A snap ID.
-
-    Returns
-    -------
-    exposure_number :
-        An exposure ID in the format expected by Gen 3 Middleware.
-    headers : `dict`
-        Key-value pairs in the form to appear in LSST headers.
-
-    Notes
-    -----
-    The current implementation gives 7-digit exposure IDs without considering
-    the year; that is, duplicate IDs can be generated from a different year.
-    """
-    day_obs, seq_num = decode_group(group_id)
-    night_id = datetime.datetime.strptime(str(day_obs), "%Y%m%d").strftime("%j")
-    if seq_num > 9999:
-        raise RuntimeError(f"{group_id} translated to seq_num {seq_num}, "
-                           f"too large for the current implementation.")
-    exposure_num = int(f"{night_id:03}{seq_num:04}")
-    # Offset so the fake exposure numbers are always larger than any imsim raw
-    # in /repo/dc2, where the highest exposure ID is 5000580.
-    exposure_num += 6000000
-    if exposure_num > max_exposure["LSSTCam-imSim"]:
-        raise RuntimeError(f"{group_id} translated to expId {exposure_num}, "
-                           f"max allowed is {max_exposure['LSSTCam-imSim']}.")
-    return exposure_num, {
-        "OBSID": exposure_num,
-        # These headers do not exist in original imsim files, but are added for
-        # mocked exposure records.
-        "DAYOBS": day_obs,
-        "GROUPID": group_id,
-    }
-
-
-def make_imsim_time_headers(exposure_interval, start_time_unix_tai):
-    """Generate imsim headers based on current time.
-
-    Parameters
-    ----------
-    exposure_interval : `float`
-        Exposure time in seconds.
-    start_time_unix_tai : `float`
-        The Unix time (TAI) of the exposure start.
-
-    Returns
-    -------
-    headers : `dict`
-        Key-value pairs in the form to appear in the headers.
-    """
-    start_time = Time(start_time_unix_tai, format='unix_tai')
-    end_time = start_time + TimeDelta(exposure_interval, format="sec")
-    return {
-        "MJD-OBS": start_time.mjd,
-        "DATE-OBS": start_time.strftime("%Y-%m-%dT%H:%M:%S.%f"),
-        "DATE-END": end_time.strftime("%Y-%m-%dT%H:%M:%S.%f"),
-        "EXPTIME": exposure_interval,
-        "DARKTIME": exposure_interval,
     }
 
 
