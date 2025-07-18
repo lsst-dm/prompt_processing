@@ -72,9 +72,6 @@ _log_trace3.setLevel(logging.CRITICAL)  # Turn off by default.
 
 # The number of calib datasets to keep, including the current run.
 base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))
-# Multipliers to base_keep_limit for refcats and templates.
-refcat_factor = int(os.environ.get("REFCATS_PER_IMAGE", 4))
-template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
 # Whether or not to export to the central repo.
 do_export = bool(int(os.environ.get("DEBUG_EXPORT_OUTPUTS", '1')))
 # The number of arcseconds to pad the region in preloading spatial datasets.
@@ -167,25 +164,7 @@ def make_local_cache():
     cache : `activator.caching.DatasetCache`
         An empty cache with configured caching strategy and limits.
     """
-    return DatasetCache(
-        base_keep_limit,
-        cache_sizes={
-            # TODO: find an API that doesn't require explicit enumeration
-            "goodSeeingCoadd": template_factor * base_keep_limit,
-            "deepCoadd": template_factor * base_keep_limit,
-            "template_coadd": template_factor * base_keep_limit,
-            "uw_stars_20240524": refcat_factor * base_keep_limit,
-            "uw_stars_20240228": refcat_factor * base_keep_limit,
-            "uw_stars_20240130": refcat_factor * base_keep_limit,
-            "cal_ref_cat_2_2": refcat_factor * base_keep_limit,
-            "ps1_pv3_3pi_20170110": refcat_factor * base_keep_limit,
-            "gaia_dr3_20230707": refcat_factor * base_keep_limit,
-            "gaia_dr2_20200414": refcat_factor * base_keep_limit,
-            "atlas_refcat2_20220201": refcat_factor * base_keep_limit,
-            "the_monster_20240904": refcat_factor * base_keep_limit,
-            "the_monster_20250219": refcat_factor * base_keep_limit,
-        },
-    )
+    return DatasetCache(base_keep_limit)
 
 
 def _get_sasquatch_dispatcher():
@@ -734,7 +713,7 @@ class MiddlewareInterface:
                                      bind={"search_region": region},
                                      find_first=True,
                                      ),
-                      all_callback=self._cache_datasets,
+                      # Don't cache refcats
                       ))
         if refcats:
             _log.debug("Found %d new refcat datasets from catalog '%s'.", len(refcats), dataset_type.name)
@@ -775,7 +754,7 @@ class MiddlewareInterface:
                            bind={"search_region": region},
                            find_first=True,
                            ),
-            all_callback=self._cache_datasets,
+            # Don't cache templates
         ))
         if templates:
             _log.debug("Found %d new template datasets of type %s.", len(templates), dataset_type.name)
