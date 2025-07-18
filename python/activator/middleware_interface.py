@@ -70,9 +70,8 @@ _log_trace.setLevel(logging.CRITICAL)  # Turn off by default.
 _log_trace3 = logging.getLogger("TRACE3.lsst." + __name__)
 _log_trace3.setLevel(logging.CRITICAL)  # Turn off by default.
 
-# The number of calib datasets to keep from previous runs, or one less than the
-# number of calibs that may be present *during* a run.
-base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))-1
+# The number of calib datasets to keep, including the current run.
+base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))
 # Multipliers to base_keep_limit for refcats and templates.
 refcat_factor = int(os.environ.get("REFCATS_PER_IMAGE", 4))
 template_factor = int(os.environ.get("PATCHES_PER_IMAGE", 4))
@@ -406,15 +405,16 @@ class MiddlewareInterface:
                                                 "instrument": self.instrument.getName(),
                                                 })
 
-    def _mark_dataset_usage(self, refs: collections.abc.Iterable[lsst.daf.butler.DatasetRef]):
-        """Mark requested datasets in the cache.
+    def _cache_datasets(self, refs: collections.abc.Iterable[lsst.daf.butler.DatasetRef]):
+        """Add or mark requested datasets in the cache.
 
         Parameters
         ----------
         refs : iterable [`lsst.daf.butler.DatasetRef`]
-            The datasets to mark. Assumed to all fit inside the cache.
+            The datasets to cache. Assumed to all fit inside the cache.
         """
-        self.cache.update(refs)
+        evicted = self.cache.update(refs)
+        self.butler.pruneDatasets(evicted, disassociate=True, unstore=True, purge=True)
         try:
             self.cache.access(refs)
         except LookupError as e:
@@ -734,7 +734,7 @@ class MiddlewareInterface:
                                      bind={"search_region": region},
                                      find_first=True,
                                      ),
-                      all_callback=self._mark_dataset_usage,
+                      all_callback=self._cache_datasets,
                       ))
         if refcats:
             _log.debug("Found %d new refcat datasets from catalog '%s'.", len(refcats), dataset_type.name)
@@ -775,7 +775,7 @@ class MiddlewareInterface:
                            bind={"search_region": region},
                            find_first=True,
                            ),
-            all_callback=self._mark_dataset_usage,
+            all_callback=self._cache_datasets,
         ))
         if templates:
             _log.debug("Found %d new template datasets of type %s.", len(templates), dataset_type.name)
@@ -836,7 +836,7 @@ class MiddlewareInterface:
         calibs = set(_filter_datasets(
             self.read_central_butler, self.butler,
             query_calibs_by_date,
-            all_callback=self._mark_dataset_usage,
+            all_callback=self._cache_datasets,
         ))
         if calibs:
             _log.debug("Found %d new calib datasets of type '%s'.", len(calibs), dataset_type.name)
@@ -873,7 +873,7 @@ class MiddlewareInterface:
                            data_id=data_id,
                            find_first=True,
                            ),
-            all_callback=self._mark_dataset_usage,
+            all_callback=self._cache_datasets,
         ))
         if datasets:
             _log.debug("Found %d new datasets of type %s.", len(datasets), dataset_type.name)
@@ -913,7 +913,7 @@ class MiddlewareInterface:
             run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
             types = self._get_init_output_types(pipeline_file)
             # Output runs are always cleared after execution, so _filter_datasets would always warn.
-            # This also means the init-outputs don't need to be cached with _mark_dataset_usage.
+            # This also means the init-outputs don't need to be cached with _cache_datasets.
             query = _generic_query(types, collections=run)
             datasets.update(query(self.read_central_butler, "source datasets"))
         if not datasets:
