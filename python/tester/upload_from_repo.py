@@ -312,19 +312,6 @@ def _upload_one_image(temp_dir, group_id, ref, uri):
             ref.dataId["physical_filter"],
         )
 
-        sidecar_uploaded = False
-        if instrument in _LSST_CAMERA_LIST:
-            # Upload a corresponding sidecar json file
-            sidecar = uri.updatedExtension("json")
-            if sidecar.exists():
-                with sidecar.open("r") as f:
-                    md = json.load(f)
-                    md.update(headers)
-                    dest_bucket.put_object(
-                        Body=json.dumps(md), Key=dest_key.removesuffix("fits") + "json"
-                    )
-                sidecar_uploaded = True
-
         path = os.path.join(temp_dir, uri.basename())
         ResourcePath(path).transfer_from(uri, transfer="copy")
         _log.debug(
@@ -334,7 +321,7 @@ def _upload_one_image(temp_dir, group_id, ref, uri):
             with open(path, "r+b") as temp_file:
                 for header_key in headers:
                     replace_header_key(temp_file, header_key, headers[header_key])
-                if not sidecar_uploaded and instrument in _LSST_CAMERA_LIST:
+                if instrument in _LSST_CAMERA_LIST:
                     with fits.open(temp_file, mode="update") as hdul:
                         header = {k: v for k, v in hdul[0].header.items() if k != ""}
                         dest_bucket.put_object(
