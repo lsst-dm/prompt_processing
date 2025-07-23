@@ -141,10 +141,15 @@ def main():
             group = increment_group(instrument, group, 1)
             refs = prepare_one_visit(kafka_url, group, butler, instrument, visit)
             ref_dict = butler.get_many_uris(refs)
+            result = load_raw_to_temp(temp_dir, ref_dict, pool=pool)
             _log.info(f"Slewing to group {group}, with {instrument} visit {visit}")
             time.sleep(SLEW_INTERVAL)
             _log.info(f"Taking exposure for group {group}")
             time.sleep(EXPOSURE_INTERVAL)
+            _log.info(f"Finishing exposure for group {group}")
+            # Wait for the temp_dir loading to finish
+            if result["async_result"]:
+                result["async_result"].wait()
             _log.info(f"Uploading detector images for group {group}")
             upload_images(pool, temp_dir, group, ref_dict)
         pool.close()
@@ -244,6 +249,51 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
     return refs
 
 
+def load_raw_to_temp(temp_dir, ref_dict, pool=None):
+    """
+    Copy the raw data from the source butler to a temporary folder
+
+    Parameters
+    ----------
+    temp_dir : `str`
+        A directory in which to temporarily hold the images so that their
+        metadata can be modified.
+    ref_dict : `dict` [ `lsst.daf.butler.DatasetRef`, `lsst.daf.butler.datastore.DatasetRefURIs` ]
+        A dict of the datasetRefs to upload and their corresponding URIs.
+    pool : `multiprocessing.Pool`, optional
+        A multiprocessing pool to use for parallel file copying.
+
+    Returns
+    -------
+    result : `dict`
+        A dictionary with:
+        - "mode": "fits-serial" or "fits-parallel"
+        - "async_result": `multiprocessing.AsyncResult` if multiprocessing is used, else `None`.
+    """
+    if not ref_dict:
+        raise ValueError("ref_dict is empty")
+
+    if pool is None:
+        _log.warning("Multiprocessing pool is not provided; fallback to serial.")
+        for r in ref_dict:
+            _load_one_detector_to_temp(temp_dir, r, ref_dict[r].primaryURI)
+        return {
+            "mode": "fits-serial",
+            "async_result": None,
+        }
+
+    async_result = pool.starmap_async(
+        _load_one_detector_to_temp,
+        [(temp_dir, r, ref_dict[r].primaryURI) for r in ref_dict],
+        error_callback=_log.exception,
+        chunksize=5,
+    )
+    return {
+        "mode": "fits-parallel",
+        "async_result": async_result,
+    }
+
+
 def upload_images(pool, temp_dir, group_id, ref_dict):
     """Upload one group of raw images to the central repo
 
@@ -264,7 +314,7 @@ def upload_images(pool, temp_dir, group_id, ref_dict):
     # 12-20 s depending on tuning, or less than a single exposure.
     pool.starmap_async(
         _upload_one_image,
-        [(temp_dir, group_id, r, ref_dict[r].primaryURI) for r in ref_dict],
+        [(temp_dir, group_id, r, ref_dict[r].primaryURI.basename()) for r in ref_dict],
         error_callback=_log.exception,
         chunksize=5  # Works well across a broad range of # processes
     )
@@ -285,8 +335,14 @@ def _get_max_processes():
         return 4
 
 
-def _upload_one_image(temp_dir, group_id, ref, uri):
-    """Upload a raw image to the central repo.
+def _load_one_detector_to_temp(temp_dir, ref, uri):
+    path = os.path.join(temp_dir, uri.basename())
+    ResourcePath(path).transfer_from(uri, transfer="copy")
+    _log.debug(f"Raw file for {ref.dataId} was copied from Butler to {path}")
+
+
+def _upload_one_image(temp_dir, group_id, ref, filename):
+    """Upload a raw detector image to the central repo.
 
     Parameters
     ----------
@@ -297,8 +353,9 @@ def _upload_one_image(temp_dir, group_id, ref, uri):
         The group ID under which to store the images.
     ref : `lsst.daf.butler.DatasetRef`
         The dataset to upload.
-    uri : `lsst.resources.ResourcePath`
-        URI to the image to upload.
+    filename : `str`
+        The fits file with the raw image to upload. The file is expected to
+        exist in `temp_dir`.
     """
     instrument = ref.dataId["instrument"]
     with time_this(log=_log, msg="Single-image processing", prefix=None):
@@ -312,11 +369,7 @@ def _upload_one_image(temp_dir, group_id, ref, uri):
             ref.dataId["physical_filter"],
         )
 
-        path = os.path.join(temp_dir, uri.basename())
-        ResourcePath(path).transfer_from(uri, transfer="copy")
-        _log.debug(
-            f"Raw file for {ref.dataId} was copied from Butler to {path}"
-        )
+        path = os.path.join(temp_dir, filename)
         try:
             with open(path, "r+b") as temp_file:
                 for header_key in headers:
@@ -331,6 +384,8 @@ def _upload_one_image(temp_dir, group_id, ref, uri):
             with open(path, "rb") as temp_file:
                 dest_bucket.put_object(Body=temp_file, Key=dest_key)
             _log.debug(f"{dest_key} was written at {dest_bucket}")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"{filename} not found in {temp_dir}")
         finally:
             os.remove(path)
 
