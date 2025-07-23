@@ -29,6 +29,7 @@ import random
 import tempfile
 import time
 import yaml
+import zipfile
 
 from astropy.io import fits
 import boto3
@@ -267,11 +268,32 @@ def load_raw_to_temp(temp_dir, ref_dict, pool=None):
     -------
     result : `dict`
         A dictionary with:
-        - "mode": "fits-serial" or "fits-parallel"
+        - "mode": "zip", "fits-serial", or "fits-parallel"
         - "async_result": `multiprocessing.AsyncResult` if multiprocessing is used, else `None`.
+
+    Notes
+    -----
+    A data butler repo can store raw data in two formats: one fits file
+    for each detector, or one zip file for each exposure containing all
+    detector fits files. This function assumes that either all refs point
+    to one same zip file, or each ref is its own fits file. For zip,
+    extract all files to the temporary folder. Either way, the temporary
+    folder will be loaded with detector-level fits files.
     """
     if not ref_dict:
         raise ValueError("ref_dict is empty")
+
+    uri = next(iter(ref_dict.values())).primaryURI
+    # Determine whether the detector data is stored as zip file
+    if uri.fragment and (uri.getExtension() == ".zip"):
+        _log.info(f"Extracting zip file {uri.basename()}")
+        with uri.open("rb") as fd:
+            with zipfile.ZipFile(fd) as zf:
+                zf.extractall(temp_dir)
+        return {
+            "mode": "zip",
+            "async_result": None,
+        }
 
     if pool is None:
         _log.warning("Multiprocessing pool is not provided; fallback to serial.")
@@ -312,9 +334,14 @@ def upload_images(pool, temp_dir, group_id, ref_dict):
     # Non-blocking assignment lets us upload during the next exposure.
     # Can't time these tasks directly, but the blocking equivalent took
     # 12-20 s depending on tuning, or less than a single exposure.
+    args = []
+    for ref in ref_dict:
+        uri = ref_dict[ref].primaryURI
+        filename = uri.fragment.partition("=")[-1] if uri.fragment else uri.basename()
+        args.append((temp_dir, group_id, ref, filename))
     pool.starmap_async(
         _upload_one_image,
-        [(temp_dir, group_id, r, ref_dict[r].primaryURI.basename()) for r in ref_dict],
+        args,
         error_callback=_log.exception,
         chunksize=5  # Works well across a broad range of # processes
     )
