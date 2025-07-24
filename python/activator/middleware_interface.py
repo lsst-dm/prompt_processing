@@ -822,10 +822,11 @@ class MiddlewareInterface:
                         .where(expr[dataset_type.name].timespan.overlaps(calib_date))
                         .with_dimension_records()
                     )
-                except (DataIdValueError, MissingDatasetTypeError) as e:
+                except (DataIdValueError, MissingDatasetTypeError, MissingCollectionError) as e:
                     # Dimensions/dataset type often invalid for fresh local repo,
                     # where there are no, and never have been, any matching datasets.
-                    # It *is* a problem for the central repo, but can be caught later.
+                    # May have dimensions but no collections if a previous preload failed.
+                    # These *are* a problem for the central repo, but can be caught later.
                     _log.debug("%s query failed with %s.", label, e)
                     datasets = set()
                 # Trace3 because, in many contexts, datasets is too large to print.
