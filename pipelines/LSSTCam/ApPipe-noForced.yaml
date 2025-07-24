@@ -8,6 +8,15 @@ description: >-
 imports:
   - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/ApPipe.yaml
 tasks:
+  # sattle only required in PP environment
+  calibrateImage:
+    class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
+    config:
+      run_sattle: True
+  detectAndMeasureDiaSource:
+    class: lsst.ip.diffim.detectAndMeasure.DetectAndMeasureTask
+    config:
+      run_sattle: True
   associateApdb:
     class: lsst.ap.association.DiaPipelineTask
     config:
