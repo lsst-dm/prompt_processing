@@ -36,7 +36,6 @@ import logging
 import requests
 
 from astropy.io import fits
-from astropy.time import Time, TimeDelta
 
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 
