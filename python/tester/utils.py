@@ -316,7 +316,7 @@ def replace_header_key(file, key, value):
             hdus[0].header[key] = value
     finally:
         # Clean up HDUList object *without* closing ``file``.
-        hdus.close(output_verify="warn", closed=False)
+        hdus.close(output_verify="fix+warn", closed=False)
 
 
 def make_group(day_obs, seq_num):
