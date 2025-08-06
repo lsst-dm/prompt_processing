@@ -41,8 +41,9 @@ import lsst.utils.timer
 from lsst.resources import ResourcePath
 import lsst.sphgeom
 import lsst.afw.cameraGeom
-import lsst.ctrl.mpexec
-from lsst.ctrl.mpexec import SeparablePipelineExecutor, SingleQuantumExecutor, MPGraphExecutor
+from lsst.pipe.base.mp_graph_executor import MPGraphExecutor
+from lsst.pipe.base.separable_pipeline_executor import SeparablePipelineExecutor
+from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan, \
     DataIdValueError, MissingDatasetTypeError, MissingCollectionError
 import lsst.dax.apdb
@@ -1229,21 +1230,21 @@ class MiddlewareInterface:
 
         Returns
         -------
-        executor : `lsst.ctrl.mpexec.QuantumGraphExecutor`
+        executor : `lsst.pipe.base.quantum_graph_executor.QuantumGraphExecutor`
             The executor to use.
         """
         quantum_executor = SingleQuantumExecutor(
-            butler,
-            factory,
-            assumeNoExistingOutputs=True,  # Outputs cleared out on success *or* failure
+            butler=butler,
+            task_factory=factory,
+            assume_no_existing_outputs=True,  # Outputs cleared out on success *or* failure
             raise_on_partial_outputs=True,  # Only way to detect that partial outputs happened
         )
         graph_executor = MPGraphExecutor(
             # TODO: re-enable parallel execution once we can log as desired with CliLog or a successor
             # (see issues linked from DM-42063)
-            numProc=1,  # Avoid spawning processes, because they bypass our logger
+            num_proc=1,  # Avoid spawning processes, because they bypass our logger
             timeout=2_592_000.0,  # In practice, timeout is never helpful; set to 30 days.
-            quantumExecutor=quantum_executor,
+            quantum_executor=quantum_executor,
         )
         return graph_executor
 
@@ -1297,7 +1298,7 @@ class MiddlewareInterface:
                                  + in_collections
                                  + list(self.butler.collections.defaults),
                                  run=output_run)
-            factory = lsst.ctrl.mpexec.TaskFactory()
+            factory = lsst.pipe.base.TaskFactory()
             executor = SeparablePipelineExecutor(
                 exec_butler,
                 clobber_output=False,
