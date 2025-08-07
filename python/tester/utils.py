@@ -117,7 +117,8 @@ def get_last_group(bucket, instrument, date):
         if numbers:
             last_number = max(numbers)
         else:
-            last_number = 0
+            # Start with a large number to avoid conflicts with summit exposures.
+            last_number = 20000
         return make_group(date, last_number)
     else:
         blobs = bucket.objects.filter(
