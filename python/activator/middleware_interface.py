@@ -52,7 +52,8 @@ import lsst.obs.base
 import lsst.pipe.base
 from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilderError
 import lsst.analysis.tools
-from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher  # Can't use fully-qualified name
+from lsst.analysis.tools.interfaces.datastore import SasquatchDispatcher, SasquatchDispatchFailure, \
+    SasquatchDispatchPartialFailure  # Can't use fully-qualified names
 
 from shared.config import PipelinesConfig
 import shared.connect_utils as connect
@@ -1571,7 +1572,7 @@ class MiddlewareInterface:
                         try:
                             _log_trace.debug("Uploading %s...", bundle)
                             dispatcher.dispatchRef(self.butler.get(bundle), bundle)
-                        except lsst.analysis.tools.interfaces.datastore._dispatcher.SasquatchDispatchFailure:
+                        except (SasquatchDispatchFailure, SasquatchDispatchPartialFailure):
                             # Retries can get messy with multiple bundles, so just abort.
                             _log.exception("Failed to upload %s to Sasquatch: ", bundle)
                 _log.debug("Uploaded %d metrics to %s.", len(bundles), dispatcher.url)
