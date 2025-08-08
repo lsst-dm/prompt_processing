@@ -20,6 +20,7 @@ on:
       - 'python/initializer/**'
       - 'python/shared/**'
       # Need to re-test
+      - 'python/tester/utils.py'
       - 'tests/**'
   pull_request:
     paths:
@@ -37,6 +38,7 @@ on:
       - 'python/initializer/**'
       - 'python/shared/**'
       # Need to re-test
+      - 'python/tester/utils.py'
       - 'tests/**'
   workflow_dispatch:
 
