@@ -29,6 +29,8 @@ import unittest
 
 import pytest
 
+import lsst.daf.butler.logging
+
 from shared.logger import UsdfJsonFormatter, _parse_log_levels, RecordFactoryContextAdapter, logging_context
 
 
@@ -70,10 +72,10 @@ class UsdfJsonFormatterTest(unittest.TestCase):
         self.addCleanup(io.StringIO.close, self.output)
         # self.output = self.enterContext(io.StringIO())
 
-        # UsdfJsonFormatter assumes a logging_context field is present.
+        # UsdfJsonFormatter assumes an MDC field is present.
         old_factory = logging.getLogRecordFactory()
         self.addCleanup(logging.setLogRecordFactory, old_factory)
-        logging.setLogRecordFactory(RecordFactoryContextAdapter(old_factory))
+        lsst.daf.butler.logging.ButlerMDC.add_mdc_log_record_factory()
 
         log_handler = logging.StreamHandler(self.output)
         log_handler.setFormatter(UsdfJsonFormatter(
@@ -111,7 +113,7 @@ class UsdfJsonFormatterTest(unittest.TestCase):
             self.assertEqual(parsed["process"], os.getpid())
             self.assertEqual(parsed["name"], self.id())
             for key, value in labels.items():
-                self.assertEqual(parsed[key], value)
+                self.assertEqual(parsed[key], str(value))
 
     def test_direct(self):
         """Test the translation of verbatim log messages.
@@ -186,7 +188,7 @@ class UsdfJsonFormatterTest(unittest.TestCase):
         self._check_log(self.output.getvalue().splitlines(),
                         "test_context", "INFO",
                         {"instrument": "NotACam",
-                         "exposures": list(exposures),
+                         "exposures": exposures,
                          "visit": visit,
                          "ratio": ratio,
                          "group": group,
@@ -222,7 +224,7 @@ class LoggingContextText(unittest.TestCase):
 
         old_factory = logging.getLogRecordFactory()
         self.addCleanup(logging.setLogRecordFactory, old_factory)
-        logging.setLogRecordFactory(RecordFactoryContextAdapter(old_factory))
+        lsst.daf.butler.logging.ButlerMDC.add_mdc_log_record_factory()
 
         # Unique logger per test
         self.log = logging.getLogger(self.id())
@@ -239,10 +241,10 @@ class LoggingContextText(unittest.TestCase):
             self.log.info("Context-free logging")
 
             self.assertEqual(len(recorder.records), 4)
-            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+            self.assertEqual([dict(rec.MDC) for rec in recorder.records],
                              [{},
                               {"color": "blue"},
-                              {"answer": "yes", "pid": 101},
+                              {"answer": "yes", "pid": "101"},
                               {},
                               ])
 
@@ -253,7 +255,7 @@ class LoggingContextText(unittest.TestCase):
             self.log.info("Context-free logging")
 
             self.assertEqual(len(recorder.records), 2)
-            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+            self.assertEqual([dict(rec.MDC) for rec in recorder.records],
                              [{},
                               {},
                               ])
@@ -267,9 +269,9 @@ class LoggingContextText(unittest.TestCase):
                 self.log.info("Less context")
 
             self.assertEqual(len(recorder.records), 3)
-            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+            self.assertEqual([dict(rec.MDC) for rec in recorder.records],
                              [{"color": "blue"},
-                              {"pid": 42, "color": "blue"},
+                              {"pid": "42", "color": "blue"},
                               {"color": "blue"},
                               ])
 
@@ -285,11 +287,11 @@ class LoggingContextText(unittest.TestCase):
             self.log.info("Logging complete!")
 
             self.assertEqual(len(recorder.records), 5)
-            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
-                             [{"color": "blue", "pid": 42},
-                              {"color": "red", "pid": 42},
-                              {"color": "blue", "pid": 42},
-                              {"color": "blue", "pid": 88, "language": "jargon"},
+            self.assertEqual([dict(rec.MDC) for rec in recorder.records],
+                             [{"color": "blue", "pid": "42"},
+                              {"color": "red", "pid": "42"},
+                              {"color": "blue", "pid": "42"},
+                              {"color": "blue", "pid": "88", "language": "jargon"},
                               {},
                               ])
 
@@ -309,12 +311,12 @@ class LoggingContextText(unittest.TestCase):
                     self.log.critical("Explicit exception", exc_info=e)
 
             self.assertEqual(len(recorder.records), 5)
-            self.assertEqual([dict(rec.logging_context) for rec in recorder.records],
+            self.assertEqual([dict(rec.MDC) for rec in recorder.records],
                              [{"color": "blue"},
                               {"color": "blue"},
-                              {"color": "blue", "pid": 42},
-                              {"color": "blue", "pid": 42},
-                              {"color": "blue", "pid": 42},
+                              {"color": "blue", "pid": "42"},
+                              {"color": "blue", "pid": "42"},
+                              {"color": "blue", "pid": "42"},
                               ])
 
 
