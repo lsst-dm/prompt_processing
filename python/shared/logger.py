@@ -29,6 +29,7 @@ import os
 import threading
 
 import lsst.daf.butler.cli.cliLog
+import lsst.daf.butler.logging
 
 try:
     import lsst.log as lsst_log
@@ -100,15 +101,14 @@ def logging_context(**context):
     context
         The keys and values to be added to logging records.
     """
-    log_factory = logging.getLogRecordFactory()
-    return log_factory.add_context(**context)
+    return lsst.daf.butler.logging.ButlerMDC.set_mdc({k: str(v) for k, v in context.items()})
 
 
 def _set_context_logger():
-    """Set up RecordFactoryContextAdapter as the global log factory.
+    """Set up ButlerMDC as the global log factory.
 
     This allows the use of its context manager inside the activator, and the
-    use of the ``logging_context`` field in formatters.
+    use of the ``MDC`` field in formatters.
 
     Notes
     -----
@@ -116,7 +116,7 @@ def _set_context_logger():
     from the application's main thread. Unexpected behavior may result if it is
     called from a request handler instead.
     """
-    logging.setLogRecordFactory(RecordFactoryContextAdapter(logging.getLogRecordFactory()))
+    lsst.daf.butler.logging.ButlerMDC.add_mdc_log_record_factory()
 
 
 def setup_usdf_logger(labels=None):
@@ -186,7 +186,7 @@ class UsdfJsonFormatter(logging.Formatter):
             "thread": record.thread,
         }
         entry.update(self._labels)
-        entry.update(record.logging_context)
+        entry.update(record.MDC)
 
         return json.dumps(entry, default=_encode_json_extras)
 
