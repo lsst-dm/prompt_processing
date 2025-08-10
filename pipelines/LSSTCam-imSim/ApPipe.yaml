@@ -14,3 +14,4 @@ tasks:
     config:
       # Alert distribution only runnable in PP environment.
       alertPackager.doProduceAlerts: True
+      config.astrometry.referenceSelector.doUnresolved: False
