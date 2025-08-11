@@ -83,6 +83,27 @@ def _channel_all_to_pylog():
     logging.captureWarnings(True)
 
 
+# TODO: automate precondition on DM-52151
+def logging_context(**context):
+    """A context manager that adds contextual data to all logging calls
+    inside it.
+
+    This manager requires that `setup_usdf_logger` or a similar function have
+    been previously called to set up an appropriate log factory. It adds
+    key-value pairs to the factory's log records, and also adds a mapping to
+    any exceptions that escape. The details depend on the factory
+    implementation; this function is only to keep the client from depending on
+    the log factory directly.
+
+    Parameters
+    ----------
+    context
+        The keys and values to be added to logging records.
+    """
+    log_factory = logging.getLogRecordFactory()
+    return log_factory.add_context(**context)
+
+
 def _set_context_logger():
     """Set up RecordFactoryContextAdapter as the global log factory.
 
