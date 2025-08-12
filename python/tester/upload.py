@@ -38,7 +38,6 @@ from lsst.resources import ResourcePath
 
 from shared.raw import (
     LSST_REGEXP,
-    IMSIM_REGEXP,
     OTHER_REGEXP,
     get_raw_path,
     _LSST_CAMERA_LIST,
@@ -51,7 +50,6 @@ from tester.utils import (
     get_last_group,
     increment_group,
     make_exposure_id,
-    make_imsim_time_headers,
     replace_header_key,
     send_next_visit,
 )
@@ -69,7 +67,7 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.INFO)
 
 
-def process_group(kafka_url, visit_infos, uploader, start_time):
+def process_group(kafka_url, visit_infos, uploader):
     """Simulate the observation of a single on-sky pointing.
 
     Parameters
@@ -83,8 +81,6 @@ def process_group(kafka_url, visit_infos, uploader, start_time):
     uploader : callable [`shared.visit.FannedOutVisit`, int]
         A callable that takes an exposure spec and a snap ID, and uploads the
         visit's data.
-    start_time : `float`
-        The Unix time (TAI) of the exposure start.
     """
     # Assume group/snaps is shared among all visit_infos
     for info in visit_infos:
@@ -110,7 +106,7 @@ def process_group(kafka_url, visit_infos, uploader, start_time):
         for info in visit_infos:
             _log.info(f"Uploading group: {info.groupId} snap: {snap} filters: {info.filters} "
                       f"detector: {info.detector}")
-            uploader(info, snap, start_time)
+            uploader(info, snap)
             _log.info(f"Uploaded group: {info.groupId} snap: {snap} filters: {info.filters} "
                       f"detector: {info.detector}")
 
@@ -284,10 +280,7 @@ def get_samples_lsst(bucket, instrument):
     for blob in blobs:
         # Assume that the unobserved bucket uses the same filename scheme as
         # the observed bucket.
-        if instrument == "LSSTCam-imSim":
-            m = re.match(IMSIM_REGEXP, blob.key)
-        else:
-            m = re.match(LSST_REGEXP, blob.key)
+        m = re.match(LSST_REGEXP, blob.key)
         if not m or m["extension"] == ".json":
             continue
 
@@ -302,10 +295,7 @@ def get_samples_lsst(bucket, instrument):
 
         sal_index = INSTRUMENTS[instrument].sal_index
         # Use special sal_index to indicate a subset of detectors
-        if instrument == "LSSTCam-imSim":
-            # For imSim data, the OBSID header has the exposure ID.
-            sal_index = int(md["OBSID"])
-        elif instrument == "LSSTCam":
+        if instrument == "LSSTCam":
             _, _, day_obs, seq_num = md["OBSID"].split("_")
             exposure_num = LsstBaseTranslator.compute_exposure_id(int(day_obs), int(seq_num))
             sal_index = exposure_num
@@ -382,18 +372,11 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
         # Copy all the visit-blob dictionaries under each snap_id,
         # replacing the (immutable) FannedOutVisit objects to point to group
         # instead of true_group.
-        # Update next_visit timestamp for LSSTCam-imSim only.
-        now = astropy.time.Time.now().unix_tai
-        start_time = now + 2*(EXPOSURE_INTERVAL + SLEW_INTERVAL)
         for snap_id, old_visits in raw_pool[true_group].items():
             snap_dict[snap_id] = {
                 dataclasses.replace(
                     true_visit,
                     groupId=group,
-                    **({
-                        "startTime": start_time,
-                        "private_sndStamp": now
-                    } if instrument == "LSSTCam-imSim" else {})
                 ): blob
                 for true_visit, blob in old_visits.items()}
         # Gather all the FannedOutVisit objects found in snap_dict, merging
@@ -402,14 +385,11 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
 
         # TODO: may be cleaner to use a functor object than to depend on
         # closures for the buckets and data.
-        def upload_from_pool(visit, snap_id, start_time):
+        def upload_from_pool(visit, snap_id):
             src_blob = snap_dict[snap_id][visit]
             exposure_num, headers = \
                 make_exposure_id(visit.instrument, visit.groupId, snap_id)
-            # Only LSSTCam-imSim uses the given timestamp for the exposure start.
-            # Other instruments keep the original exposure timespan.
-            if instrument == "LSSTCam-imSim":
-                headers.update(make_imsim_time_headers(EXPOSURE_INTERVAL, start_time))
+            # The original exposure timespan is kept.
             filename = get_raw_path(visit.instrument, visit.detector, visit.groupId, snap_id,
                                     exposure_num, visit.filters)
 
@@ -433,7 +413,7 @@ def upload_from_raws(kafka_url, instrument, raw_pool, src_bucket, dest_bucket, n
                 dest_bucket.upload_fileobj(buffer, filename)
             _log.debug(f"{filename} is uploaded to {dest_bucket}")
 
-        process_group(kafka_url, visit_infos, upload_from_pool, start_time)
+        process_group(kafka_url, visit_infos, upload_from_pool)
 
 
 if __name__ == "__main__":
