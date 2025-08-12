@@ -1,0 +1,5 @@
+instrument: LSSTCam
+query:
+  collections: u/hchiang2/tagged/test3
+  where: "exposure.science_program='BLOCK-365' and exposure.day_obs in (20250501..20250502)"
+repo: /repo/main
