@@ -4,3 +4,5 @@ imports:
   - location: $AP_PIPE_DIR/pipelines/LSSTCam/ApPipe.yaml
     include:
       - preload
+parameters:
+  release_id: 1  # This pipeline runs in production (parameter should be unused in preprocessing)
