@@ -1,7 +1,9 @@
 description: Test version of the main AP pipeline
 
 imports:
-  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
+  - location: $AP_PIPE_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
+    include:
+      - prompt
 parameters:
   # Use dataset's specific templates
   coaddName: goodSeeing

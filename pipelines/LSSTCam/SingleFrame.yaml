@@ -10,3 +10,5 @@ imports:
       - getRegionTimeFromVisit
       - mpSkyEphemerisQuery
       - loadDiaCatalogs
+parameters:
+  release_id: 1  # This pipeline runs in production

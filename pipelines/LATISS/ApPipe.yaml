@@ -8,6 +8,8 @@ imports:
   - location: $AP_PIPE_DIR/pipelines/LATISS/ApPipe.yaml
     include:
       - prompt
+parameters:
+  release_id: 0  # We only run LATISS pipelines for testing purposes
 tasks:
   associateApdb:
     class: lsst.ap.association.DiaPipelineTask
