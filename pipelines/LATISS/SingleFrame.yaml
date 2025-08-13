@@ -10,3 +10,5 @@ imports:
       - getRegionTimeFromVisit
       - mpSkyEphemerisQuery
       - loadDiaCatalogs
+parameters:
+  release_id: 0  # We only run LATISS pipelines for testing purposes
