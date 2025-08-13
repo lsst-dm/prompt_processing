@@ -53,7 +53,7 @@ import lsst.sphgeom
 from activator.caching import DatasetCache
 from activator.exception import NonRetriableError, NoGoodPipelinesError, PipelineExecutionError
 from activator.middleware_interface import get_central_butler, make_local_repo, \
-    _get_sasquatch_dispatcher, MiddlewareInterface, \
+    _get_sasquatch_dispatcher, MiddlewareInterface, DirectButlerWriter, \
     _filter_datasets, _generic_query, _MissingDatasetError
 from shared.config import PipelinesConfig
 from shared.run_utils import get_output_run
@@ -281,7 +281,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                          private_sndStamp=1718661900.7165175,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
-        self.interface = MiddlewareInterface(self.read_butler, self.write_butler,
+        butler_writer = DirectButlerWriter(self.write_butler)
+        self.interface = MiddlewareInterface(self.read_butler, butler_writer,
                                              self.input_data, self.next_visit,
                                              # Use empty preprocessing to avoid slowing down tests
                                              # with real pipelines (adds 20s)
@@ -533,7 +534,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         # Second visit with everything same except group.
         second_visit = dataclasses.replace(self.next_visit, groupId=str(int(self.next_visit.groupId) + 1))
-        second_interface = MiddlewareInterface(self.read_butler, self.write_butler,
+        butler_writer = DirectButlerWriter(self.write_butler)
+        second_interface = MiddlewareInterface(self.read_butler, butler_writer,
                                                self.input_data, second_visit,
                                                pre_pipelines_empty, pipelines, skymap_name,
                                                self.local_repo.name, self.local_cache,
@@ -557,7 +559,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                           position=[self.next_visit.position[0] - 0.2,
                                                     self.next_visit.position[1] - 0.1],
                                           )
-        third_interface = MiddlewareInterface(self.read_butler, self.write_butler,
+        third_interface = MiddlewareInterface(self.read_butler, butler_writer,
                                               self.input_data, third_visit,
                                               pre_pipelines_empty, pipelines, skymap_name,
                                               self.local_repo.name, self.local_cache,
@@ -1278,10 +1280,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                              instrument=instname,
                              skymap=skymap_name,
                              writeable=False)
-        write_butler = Butler(self.central_repo.name,
-                              instrument=instname,
-                              skymap=skymap_name,
-                              writeable=True)
+        self.write_butler = Butler(self.central_repo.name,
+                                   instrument=instname,
+                                   skymap=skymap_name,
+                                   writeable=True)
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.input_data = os.path.join(data_dir, "input_data")
 
@@ -1340,7 +1342,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.logger_name = "lsst.activator.middleware_interface"
 
         # Populate repository.
-        self.interface = MiddlewareInterface(read_butler, write_butler, self.input_data, self.next_visit,
+        butler_writer = DirectButlerWriter(self.write_butler)
+        self.interface = MiddlewareInterface(read_butler, butler_writer, self.input_data, self.next_visit,
                                              pre_pipelines_full, pipelines, skymap_name, local_repo.name,
                                              self.local_cache,
                                              prefix="file://")
@@ -1363,7 +1366,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_group_data_id = {(k if k != "exposure" else "group"): (v if k != "exposure" else str(v))
                                      for k, v in self.second_data_id.required.items()}
         self.second_interface = MiddlewareInterface(
-            read_butler, write_butler, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
+            read_butler, butler_writer, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
             skymap_name, second_local_repo.name, self.second_local_cache, prefix="file://")
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.second_interface.prep_butler()
@@ -1395,13 +1398,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          for k, v in self.second_data_id.required.items()}
         # Dataset types defined for local Butler on pipeline run, but code
         # assumes output types already exist in central repo.
-        butler_tests.addDatasetType(self.interface.write_central_butler, "promptPreload_metrics",
+        butler_tests.addDatasetType(self.write_butler, "promptPreload_metrics",
                                     {"instrument", "group", "detector"},
                                     "MetricMeasurementBundle")
-        butler_tests.addDatasetType(self.interface.write_central_butler, "regionTimeInfo",
+        butler_tests.addDatasetType(self.write_butler, "regionTimeInfo",
                                     {"instrument", "group", "detector"},
                                     "RegionTimeInfo")
-        butler_tests.addDatasetType(self.interface.write_central_butler, "history_diaSource",
+        butler_tests.addDatasetType(self.write_butler, "history_diaSource",
                                     {"instrument", "group", "detector"},
                                     "ArrowAstropy")
         butler_tests.addDatasetType(self.interface.butler, "history_diaSource",
@@ -1410,7 +1413,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.second_interface.butler, "history_diaSource",
                                     {"instrument", "group", "detector"},
                                     "ArrowAstropy")
-        butler_tests.addDatasetType(self.interface.write_central_butler, "calexp",
+        butler_tests.addDatasetType(self.write_butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
         butler_tests.addDatasetType(self.interface.butler, "calexp",
@@ -1457,7 +1460,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         # Avoid collisions with other calls to prep_butler
         with make_local_repo(tempfile.gettempdir(), read_butler, instname) as local_repo:
-            interface = MiddlewareInterface(read_butler, write_butler, self.input_data,
+            butler_writer = DirectButlerWriter(write_butler)
+            interface = MiddlewareInterface(read_butler, butler_writer, self.input_data,
                                             dataclasses.replace(self.next_visit, groupId="42"),
                                             pre_pipelines_empty, pipelines, skymap_name, local_repo,
                                             DatasetCache(3, {"uw_stars_20240524": 10, "template_coadd": 30}),
