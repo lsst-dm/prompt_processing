@@ -28,12 +28,13 @@ from shared.connect_utils import retry
 
 class ConnectionUtilsTest(unittest.TestCase):
 
-    def test_retry(self):
+    def test_retry_no_except(self):
         dummy = unittest.mock.Mock(__name__="function")
         wrapped = retry(2, ValueError)(dummy)
         wrapped("Foo", 42)
         dummy.assert_called_once_with("Foo", 42)
 
+    def test_retry_except(self):
         dummy = unittest.mock.Mock(__name__="function", side_effect=[ValueError, True])
         wrapped = retry(2, ValueError)(dummy)
         wrapped()
@@ -57,12 +58,15 @@ class ConnectionUtilsTest(unittest.TestCase):
         wrapped()
         self.assertEqual(dummy.call_count, 3)
 
+    def test_retry_parameters(self):
         dummy = unittest.mock.Mock(__name__="function")
         with self.assertRaises(ValueError):
             retry(0, RuntimeError)(dummy)
         retry(1, RuntimeError)(dummy)
 
+    def test_retry_jitter(self):
         dummy = unittest.mock.Mock(__name__="function", side_effect=ValueError)
+        # Long wait time is to minimize noise from CPU availability
         wrapped = retry(2, ValueError, wait=5.0)(dummy)
         start = time.time()
         with self.assertRaises(ExceptionGroup):
@@ -70,5 +74,7 @@ class ConnectionUtilsTest(unittest.TestCase):
         stop = time.time()
         self.assertEqual(dummy.call_count, 2)
         # Should have only waited after the first call
+        # Expected wait is +/- 25%, or 3.75-6.25 s
+        # If it waited twice, that's at least 7.5 s
         self.assertGreaterEqual(stop - start, 3.75)
-        self.assertLessEqual(stop - start, 6.25)
+        self.assertLessEqual(stop - start, 6.35)  # Fudge the high end for exception handling overhead
