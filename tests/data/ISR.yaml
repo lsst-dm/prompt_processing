@@ -6,9 +6,3 @@ imports:
   - location: $PROMPT_PROCESSING_DIR/tests/data/ApPipe.yaml
     include:
       - isr
-tasks:
-  isr:
-    class: lsst.ip.isr.IsrTaskLSST
-    config:
-      # Don't need filter-dependent calibs
-      doFlat: false
