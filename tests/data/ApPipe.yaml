@@ -1,13 +1,16 @@
 description: Test version of the main AP pipeline
 
 imports:
-  - location: $AP_PIPE_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
-    include:
-      - prompt
-parameters:
-  # Use dataset's specific templates
-  coaddName: goodSeeing
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/dev/ApPipe.yaml
 tasks:
+  calibrateImage:
+    class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
+    config:
+      run_sattle: False
+  detectAndMeasureDiaSource:
+    class: lsst.ip.diffim.detectAndMeasure.DetectAndMeasureTask
+    config:
+      run_sattle: False
   associateApdb:
     class: lsst.ap.association.DiaPipelineTask
     config:

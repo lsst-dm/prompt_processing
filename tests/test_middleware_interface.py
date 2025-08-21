@@ -60,11 +60,11 @@ from shared.run_utils import get_output_run
 from shared.visit import FannedOutVisit
 
 # The short name of the instrument used in the test repo.
-instname = "LSSTComCamSim"
+instname = "LSSTCam"
 # Full name of the physical filter for the test file.
-filter = "g_01"
+filter = "g_6"
 # The skymap name used in the test repo.
-skymap_name = "ops_rehersal_prep_2k_v1"
+skymap_name = "lsst_cells_v1"
 # A pipelines config that returns the test pipelines.
 # Unless a test imposes otherwise, the first pipeline should run, and
 # the second should not be attempted.
@@ -85,9 +85,9 @@ pre_pipelines_full = PipelinesConfig([{"survey": "SURVEY",
                                                      ],
                                        }])
 # The day_obs used for the init-output runs in the test repo.
-sim_date = astropy.time.Time("2025-05-02T00:00:00Z")
+sim_date = astropy.time.Time("2025-09-13T00:00:00Z")
 # The deployment ID used in the test repo.
-sim_deployment = "pipelines-73f2e20-config-8acfde6"
+sim_deployment = "pipelines-cf62e06-config-8acfde6"
 
 
 def fake_file_data(filename, dimensions, instrument, visit):
@@ -115,8 +115,8 @@ def fake_file_data(filename, dimensions, instrument, visit):
                                           "instrument": instrument.getName()},
                                          universe=dimensions)
 
-    start_time = astropy.time.Time("2024-06-17T22:06:15", scale="tai")
-    day_obs = 20240617
+    start_time = astropy.time.Time("2025-05-22T05:20:46", scale="tai")
+    day_obs = 20250521
     obs_info = astro_metadata_translator.makeObservationInfo(
         instrument=instrument.getName(),
         datetime_begin=start_time,
@@ -170,8 +170,8 @@ def fake_eng_data(filename, dimensions, instrument, visit):
                                           "instrument": instrument.getName()},
                                          universe=dimensions)
 
-    start_time = astropy.time.Time("2024-06-17T22:06:15", scale="tai")
-    day_obs = 20240617
+    start_time = astropy.time.Time("2025-05-22T05:20:46", scale="tai")
+    day_obs = 20250521
     obs_info = astro_metadata_translator.makeObservationInfo(
         instrument=instrument.getName(),
         datetime_begin=start_time,
@@ -234,7 +234,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                    inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.read_butler, instname)
-        self.local_cache = DatasetCache(3, {"uw_stars_20240524": 10, "template_coadd": 30})
+        self.local_cache = DatasetCache(3, {"the_monster_20250219": 10, "template_coadd": 30})
         self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
 
         config = ApdbSql.init_database(db_url=f"sqlite:///{self.local_repo.name}/apdb.db")
@@ -258,18 +258,18 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                      types=preprocessing_types,
                                                      ))
 
-        # coordinates from OR4 visit 7024061700046
-        ra = 215.82729413263485
-        dec = -12.4705546590231
-        rot = 149.86873311284756
+        # coordinates from LSSTCam visit 2025052100138
+        ra = 225.85827927603876
+        dec = -38.6275010948895
+        rot = 357.9606420320256
         self.next_visit = FannedOutVisit(instrument=instname,
-                                         detector=4,
+                                         detector=90,
                                          groupId="1",
                                          nimages=1,
                                          filters=filter,
                                          coordinateSystem=FannedOutVisit.CoordSys.ICRS,
                                          position=[ra, dec],
-                                         startTime=1718661950.0,
+                                         startTime=1747891209.9,
                                          rotationSystem=FannedOutVisit.RotSys.SKY,
                                          cameraAngle=rot,
                                          survey="SURVEY",
@@ -278,7 +278,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                          dome=FannedOutVisit.Dome.OPEN,
                                          duration=35.0,
                                          totalCheckpoints=1,
-                                         private_sndStamp=1718661900.7165175,
+                                         private_sndStamp=1747891150.0,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
         butler_writer = DirectButlerWriter(self.write_butler)
@@ -291,7 +291,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                              prefix="file://")
 
     def test_get_butler(self):
-        for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstComCamSim", writeable=True),
+        for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstCam", writeable=True),
                        get_central_butler(self.central_repo, instname, writeable=True),
                        ]:
             # TODO: better way to test repo location?
@@ -299,7 +299,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
                 .startswith(self.central_repo))
             self.assertTrue(butler.isWriteable())
-        for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstComCamSim", writeable=False),
+        for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstCam", writeable=False),
                        get_central_butler(self.central_repo, instname, writeable=False),
                        ]:
             self.assertTrue(
@@ -308,7 +308,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.assertFalse(butler.isWriteable())
 
     def test_make_local_repo(self):
-        for inst in [instname, "lsst.obs.lsst.LsstComCamSim"]:
+        for inst in [instname, "lsst.obs.lsst.LsstCam"]:
             with make_local_repo(tempfile.gettempdir(), Butler(self.central_repo), inst) as repo_dir:
                 self.assertTrue(os.path.exists(repo_dir))
                 butler = Butler(repo_dir)
@@ -351,24 +351,24 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                               collections=self.umbrella)
             )
             # check that we got appropriate refcat shards
-            loaded_shards = butler.query_datasets("uw_stars_20240524", collections="refcats")
+            loaded_shards = butler.query_datasets("the_monster_20250219", collections="refcats")
             self.assertEqual(expected_shards, {x.dataId['htm7'] for x in loaded_shards})
         else:
             # Either outcome acceptable
             try:
-                self.assertFalse(butler.query_datasets("uw_stars_20240524", collections="refcats"))
+                self.assertFalse(butler.query_datasets("the_monster_20250219", collections="refcats"))
             except lsst.daf.butler.MissingDatasetTypeError:
                 pass
 
         # Check that the right calibs are in the chained output collection.
         self.assertTrue(
-            butler.exists('bias', detector=detector, instrument='LSSTComCamSim',
+            butler.exists('bias', detector=detector, instrument='LSSTCam',
                           full_check=True,
                           # TODO DM-46178: add query by validity range.
                           collections=self.umbrella)
         )
         self.assertEqual(
-            bool(butler.exists('flat', detector=detector, instrument='LSSTComCamSim',
+            bool(butler.exists('flat', detector=detector, instrument='LSSTCam',
                                physical_filter=filter,
                                full_check=True,
                                # TODO DM-46178: add query by validity range.
@@ -386,25 +386,24 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             # Check that the right templates are in the chained output collection.
             # Need to refresh the butler to get all the dimensions/collections.
             butler.registry.refresh()
-            for patch in (142, 143, 158, 159, 160, 161, 175, 176, 177, 178,
-                          192, 193, 194, 195, 210, 211,):
-                with self.subTest(tract=7445, patch=patch):
+            for patch in (76, 77, 78, 86, 87, 88, 96, 97, 98):
+                with self.subTest(tract=3534, patch=patch):
                     self.assertTrue(
-                        butler.exists('template_coadd', tract=7445, patch=patch, band="g",
+                        butler.exists('template_coadd', tract=3534, patch=patch, band="g",
                                       skymap=skymap_name,
                                       full_check=True,
                                       collections=self.umbrella)
                     )
-            with self.subTest(tract=7445, patch=0):
+            with self.subTest(tract=3534, patch=0):
                 self.assertFalse(
-                    butler.exists('template_coadd', tract=7445, patch=0, band="g",
+                    butler.exists('template_coadd', tract=3534, patch=0, band="g",
                                   skymap=skymap_name,
                                   full_check=True,
                                   collections=self.umbrella)
                 )
         else:
             self.assertFalse(
-                butler.exists('template_coadd', tract=7445, patch=160, band="g",
+                butler.exists('template_coadd', tract=3534, patch=87, band="g",
                               skymap=skymap_name,
                               full_check=True,
                               collections=self.umbrella)
@@ -433,8 +432,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 as mock_pre:
             self.interface.prep_butler()
 
-        expected_shards = {166464, 177536}
-        self._check_imports(self.interface.butler, group="1", detector=4,
+        expected_shards = {180002, 180177}
+        self._check_imports(self.interface.butler, group="1", detector=90,
                             expected_shards=expected_shards)
 
         # Hard to test actual pipeline output, so just check we're calling it
@@ -465,8 +464,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 as mock_pre:
             self.interface.prep_butler()
 
-        expected_shards = {166464, 177536}
-        self._check_imports(self.interface.butler, group="1", detector=4,
+        expected_shards = {180002, 180177}
+        self._check_imports(self.interface.butler, group="1", detector=90,
                             expected_shards=expected_shards, have_filter=False)
 
         # Hard to test actual pipeline output, so just check we're calling it
@@ -485,7 +484,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.prep_butler()
 
         expected_shards = set()
-        self._check_imports(self.interface.butler, group="1", detector=4,
+        self._check_imports(self.interface.butler, group="1", detector=90,
                             expected_shards=expected_shards, have_spatial=False)
 
         # Hard to test actual pipeline output, so just check we're calling it
@@ -544,8 +543,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
                 as mock_pre:
             second_interface.prep_butler()
-        expected_shards = {166464, 177536}
-        self._check_imports(second_interface.butler, group="2", detector=4,
+        expected_shards = {180002, 180177}
+        self._check_imports(second_interface.butler, group="2", detector=90,
                             expected_shards=expected_shards)
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
@@ -553,11 +552,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Third visit with different detector and coordinates.
         # Only 4 and 5 have valid calibs.
         third_visit = dataclasses.replace(second_visit,
-                                          detector=5,
+                                          detector=91,
                                           groupId=str(int(second_visit.groupId) + 1),
-                                          # Offset to put detector=5 in same templates.
-                                          position=[self.next_visit.position[0] - 0.2,
-                                                    self.next_visit.position[1] - 0.1],
+                                          # Offset to put detector=91 in same templates.
+                                          position=[self.next_visit.position[0] - 0.3,
+                                                    self.next_visit.position[1]],
                                           )
         third_interface = MiddlewareInterface(self.read_butler, butler_writer,
                                               self.input_data, third_visit,
@@ -567,8 +566,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
                 as mock_pre:
             third_interface.prep_butler()
-        expected_shards.update({166464, 177536})
-        self._check_imports(third_interface.butler, group="3", detector=5,
+        expected_shards.update({180002, 180177})
+        self._check_imports(third_interface.butler, group="3", detector=91,
                             expected_shards=expected_shards)
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
@@ -1100,11 +1099,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         # Much easier to create DatasetRefs with a real repo.
         registry = self.read_butler.registry
-        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 5},
+        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 5},
                                         "dummy")
-        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 0},
+        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 0},
                                         "dummy")
-        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 1},
+        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 1},
                                         "dummy")
 
         combinations = [{data1, data2}, {data1, data2, data3}]
@@ -1134,7 +1133,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         # Much easier to create DatasetRefs with a real repo.
         registry = self.read_butler.registry
-        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 1},
+        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 1},
                                         "dummy")
 
         src_butler = unittest.mock.Mock()
@@ -1161,11 +1160,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         # Much easier to create DatasetRefs with a real repo.
         registry = self.read_butler.registry
-        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 5},
+        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 5},
                                         "dummy")
-        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 0},
+        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 0},
                                         "dummy")
-        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 1},
+        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 1},
                                         "dummy")
 
         combinations = [{data1, data2}, {data1, data2, data3}]
@@ -1207,21 +1206,21 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_generic_query(self):
         # Much easier to create DatasetRefs with a real repo.
         registry = self.read_butler.registry
-        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 5},
+        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 5},
                                         "dummy")
-        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 0},
+        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 0},
                                         "dummy")
-        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTComCamSim", "detector": 1},
+        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 1},
                                         "dummy")
         refs = [data1, data2, data3]
 
         butler = unittest.mock.Mock(**{"query_datasets.return_value": refs})
-        result = _generic_query(["bias"], instrument="LSSTComCamSim")(butler)
+        result = _generic_query(["bias"], instrument="LSSTCam")(butler)
 
         butler.query_datasets.assert_called_once()
         self.assertEqual(butler.query_datasets.call_args.args, ("bias", ))
         # Implementation may add other kwargs.
-        self.assertEqual(butler.query_datasets.call_args.kwargs["instrument"], "LSSTComCamSim")
+        self.assertEqual(butler.query_datasets.call_args.kwargs["instrument"], "LSSTCam")
         self.assertEqual(set(result), set(refs))
 
     def test_generic_query_nodim(self):
@@ -1288,9 +1287,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.input_data = os.path.join(data_dir, "input_data")
 
         local_repo = make_local_repo(tempfile.gettempdir(), read_butler, instname)
-        self.local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "template_coadd": 30})
+        self.local_cache = DatasetCache(2, {"the_monster_20250219": 10, "template_coadd": 30})
         second_local_repo = make_local_repo(tempfile.gettempdir(), read_butler, instname)
-        self.second_local_cache = DatasetCache(2, {"uw_stars_20240524": 10, "template_coadd": 30})
+        self.second_local_cache = DatasetCache(2, {"the_monster_20250219": 10, "template_coadd": 30})
         # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
         # getting garbage-collected.
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
@@ -1317,18 +1316,18 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                      types=preprocessing_types,
                                                      ))
 
-        # coordinates from OR4 visit 7024061700046
-        ra = 215.82729413263485
-        dec = -12.4705546590231
-        rot = 149.86873311284756
+        # coordinates from LSSTCam visit 2025052100138
+        ra = 225.85827927603876
+        dec = -38.6275010948895
+        rot = 357.9606420320256
         self.next_visit = FannedOutVisit(instrument=instname,
-                                         detector=4,
+                                         detector=90,
                                          groupId="1",
                                          nimages=1,
                                          filters=filter,
                                          coordinateSystem=FannedOutVisit.CoordSys.ICRS,
                                          position=[ra, dec],
-                                         startTime=1718661950.0,
+                                         startTime=1747891209.9,
                                          rotationSystem=FannedOutVisit.RotSys.SKY,
                                          cameraAngle=rot,
                                          survey="SURVEY",
@@ -1337,7 +1336,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                          dome=FannedOutVisit.Dome.OPEN,
                                          duration=35.0,
                                          totalCheckpoints=1,
-                                         private_sndStamp=1718661900.716517500,
+                                         private_sndStamp=1747891150.0,
                                          )
         self.logger_name = "lsst.activator.middleware_interface"
 
@@ -1461,16 +1460,23 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # Avoid collisions with other calls to prep_butler
         with make_local_repo(tempfile.gettempdir(), read_butler, instname) as local_repo:
             butler_writer = DirectButlerWriter(write_butler)
-            interface = MiddlewareInterface(read_butler, butler_writer, self.input_data,
-                                            dataclasses.replace(self.next_visit, groupId="42"),
-                                            pre_pipelines_empty, pipelines, skymap_name, local_repo,
-                                            DatasetCache(3, {"uw_stars_20240524": 10, "template_coadd": 30}),
-                                            prefix="file://")
+            interface = MiddlewareInterface(
+                read_butler,
+                butler_writer,
+                self.input_data,
+                dataclasses.replace(self.next_visit, groupId="42"),
+                pre_pipelines_empty,
+                pipelines,
+                skymap_name,
+                local_repo,
+                DatasetCache(3, {"the_monster_20250219": 10, "template_coadd": 30}),
+                prefix="file://",
+            )
             with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
                 interface.prep_butler()
 
             self.assertEqual(
-                self._count_datasets(interface.butler, ["uw_stars_20240524"], f"{instname}/defaults"),
+                self._count_datasets(interface.butler, ["the_monster_20250219"], f"{instname}/defaults"),
                 2)
             self.assertIn(
                 "emptyrun",
@@ -1503,7 +1509,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # Did not export calibs or other inputs.
         self.assertEqual(
             self._count_datasets(central_butler,
-                                 ["bias", "uw_stars_20240524", "skyMap"]
+                                 ["bias", "the_monster_20250219", "skyMap"]
                                  + list(central_butler.registry.queryDatasetTypes("*Coadd")),
                                  self.output_run),
             0)
@@ -1550,8 +1556,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         region = self.interface._compute_region()
         self.assertTrue(isinstance(region, lsst.sphgeom.Region))
         results = self.interface.butler.query_dimension_records(
-            "visit_detector_region", instrument=instname, group="1", detector=4,
+            "visit_detector_region", instrument=instname, group="1", detector=90,
         )
-        visit_detector_region = list(results)[0].region
+        self.assertEqual(len(results), 1)
+        visit_detector_region = results[0].region
         # TODO: DM-47460 for a better test.
         self.assertTrue(visit_detector_region.intersects(region))
