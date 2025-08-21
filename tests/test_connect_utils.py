@@ -28,12 +28,13 @@ from shared.connect_utils import retry
 
 class ConnectionUtilsTest(unittest.TestCase):
 
-    def test_retry(self):
+    def test_retry_no_except(self):
         dummy = unittest.mock.Mock(__name__="function")
         wrapped = retry(2, ValueError)(dummy)
         wrapped("Foo", 42)
         dummy.assert_called_once_with("Foo", 42)
 
+    def test_retry_except(self):
         dummy = unittest.mock.Mock(__name__="function", side_effect=[ValueError, True])
         wrapped = retry(2, ValueError)(dummy)
         wrapped()
@@ -57,11 +58,13 @@ class ConnectionUtilsTest(unittest.TestCase):
         wrapped()
         self.assertEqual(dummy.call_count, 3)
 
+    def test_retry_parameters(self):
         dummy = unittest.mock.Mock(__name__="function")
         with self.assertRaises(ValueError):
             retry(0, RuntimeError)(dummy)
         retry(1, RuntimeError)(dummy)
 
+    def test_retry_jitter(self):
         dummy = unittest.mock.Mock(__name__="function", side_effect=ValueError)
         # Long wait time is to minimize noise from CPU availability
         wrapped = retry(2, ValueError, wait=5.0)(dummy)
