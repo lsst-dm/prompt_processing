@@ -1,0 +1,10 @@
+description: >-
+  ISR-only pipeline specialized for LSSTCam. This is a seperate
+  pipeline from the other ISR-only pipeline because this config
+  is for cleanroom data.
+  This version is specialized for the dev environment.
+
+imports:
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/Isr-cal.yaml
+parameters:
+  release_id: 0  # This pipeline runs in dev (parameter should be unused in ISR)

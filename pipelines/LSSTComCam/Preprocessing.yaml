@@ -1,6 +1,0 @@
-description: Preprocessing pipeline specialized for LSSTComCam
-
-imports:
-  - location: $AP_PIPE_DIR/pipelines/LSSTComCam/ApPipe.yaml
-    include:
-      - preload
