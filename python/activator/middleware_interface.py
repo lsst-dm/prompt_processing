@@ -44,8 +44,8 @@ import lsst.afw.cameraGeom
 from lsst.pipe.base.mp_graph_executor import MPGraphExecutor
 from lsst.pipe.base.separable_pipeline_executor import SeparablePipelineExecutor
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
-from lsst.daf.butler import Butler, CollectionType, DatasetType, Timespan, \
-    DataIdValueError, MissingDatasetTypeError, MissingCollectionError
+from lsst.daf.butler import Butler, CollectionType, DatasetType, DatasetRef, Timespan, \
+    DataIdValueError, DimensionRecord, MissingDatasetTypeError, MissingCollectionError
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
@@ -187,6 +187,64 @@ def _get_sasquatch_dispatcher():
     return SasquatchDispatcher(url=url, token=token, namespace=namespace)
 
 
+GroupedDimensionRecords: typing.TypeAlias = dict[str, list[DimensionRecord]]
+"""Dictionary from dimension name to list of dimension records for that
+dimension.
+"""
+
+
+class ButlerWriter(typing.Protocol):
+    """Interface defining functions for writing output datasets back to the central
+    Butler repository.
+    """
+
+    def transfer_outputs(
+        self, local_butler: Butler, dimension_records: GroupedDimensionRecords, datasets: list[DatasetRef]
+    ) -> list[DatasetRef]:
+        """Transfer outputs back to the central repository.
+
+        Parameters
+        ----------
+        local_butler : `lsst.daf.butler.Butler`
+            Local Butler repository from which output datasets will be
+            transferred.
+        dimension_records : `dict` [`str` , `list` [`lsst.daf.butler.DimensionRecord`]]
+            Dimension records to write to the central Butler repository.
+        datasets : `list` [`lsst.daf.butler.DatasetRef`]
+            Datasets to transfer to the central Butler repository.
+
+        Returns
+        -------
+        transferred : `list` [`lsst.daf.butler.DatasetRef`]
+            List of datasets actually transferred.
+        """
+
+
+class DirectButlerWriter(ButlerWriter):
+    def __init__(self, central_butler: Butler) -> None:
+        """Writes Butler outputs back to the central repository by connecting
+        directly to the Butler database.
+
+        Parameters
+        ----------
+        central_butler : `lsst.daf.butler.Butler`
+            Butler repo to which pipeline outputs should be written.
+        """
+        self._central_butler = central_butler
+
+    def transfer_outputs(
+        self, local_butler: Butler, dimension_records: GroupedDimensionRecords, datasets: list[DatasetRef]
+    ) -> list[DatasetRef]:
+        dimensions = local_butler.dimensions.sorted(dimension_records.keys())
+        for dimension in dimensions:
+            records = dimension_records[dimension.name]
+            # If records don't match, this is not an error, and central takes precedence.
+            self._central_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
+
+        return self._central_butler.transfer_from(
+            local_butler, datasets, transfer="copy", transfer_dimensions=False)
+
+
 class MiddlewareInterface:
     """Interface layer between the Butler middleware and the prompt processing
     data handling system, to handle processing individual images.
@@ -211,10 +269,9 @@ class MiddlewareInterface:
         Butler repo containing the calibration and other data needed for
         processing images as they are received. This butler must be created
         with the default instrument and skymap assigned.
-    write_butler : `lsst.daf.butler.Butler`
-        Butler repo to which pipeline outputs should be written. This butler
-        must be created with the default instrument assigned.
-        May be the same object as ``read_butler``.
+    butler_writer : `activator.middleware_interface.ButlerWriter`
+        Object that will be used to write the pipeline outputs back to the
+        central Butler repository.
     image_bucket : `str`
         Storage bucket where images will be written to as they arrive.
         See also ``prefix``.
@@ -266,7 +323,8 @@ class MiddlewareInterface:
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
 
-    def __init__(self, read_butler: Butler, write_butler: Butler, image_bucket: str, visit: FannedOutVisit,
+    def __init__(self, read_butler: Butler, butler_writer: ButlerWriter, image_bucket: str,
+                 visit: FannedOutVisit,
                  pre_pipelines: PipelinesConfig, main_pipelines: PipelinesConfig,
                  # TODO: encapsulate relationship between local_repo and local_cache
                  skymap: str, local_repo: str, local_cache: DatasetCache,
@@ -277,7 +335,7 @@ class MiddlewareInterface:
         # Deployment/version ID -- potentially expensive to generate.
         self._deployment = runs.get_deployment(self._apdb_config)
         self.read_central_butler = read_butler
-        self.write_central_butler = write_butler
+        self._butler_writer = butler_writer
         self.image_host = prefix + image_bucket
         # TODO: _download_store turns MWI into a tagged class; clean this up later
         if not self.image_host.startswith("file"):
@@ -1596,7 +1654,8 @@ class MiddlewareInterface:
 
     @connect.retry(2, DATASTORE_EXCEPTIONS, wait=repo_retry)
     def _export_subset(self, exposure_ids: set[int],
-                       dataset_types: typing.Any, in_collections: typing.Any) -> None:
+                       dataset_types: typing.Any, in_collections: typing.Any
+                       ) -> collections.abc.Collection[DatasetRef]:
         """Copy datasets associated with a processing run back to the
         central Butler.
 
@@ -1637,45 +1696,47 @@ class MiddlewareInterface:
             except lsst.daf.butler.registry.DataIdError as e:
                 raise ValueError("Invalid visit or exposures.") from e
 
-        with lsst.utils.timer.time_this(_log, msg="export_outputs (transfer)", level=logging.DEBUG):
             # Transfer dimensions created by ingest in case it was never done in
             # central repo (which is normal for dev).
             # Transferring governor dimensions in parallel can cause deadlocks in
             # central registry. We need to transfer our exposure/visit dimensions,
             # so handle those manually.
-            self._export_exposure_dimensions(
+            dimension_records = self._get_dimension_records_to_export(
                 self.butler,
-                self.write_central_butler,
                 where="exposure in (exposure_ids)",
                 bind={"exposure_ids": exposure_ids},
                 instrument=self.instrument.getName(),
                 detector=self.visit.detector,
             )
-            transferred = self.write_central_butler.transfer_from(
-                self.butler, datasets, transfer="copy", transfer_dimensions=False)
+
+        with lsst.utils.timer.time_this(_log, msg="export_outputs (transfer)", level=logging.DEBUG):
+            transferred = self._butler_writer.transfer_outputs(self.butler, dimension_records, list(datasets))
             _check_transfer_completion(datasets, transferred, "Uploaded")
 
         return transferred
 
     @staticmethod
-    def _export_exposure_dimensions(src_butler, dest_butler, **kwargs):
-        """Transfer dimensions generated from an exposure to the central repo.
+    def _get_dimension_records_to_export(butler: Butler, **kwargs) -> GroupedDimensionRecords:
+        """Retrieve dimension records generated from an exposure that need to
+        be transferred to the central repo.
 
-        In many cases the exposure records will already exist in the central
-        repo, but this is not guaranteed (especially in dev environments).
-        Visit records never exist in the central repo and are the sole
-        responsibility of Prompt Processing.
+        In many cases the exposure records retrieved here will already exist in
+        the central repo, but this is not guaranteed (especially in dev
+        environments).
 
         Parameters
         ----------
-        src_butler : `lsst.daf.butler.Butler`
-            The butler from which to transfer dimension records.
-        dest_butler : `lsst.daf.butler.Butler`
-            The butler to which to transfer records.
+        butler : `lsst.daf.butler.Butler`
+            The butler from which to retrieve dimension records.
         **kwargs
             Any data ID parameters to select specific records. They have the
             same meanings as the parameters of
             `lsst.daf.butler.Butler.query_dimension_records`.
+
+        Returns
+        -------
+        dimension_records : `dict` [`str` , `list` [`lsst.daf.butler.DimensionRecord`]]
+            Dictionary from dimension name to list of dimension records for that dimension.
         """
         core_dimensions = ["group",
                            "day_obs",
@@ -1683,18 +1744,18 @@ class MiddlewareInterface:
                            "visit",
                            "visit_system",
                            ]
-        universe = src_butler.dimensions
+        universe = butler.dimensions
 
         full_dimensions = [universe[d] for d in core_dimensions if d in universe]
         extra_dimensions = []
         for d in full_dimensions:
             extra_dimensions.extend(universe.get_elements_populated_by(universe[d]))
-        sorted_dimensions = universe.sorted(full_dimensions + extra_dimensions)
+        dimensions = full_dimensions + extra_dimensions
 
-        for dimension in sorted_dimensions:
-            records = src_butler.query_dimension_records(dimension, explain=False, **kwargs)
-            # If records don't match, this is not an error, and central takes precedence.
-            dest_butler.registry.insertDimensionData(dimension, *records, skip_existing=True)
+        records = {}
+        for dimension in dimensions:
+            records[dimension.name] = butler.query_dimension_records(dimension, explain=False, **kwargs)
+        return records
 
     def _query_datasets_by_storage_class(self, butler, exposure_ids, collections, storage_class):
         """Identify all datasets with a particular storage class, regardless of
