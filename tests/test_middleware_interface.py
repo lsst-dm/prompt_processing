@@ -1550,7 +1550,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         region = self.interface._compute_region()
         self.assertTrue(isinstance(region, lsst.sphgeom.Region))
         results = self.interface.butler.query_dimension_records(
-            "visit_detector_region", instrument=instname, group="1"
+            "visit_detector_region", instrument=instname, group="1", detector=4,
         )
         visit_detector_region = list(results)[0].region
         # TODO: DM-47460 for a better test.
