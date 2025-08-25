@@ -1,5 +1,0 @@
-instrument: LSSTComCamSim
-query:
-  collections: LSSTComCamSim/raw/all
-  where: "exposure.science_program='BLOCK-297' and day_obs=20240627"
-repo: embargo_or4
