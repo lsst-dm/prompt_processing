@@ -150,23 +150,6 @@ pre_pipelines = _config_from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
 main_pipelines = _config_from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
 
 
-def find_local_repos(base_path):
-    """Search for existing local repos.
-
-    Parameters
-    ----------
-    base_path : `str`
-        The directory in which to search for repos.
-
-    Returns
-    -------
-    repos : collection [`str`]
-        The root directories of any local repos found.
-    """
-    subdirs = {entry.path for entry in os.scandir(base_path) if entry.is_dir()}
-    return {d for d in subdirs if os.path.exists(os.path.join(d, "butler.yaml"))}
-
-
 @functools.cache
 def _get_consumer():
     """Lazy initialization of shared Kafka Consumer."""
