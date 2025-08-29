@@ -9,8 +9,6 @@ REPO="${PROMPT_PROCESSING_DIR:?Can\'t find prompt_processing repo; is it set up?
 butler create "$REPO" --dimension-config "$DAF_BUTLER_DIR/python/lsst/daf/butler/configs/old_dimensions/daf_butler_universe7.yaml"
 butler register-instrument "$REPO" lsst.obs.lsst.LsstCam
 
-butler register-skymap "$REPO"  -C $OBS_LSST_DIR/config/makeSkyMap.py -c name=lsst_cells_v1
-
 # Import datasets
 butler write-curated-calibrations "$REPO" LSSTCam --collection LSSTCam/calib/DM-50520
 butler prune-datasets "$REPO" LSSTCam/calib/curated/19700101T000000Z --where "instrument='LSSTCam' and detector not in (90, 91)" --unstore --purge LSSTCam/calib/curated/19700101T000000Z --no-confirm
@@ -24,6 +22,7 @@ butler transfer-datasets embargo "$REPO" --transfer copy --register-dataset-type
 butler transfer-datasets embargo "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type linearizer --collections LSSTCam/calib/DM-49175 --where "instrument='LSSTCam' and detector in (90, 91)"
 butler transfer-datasets embargo "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type ptc --collections LSSTCam/calib/DM-50336 --where "instrument='LSSTCam' and detector in (90, 91)"
 butler transfer-datasets embargo "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type pretrainedModelPackage --collections pretrained_models/tac_cnn_comcam_2025-02-18
+butler transfer-datasets embargo "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type skyMap --where "skymap='lsst_cells_v1'" --collections skymaps
 # The tract constraint is not strictly necessary but just to filter out templates from another overlapping tract.
 butler transfer-datasets embargo "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type template_coadd --collections LSSTCam/templates/DM-51716/SV_225/run --where "instrument='LSSTCam' and detector=90 and visit=2025052100138 and skymap='lsst_cells_v1' and tract=3534"
 butler transfer-datasets embargo "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type the_monster_20250219 --collections refcats --where "instrument='LSSTCam' and detector=90 and visit=2025052100138"
@@ -85,16 +84,3 @@ for x in `find "$REPO/LSSTCam/templates/" -name "*.fits"`; do : > $x; done
 for x in `find "$REPO/pretrained_models/" -name "*.zip"`; do : > $x; done
 for x in `find "$REPO/refcats/DM-49042/" -name "*.fits"`; do : > $x; done
 for x in `find "$REPO/LSSTCam/prompt/" -type f`; do : > $x; done
-
-# Remove the unused tracts and patches in the registry to shrink the registry file size.
-# This decreased the file size from 1.5G to 4.1M.
-sqlite3 -batch -cmd ".timeout 5000" "$REPO/gen3.sqlite3" <<SQL
-PRAGMA foreign_keys=ON;
-BEGIN IMMEDIATE;
-DELETE FROM patch_skypix_overlap WHERE NOT ("tract" = 3534 AND "patch" BETWEEN 76 AND 98);
-DELETE FROM tract_skypix_overlap WHERE "tract" <> 3534;
-DELETE FROM patch WHERE NOT ("tract" = 3534 AND "id" BETWEEN 76 AND 98);
-DELETE FROM tract WHERE "id" <> 3534;
-COMMIT;
-VACUUM;
-SQL
