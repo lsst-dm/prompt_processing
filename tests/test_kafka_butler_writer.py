@@ -58,11 +58,12 @@ class KafkaButlerWriterTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as output_directory:
             topic = "topic-name"
             # Simulate a transfer, writing the datasets into a temporary
-            # directory.
+            # Butler repository.
+            Butler.makeRepo(output_directory)
             writer = KafkaButlerWriter(
                 producer=kafka_producer_mock,
                 output_topic=topic,
-                file_output_path=output_directory
+                output_repo=output_directory
             )
             datasets_transferred = writer.transfer_outputs(butler, dimension_records, datasets)
 
@@ -76,5 +77,5 @@ class KafkaButlerWriterTest(unittest.TestCase):
             self.assertEqual(len(model.dimension_records), num_dimension_records)
 
             # Check that datasets were written to the output directory.
-            output_files = [path for path in Path(output_directory).rglob("*") if path.is_file()]
+            output_files = list(Path(output_directory).rglob("*.fits"))
             self.assertEqual(len(output_files), num_datasets)
