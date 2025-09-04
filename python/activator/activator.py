@@ -46,7 +46,7 @@ import redis
 
 from shared.astropy import import_iers_cache
 from shared.config import PipelinesConfig
-from shared.logger import setup_usdf_logger
+from shared.logger import setup_usdf_logger, logging_context
 from shared.raw import (
     check_for_snap,
     is_path_consistent,
@@ -576,12 +576,11 @@ def keda_start():
 
     with instances_started_gauge.track_inprogress():
         try:
-            log_factory = logging.getLogRecordFactory()
             while (max_requests <= 0 or consumer_polls_with_message < max_requests) \
                     and (_time_since(fan_out_listen_start_time) < fanned_out_msg_listen_timeout):
 
                 # Ensure consistent day_obs for whole run, even if it crosses the boundary
-                with log_factory.add_context(day_obs=get_day_obs(astropy.time.Time.now())):
+                with logging_context(day_obs=get_day_obs(astropy.time.Time.now())):
                     try:
                         redis_streams_message_id, fan_out_visit_decoded = redis_session.read_message()
 
@@ -1034,11 +1033,10 @@ def process_visit(expected_visit: FannedOutVisit):
         if not main_pipelines.get_pipeline_files(expected_visit):
             raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
 
-        log_factory = logging.getLogRecordFactory()
-        with log_factory.add_context(group=expected_visit.groupId,
-                                     survey=expected_visit.survey,
-                                     detector=expected_visit.detector,
-                                     ):
+        with logging_context(group=expected_visit.groupId,
+                             survey=expected_visit.survey,
+                             detector=expected_visit.detector,
+                             ):
             try:
                 expid_set = set()
 
@@ -1103,7 +1101,7 @@ def process_visit(expected_visit: FannedOutVisit):
             if not expid_set:
                 raise RuntimeError("All images rejected as unprocessable.")
 
-            with log_factory.add_context(exposures=expid_set):
+            with logging_context(exposures=expid_set):
                 # Got at least some snaps; run the pipeline.
                 # If this is only a partial set, the processed results may still be
                 # useful for quality purposes.
