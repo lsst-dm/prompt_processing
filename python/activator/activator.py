@@ -109,10 +109,6 @@ if use_kafka_butler_writer:
     butler_writer_kafka_password = os.environ["BUTLER_WRITER_KAFKA_PASSWORD"]
     # Topic used to transfer output datasets to the central repository.
     butler_writer_kafka_topic = os.environ["BUTLER_WRITER_KAFKA_TOPIC"]
-    # URI to the path where output datasets will be written when using the Kafka
-    # writer to transfer outputs to the central Butler repository.
-    # This will generally be in the same S3 bucket used by the central Butler.
-    butler_writer_file_output_path = os.environ["BUTLER_WRITER_FILE_OUTPUT_PATH"]
 
 # Conditionally load keda environment variables
 if platform == "keda":
@@ -226,7 +222,7 @@ def _get_butler_writer() -> ButlerWriter:
         return KafkaButlerWriter(
             _get_producer(),
             output_topic=butler_writer_kafka_topic,
-            file_output_path=butler_writer_file_output_path
+            output_repo=write_repo
         )
     else:
         return DirectButlerWriter(_get_write_butler())

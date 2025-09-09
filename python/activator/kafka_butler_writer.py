@@ -23,52 +23,62 @@ from __future__ import annotations
 
 __all__ = ("KafkaButlerWriter",)
 
-from datetime import date
 from typing import Literal
-from uuid import uuid4
 
 from confluent_kafka import Producer
 import pydantic
 
 from lsst.daf.butler import (
     Butler,
+    ButlerConfig,
     DatasetRef,
     SerializedDimensionRecord,
     SerializedFileDataset,
 )
-from lsst.resources import ResourcePath
+from lsst.daf.butler._rubin.file_datasets import transfer_datasets_to_datastore
 
 from .middleware_interface import ButlerWriter, GroupedDimensionRecords
 
 
 class KafkaButlerWriter(ButlerWriter):
-    def __init__(self, producer: Producer, *, output_topic: str, file_output_path: str) -> None:
+    """
+    Writes Butler outputs to the central repository by copying datasets
+    to their destination in S3, and sending a Kafka message to
+    butler-writer-service asking it to ingest the files into the Butler
+    database.
+
+    Parameters
+    ----------
+    producer : `confluent_kafka.Producer`
+        Kafka producer that will be uses to send messages to
+        butler-writer-service.
+    output_topic : `str`
+        Name of the Kafka topic messages will be written to.
+    output_repo : `str`
+        Butler repository label or path to Butler configuration file for
+        the central repository to which we will write datasets.
+        The Butler datastore configuration is loaded from this to determine
+        the output paths for files being written to S3.
+    """
+
+    def __init__(self, producer: Producer, *, output_topic: str, output_repo: str) -> None:
         self._producer = producer
         self._output_topic = output_topic
-        self._file_output_path = ResourcePath(file_output_path, forceDirectory=True)
+        self._output_butler_config = ButlerConfig(output_repo)
 
     def transfer_outputs(
         self, local_butler: Butler, dimension_records: GroupedDimensionRecords, datasets: list[DatasetRef]
     ) -> list[DatasetRef]:
-        # Create a subdirectory in the output root distinct to this processing
-        # run.
-        date_string = date.today().strftime("%Y-%m-%d")
-        subdirectory = f"{date_string}/{uuid4()}/"
-        output_directory = self._file_output_path.join(subdirectory, forceDirectory=True)
-        # There is no such thing as a directory in S3, but the Butler complains
-        # if there is not an object at the prefix of the export path.
-        output_directory.mkdir()
-
-        # Copy files to the output directory, and retrieve metadata required to
-        # ingest them into the central Butler.
-        file_datasets = local_butler._datastore.export(datasets, directory=output_directory, transfer="copy")
+        # Copy files to their final location in the central Butler's datastore,
+        # and retrieve metadata needed to ingest them into the central
+        # Butler database.
+        file_datasets = transfer_datasets_to_datastore(local_butler, self._output_butler_config, datasets)
 
         # Serialize Butler data as a JSON string.
         event = PromptProcessingOutputEvent(
             type="pp-output",
             dimension_records=_serialize_dimension_records(dimension_records),
             datasets=[dataset.to_simple() for dataset in file_datasets],
-            root_directory=subdirectory,
         )
         message = event.model_dump_json()
 
@@ -80,7 +90,6 @@ class KafkaButlerWriter(ButlerWriter):
 
 class PromptProcessingOutputEvent(pydantic.BaseModel):
     type: Literal["pp-output"]
-    root_directory: str
     dimension_records: list[SerializedDimensionRecord]
     datasets: list[SerializedFileDataset]
 
