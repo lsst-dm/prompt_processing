@@ -65,7 +65,7 @@ export MAIN_PIPELINES_CONFIG="- survey: SURVEY
 apdb-cli create-sql "sqlite:///${TEMP_APDB}" "${CONFIG_APDB}"
 butler ingest-raws "$REPO" s3://embargo@rubin-summit/LSSTCam/20250521/MC_O_20250521_000138/MC_O_20250521_000138_R22_S00.fits -t copy
 butler define-visits "$REPO" lsst.obs.lsst.LsstCam
-pipetask run -b "$REPO" -i LSSTCam/raw/all,LSSTCam/defaults,LSSTCam/templates -o u/add-dataset-type -d "instrument='LSSTCam' and exposure=2025052100138 and detector=90" -p $PROMPT_PROECSSING_DIR/tests/data/ApPipe.yaml -c parameters:apdb_config=${CONFIG_APDB} --register-dataset-types --init-only
+pipetask run -b "$REPO" -i LSSTCam/raw/all,LSSTCam/defaults,LSSTCam/templates -o u/add-dataset-type -d "instrument='LSSTCam' and exposure=2025052100138 and detector=90" -p $PROMPT_PROECESSING_DIR/tests/data/ApPipe.yaml -c parameters:apdb_config=${CONFIG_APDB} --register-dataset-types --init-only
 # Clean up data that are no longer needed.
 butler remove-runs "$REPO" LSSTCam/raw/all --no-confirm --force
 rm -rf "$REPO"/raw
