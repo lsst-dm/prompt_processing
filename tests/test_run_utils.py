@@ -26,9 +26,9 @@ from lsst.obs.base import Instrument
 from shared.run_utils import get_output_chain, get_preload_run, get_output_run
 
 # The short name of the instrument used in the test repo.
-instname = "LSSTComCamSim"
+instname = "LSSTCam"
 # The full class name of the same instrument.
-instclass = "lsst.obs.lsst.LsstComCamSim"
+instclass = "lsst.obs.lsst.LsstCam"
 
 
 class RunUtilsFunctionTest(unittest.TestCase):

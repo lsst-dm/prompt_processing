@@ -42,7 +42,7 @@ class KafkaButlerWriterTest(unittest.TestCase):
         butler = self.butler
 
         # Pull up a list of datasets to send
-        collection = "LSSTComCamSim/defaults"
+        collection = "LSSTCam/defaults"
         datasets = []
         datasets.extend(butler.query_datasets("bias", collection))
         datasets.extend(butler.query_datasets("dark", collection))
@@ -51,7 +51,7 @@ class KafkaButlerWriterTest(unittest.TestCase):
         # Pull up some dimension records to send
         dimension_records = {}
         dimension_records["instrument"] = butler.query_dimension_records("instrument")
-        dimension_records["detector"] = butler.query_dimension_records("detector", instrument="LSSTComCamSim")
+        dimension_records["detector"] = butler.query_dimension_records("detector", instrument="LSSTCam")
         num_dimension_records = len(dimension_records["instrument"]) + len(dimension_records["detector"])
 
         kafka_producer_mock = unittest.mock.Mock(Producer)

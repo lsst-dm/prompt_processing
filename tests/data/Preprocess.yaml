@@ -1,6 +1,4 @@
 description: Test version of the preprocessing pipeline
 
 imports:
-  - location: $AP_PIPE_DIR/pipelines/LSSTComCamSim/ApPipe.yaml
-    include:
-      - preload
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/dev/Preprocessing.yaml
