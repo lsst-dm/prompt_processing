@@ -61,6 +61,7 @@ from .middleware_interface import get_central_butler, \
     make_local_repo, make_local_cache, MiddlewareInterface, ButlerWriter, DirectButlerWriter
 from .kafka_butler_writer import KafkaButlerWriter
 from .repo_tracker import LocalRepoTracker
+from .setup import ServiceSetup
 
 # Platform that prompt processing will run on
 platform = os.environ["PLATFORM"].lower()
@@ -150,6 +151,7 @@ pre_pipelines = _config_from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
 main_pipelines = _config_from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
 
 
+@ServiceSetup.check_on_init
 @functools.cache
 def _get_notification_consumer():
     """Lazy initialization of Kafka Consumer for raw bucket notifications."""
@@ -172,6 +174,7 @@ def _get_butler_writer_producer():
     })
 
 
+@ServiceSetup.check_on_init
 @functools.cache
 def _get_storage_client():
     """Lazy initialization of cloud storage reader."""
@@ -187,6 +190,7 @@ def _get_write_butler():
     return get_central_butler(write_repo, instrument_name, writeable=True)
 
 
+@ServiceSetup.check_on_init
 @functools.cache
 def _get_read_butler():
     """Lazy initialization of central Butler for reads.
@@ -198,6 +202,7 @@ def _get_read_butler():
         return _get_write_butler()
 
 
+@ServiceSetup.check_on_init
 @functools.cache
 def _get_butler_writer() -> ButlerWriter:
     """Lazy initialization of Butler writer."""
@@ -211,6 +216,7 @@ def _get_butler_writer() -> ButlerWriter:
         return DirectButlerWriter(_get_write_butler())
 
 
+@ServiceSetup.check_on_init
 @functools.cache
 def _get_local_repo():
     """Lazy initialization of a new local repo.
@@ -480,11 +486,7 @@ def create_app():
 
         # Check initialization and abort early
         import_iers_cache()
-        _get_notification_consumer()
-        _get_storage_client()
-        _get_read_butler()
-        _get_butler_writer()
-        _get_local_repo()
+        ServiceSetup.run_init_checks()
 
         app = flask.Flask(__name__)
         app.add_url_rule("/next-visit", view_func=next_visit_handler, methods=["POST"])
@@ -529,11 +531,7 @@ def keda_start():
 
         # Check initialization and abort early
         import_iers_cache()
-        _get_notification_consumer()
-        _get_storage_client()
-        _get_read_butler()
-        _get_butler_writer()
-        _get_local_repo()
+        ServiceSetup.run_init_checks()
 
         redis_session = RedisStreamSession(
             fanout_redis_stream_host,
