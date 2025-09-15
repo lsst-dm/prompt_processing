@@ -234,7 +234,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                    inferDefaults=False)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.read_butler, instname)
-        self.local_cache = DatasetCache(3, {"the_monster_20250219": 10, "template_coadd": 30})
+        self.local_cache = DatasetCache(3)
         self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
 
         config = ApdbSql.init_database(db_url=f"sqlite:///{self.local_repo.name}/apdb.db")
@@ -1287,9 +1287,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.input_data = os.path.join(data_dir, "input_data")
 
         local_repo = make_local_repo(tempfile.gettempdir(), read_butler, instname)
-        self.local_cache = DatasetCache(2, {"the_monster_20250219": 10, "template_coadd": 30})
+        self.local_cache = DatasetCache(2)
         second_local_repo = make_local_repo(tempfile.gettempdir(), read_butler, instname)
-        self.second_local_cache = DatasetCache(2, {"the_monster_20250219": 10, "template_coadd": 30})
+        self.second_local_cache = DatasetCache(2)
         # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
         # getting garbage-collected.
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, local_repo)
