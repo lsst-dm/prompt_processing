@@ -744,7 +744,7 @@ def parse_next_visit(http_request):
     return visit
 
 
-def _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set):
+def _ingest_existing_raws(expected_visit, expected_snaps, ingester, expid_set):
     """Check if any snaps have already arrived, and ingest raws if found.
 
     Parameters
@@ -753,8 +753,9 @@ def _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set):
         The nextVisit being processed.
     expected_snaps : `int`
         The number of snaps to check for this visit.
-    mwi : `activator.middleware_interface.MiddlewareInterface`
-        The MiddlewareInterface object for this visit.
+    ingester : callable [(`str`), `int`]
+        A callable that takes an S3 object key, ingests the image, and returns
+        its exposure ID.
     expid_set : set [`int`]
         The IDs of already ingested exposures. This set is modified in place.
     """
@@ -772,7 +773,7 @@ def _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set):
             _log.debug("Found object %s already present", oid)
             exp_id = get_exp_id_from_oid(oid)
             if exp_id not in expid_set:
-                exp_id = mwi.ingest_image(oid)
+                exp_id = ingester(oid)
                 expid_set.add(exp_id)
 
 
@@ -801,7 +802,7 @@ def _filter_messages(messages):
     return cleaned
 
 
-def _consume_messages(messages, consumer, expected_visit, mwi, expid_set):
+def _consume_messages(messages, consumer, expected_visit, ingester, expid_set):
     """Parse the file arrival messages, ingest the matching images, and commit.
 
     Parameters
@@ -812,8 +813,9 @@ def _consume_messages(messages, consumer, expected_visit, mwi, expid_set):
         The Kafka Consumer instance to commit the messages when done processing.
     expected_visit : `shared.visit.FannedOutVisit`
         The nextVisit being processed.
-    mwi : `activator.middleware_interface.MiddlewareInterface`
-        The MiddlewareInterface object for this visit.
+    ingester : callable [(`str`), `int`]
+        A callable that takes an S3 object key, ingests the image, and returns
+        its exposure ID.
     expid_set : set [`int`]
         The IDs of already ingested exposures. This set is modified in place.
     """
@@ -827,7 +829,7 @@ def _consume_messages(messages, consumer, expected_visit, mwi, expid_set):
                     if group_id == expected_visit.groupId:
                         exp_id = get_exp_id_from_oid(oid)
                         if exp_id not in expid_set:
-                            exp_id = mwi.ingest_image(oid)
+                            exp_id = ingester(oid)
                             expid_set.add(exp_id)
             except ValueError:
                 _log.error(f"Failed to match object id '{oid}'")
@@ -1039,7 +1041,7 @@ def process_visit(expected_visit: FannedOutVisit):
                 # include the currently executing script, then add time to transfer
                 # the last image.
                 timeout = expected_visit.duration * 2 + image_timeout
-                _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set)
+                _ingest_existing_raws(expected_visit, expected_snaps, mwi.ingest_image, expid_set)
 
                 _log.debug("Waiting for snaps...")
                 start = time.time()
@@ -1057,12 +1059,12 @@ def process_visit(expected_visit: FannedOutVisit):
                         continue
                     startup_response = []
 
-                    _consume_messages(messages, consumer, expected_visit, mwi, expid_set)
+                    _consume_messages(messages, consumer, expected_visit, mwi.ingest_image, expid_set)
                 if len(expid_set) < expected_snaps:
                     _log.debug("Received %d out of %d expected snaps. Check again.",
                                len(expid_set), expected_snaps)
                     # Retry in case of race condition with microservice.
-                    _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set)
+                    _ingest_existing_raws(expected_visit, expected_snaps, mwi.ingest_image, expid_set)
                 if len(expid_set) < expected_snaps:
                     _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
             except GracefulShutdownInterrupt as e:
