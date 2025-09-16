@@ -238,7 +238,7 @@ The bucket ``rubin-pp-dev-users`` holds:
   It can be updated manually by running ``export_iers.py``.
 
 ``rubin-pp-dev`` has notifications configured for new file arrival; these publish to the Kafka topic ``prompt-processing-dev``.
-The notifications can be viewed at `Kafdrop <https://usdfdev-prompt-processing.slac.stanford.edu/kafdrop>`_.
+The notifications can be viewed at `Kafdrop <https://usdfdev-prompt-processing.slac.stanford.edu/kafdrop-s3>`_.
 
 Legacy Buckets
 --------------
