@@ -89,14 +89,14 @@ class InitOutputsTest(unittest.TestCase):
 
     def test_make_init_outputs_not_registered(self):
         pipe_file = "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml"
-        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstComCamSim")
+        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
 
         with self.assertRaises(lsst.daf.butler.MissingDatasetTypeError):
             _make_init_outputs(self.base_butler, instrument, self.config_file.name, self.deploy_id, pipe_file)
 
     def test_make_init_outputs_empty_run(self):
         pipe_file = "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml"
-        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstComCamSim")
+        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
         expected_run = get_output_run(instrument, self.deploy_id, pipe_file, "2024-09-24")
 
         self._register_dataset_types(pipe_file)
@@ -116,7 +116,7 @@ class InitOutputsTest(unittest.TestCase):
 
     def test_make_init_ouputs_filled_run(self):
         pipe_file = "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml"
-        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstComCamSim")
+        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
         expected_run = get_output_run(instrument, self.deploy_id, pipe_file, "2024-09-24")
 
         self._register_dataset_types(pipe_file)
@@ -137,7 +137,7 @@ class InitOutputsTest(unittest.TestCase):
             self.assertEqual(len(configs), 1)
 
     def test_make_output_chain_new(self):
-        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstComCamSim")
+        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
         expected_chain = get_output_chain(instrument, "2024-09-24")
 
         self.base_butler.collections.register("run1", CollectionType.RUN)
@@ -151,7 +151,7 @@ class InitOutputsTest(unittest.TestCase):
         self.assertEqual(self.base_butler.collections.get_info(expected_chain).children, ("run1", "run2"))
 
     def test_make_output_chain_existing(self):
-        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstComCamSim")
+        instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
         expected_chain = get_output_chain(instrument, "2024-09-24")
 
         self.base_butler.collections.register("run1", CollectionType.RUN)
@@ -186,7 +186,7 @@ class InitOutputsTest(unittest.TestCase):
             butler.registry.registerCollection(run)
             return run
 
-        with unittest.mock.patch.dict(os.environ, {"RUBIN_INSTRUMENT": "LSSTComCamSim",
+        with unittest.mock.patch.dict(os.environ, {"RUBIN_INSTRUMENT": "LSSTCam",
                                                    "PREPROCESSING_PIPELINES_CONFIG": pre_pipelines,
                                                    "MAIN_PIPELINES_CONFIG": pipelines,
                                                    "CENTRAL_REPO": self.repo.name,
@@ -200,7 +200,7 @@ class InitOutputsTest(unittest.TestCase):
             main(["--deploy-id", self.deploy_id])
 
         # The preload collection is not associated with a pipeline
-        preload_run = get_preload_run(lsst.obs.lsst.LsstComCamSim(), self.deploy_id, "")
+        preload_run = get_preload_run(lsst.obs.lsst.LsstCam(), self.deploy_id, "")
         self.assertTrue(Butler(self.repo.name).collections.query(preload_run, CollectionType.RUN))
 
         calls = mock_make.call_args_list
@@ -221,4 +221,4 @@ class InitOutputsTest(unittest.TestCase):
                 calls)
         for call in calls:
             arg_instrument = call.args[1]
-            self.assertIsInstance(arg_instrument, lsst.obs.lsst.LsstComCamSim)
+            self.assertIsInstance(arg_instrument, lsst.obs.lsst.LsstCam)
