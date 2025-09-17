@@ -77,23 +77,23 @@ s3_endpoint = os.environ["S3_ENDPOINT_URL"]
 # URI of raw image microservice
 raw_microservice = os.environ.get("RAW_MICROSERVICE", "")
 # Bucket name (not URI) containing raw images
-image_bucket = os.environ["IMAGE_BUCKET"]
+raw_image_bucket = os.environ["IMAGE_BUCKET"]
 # Time to wait after expected script completion for image arrival, in seconds
 image_timeout = int(os.environ.get("IMAGE_TIMEOUT", 20))
 # Absolute path on this worker's system where local repos may be created
-local_repos = os.environ.get("LOCAL_REPOS", "/tmp")
+local_repo_space = os.environ.get("LOCAL_REPOS", "/tmp")
 # Kafka server for raw notifications
-kafka_cluster = os.environ["KAFKA_CLUSTER"]
+notification_kafka_cluster = os.environ["KAFKA_CLUSTER"]
 # Kafka group; must be worker-unique to keep workers from "stealing" messages for others.
-kafka_group_id = str(uuid.uuid4())
+notification_kafka_group_id = str(uuid.uuid4())
 # The time (in seconds) after which to ignore old nextVisit messages.
 visit_expire = float(os.environ.get("MESSAGE_EXPIRATION", 3600))
-# The topic on which to listen to updates to image_bucket
-bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
+# The topic on which to listen to updates to raw_image_bucket
+raw_bucket_topic = os.environ.get("BUCKET_TOPIC", "rubin-prompt-processing")
 # Offset for Kafka bucket notification.
 bucket_notification_kafka_offset_reset = os.environ.get("BUCKET_NOTIFICATION_KAFKA_OFFSET_RESET", "latest")
 # Max requests to handle before restarting. 0 means no limit.
-max_requests = int(os.environ.get("WORKER_RESTART_FREQ", 0))
+max_worker_requests = int(os.environ.get("WORKER_RESTART_FREQ", 0))
 # The number of seconds to delay retrying connections to the Redis stream.
 redis_retry = float(os.environ.get("REDIS_RETRY_DELAY", 30))
 
@@ -115,13 +115,13 @@ if platform == "keda":
     # Time to wait for fanned out messages before spawning new pod.
     fanned_out_msg_listen_timeout = int(os.environ.get("FANNED_OUT_MSG_LISTEN_TIMEOUT", 300))
     # Redis Stream Cluster
-    redis_stream_host = os.environ["REDIS_STREAM_HOST"]
+    fanout_redis_stream_host = os.environ["REDIS_STREAM_HOST"]
     # Redis stream name to receive messages.
-    redis_stream_name = os.environ["REDIS_STREAM_NAME"]
+    fanout_redis_stream_name = os.environ["REDIS_STREAM_NAME"]
     # Redis streams group; must be worker-unique to keep workers from stealing messages for others.
-    redis_group_id = str(uuid.uuid4())
+    fanout_redis_group_id = str(uuid.uuid4())
     # Redis stream consumer group
-    redis_stream_consumer_group = os.environ["REDIS_STREAM_CONSUMER_GROUP"]
+    fanout_redis_stream_consumer_group = os.environ["REDIS_STREAM_CONSUMER_GROUP"]
 
 _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
@@ -151,17 +151,17 @@ main_pipelines = _config_from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
 
 
 @functools.cache
-def _get_consumer():
-    """Lazy initialization of shared Kafka Consumer."""
+def _get_notification_consumer():
+    """Lazy initialization of Kafka Consumer for raw bucket notifications."""
     return kafka.Consumer({
-        "bootstrap.servers": kafka_cluster,
-        "group.id": kafka_group_id,
+        "bootstrap.servers": notification_kafka_cluster,
+        "group.id": notification_kafka_group_id,
         "auto.offset.reset": bucket_notification_kafka_offset_reset,
     })
 
 
 @functools.cache
-def _get_producer():
+def _get_butler_writer_producer():
     """Lazy initialization of Kafka Producer for Butler writer."""
     return kafka.Producer({
         "bootstrap.servers": butler_writer_kafka_cluster,
@@ -182,14 +182,14 @@ def _get_storage_client():
 
 @functools.cache
 def _get_write_butler():
-    """Lazy initialization of central Butler.
+    """Lazy initialization of central Butler for writes.
     """
     return get_central_butler(write_repo, instrument_name, writeable=True)
 
 
 @functools.cache
 def _get_read_butler():
-    """Lazy initialization of central Butler.
+    """Lazy initialization of central Butler for reads.
     """
     if read_repo != write_repo:
         return get_central_butler(read_repo, instrument_name, writeable=False)
@@ -203,7 +203,7 @@ def _get_butler_writer() -> ButlerWriter:
     """Lazy initialization of Butler writer."""
     if use_kafka_butler_writer:
         return KafkaButlerWriter(
-            _get_producer(),
+            _get_butler_writer_producer(),
             output_topic=butler_writer_kafka_topic,
             output_repo=write_repo
         )
@@ -213,7 +213,7 @@ def _get_butler_writer() -> ButlerWriter:
 
 @functools.cache
 def _get_local_repo():
-    """Lazy initialization of local repo.
+    """Lazy initialization of a new local repo.
 
     Returns
     -------
@@ -221,7 +221,7 @@ def _get_local_repo():
         The directory containing the repo, to be removed when the
         process exits.
     """
-    repo = make_local_repo(local_repos, _get_read_butler(), instrument_name)
+    repo = make_local_repo(local_repo_space, _get_read_butler(), instrument_name)
     tracker = LocalRepoTracker.get()
     tracker.register(os.getpid(), repo.name)
     return repo
@@ -480,7 +480,7 @@ def create_app():
 
         # Check initialization and abort early
         import_iers_cache()
-        _get_consumer()
+        _get_notification_consumer()
         _get_storage_client()
         _get_read_butler()
         _get_butler_writer()
@@ -529,17 +529,17 @@ def keda_start():
 
         # Check initialization and abort early
         import_iers_cache()
-        _get_consumer()
+        _get_notification_consumer()
         _get_storage_client()
         _get_read_butler()
         _get_butler_writer()
         _get_local_repo()
 
         redis_session = RedisStreamSession(
-            redis_stream_host,
-            redis_stream_name,
-            redis_group_id,
-            redis_stream_consumer_group,
+            fanout_redis_stream_host,
+            fanout_redis_stream_name,
+            fanout_redis_group_id,
+            fanout_redis_stream_consumer_group,
             connect=True,
         )
 
@@ -555,7 +555,7 @@ def keda_start():
 
     with instances_started_gauge.track_inprogress():
         try:
-            while (max_requests <= 0 or consumer_polls_with_message < max_requests) \
+            while (max_worker_requests <= 0 or consumer_polls_with_message < max_worker_requests) \
                     and (_time_since(fan_out_listen_start_time) < fanned_out_msg_listen_timeout):
 
                 # Ensure consistent day_obs for whole run, even if it crosses the boundary
@@ -609,7 +609,7 @@ def keda_start():
                 if _time_since(fan_out_listen_start_time) >= fanned_out_msg_listen_timeout:
                     _log.info("No messages received in %f seconds, shutting down.",
                               fanned_out_msg_listen_timeout)
-                if max_requests > 0 and consumer_polls_with_message >= max_requests:
+                if max_worker_requests > 0 and consumer_polls_with_message >= max_worker_requests:
                     _log.info("Handled %d messages, shutting down.", consumer_polls_with_message)
 
         finally:
@@ -763,7 +763,7 @@ def _ingest_existing_raws(expected_visit, expected_snaps, mwi, expid_set):
     for snap in range(expected_snaps):
         oid = check_for_snap(
             _get_storage_client(),
-            image_bucket,
+            raw_image_bucket,
             raw_microservice,
             expected_visit.instrument,
             expected_visit.groupId,
@@ -1000,10 +1000,10 @@ def process_visit(expected_visit: FannedOutVisit):
         original error.
     """
     with contextlib.ExitStack() as cleanups:
-        consumer = _get_consumer()
-        consumer.subscribe([bucket_topic])
+        consumer = _get_notification_consumer()
+        consumer.subscribe([raw_bucket_topic])
         cleanups.callback(consumer.unsubscribe)
-        _log.debug(f"Created subscription to '{bucket_topic}'")
+        _log.debug(f"Created subscription to '{raw_bucket_topic}'")
         # Try to get a message right away to minimize race conditions
         startup_response = consumer.consume(num_messages=1, timeout=0.001)
 
@@ -1023,7 +1023,7 @@ def process_visit(expected_visit: FannedOutVisit):
                 # "cross-talk" between different visits.
                 mwi = MiddlewareInterface(_get_read_butler(),
                                           _get_butler_writer(),
-                                          image_bucket,
+                                          raw_image_bucket,
                                           expected_visit,
                                           pre_pipelines,
                                           main_pipelines,
