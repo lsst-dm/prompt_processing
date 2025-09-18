@@ -18,4 +18,4 @@ COPY maps maps/
 # Can't use a here-document with CMD
 CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
-    && exec python3 -m activator.activator
+    && exec python3 -m activator.driver_keda
