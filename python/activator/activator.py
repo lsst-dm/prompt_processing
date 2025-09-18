@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["next_visit_handler"]
+__all__ = []
 
 import collections.abc
 import contextlib
@@ -38,9 +38,7 @@ import yaml
 import astropy.time
 import boto3
 from botocore.handlers import validate_bucket_name
-import cloudevents.http
 import confluent_kafka as kafka
-import flask
 import prometheus_client as prometheus
 import redis
 
@@ -55,7 +53,7 @@ from shared.raw import (
 )
 from shared.run_utils import get_day_obs
 from shared.visit import FannedOutVisit
-from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
+from .exception import GracefulShutdownInterrupt, IgnorableVisit, \
     NonRetriableError, RetriableError
 from .middleware_interface import get_central_butler, \
     make_local_repo, make_local_cache, MiddlewareInterface, ButlerWriter, DirectButlerWriter
@@ -478,32 +476,6 @@ def is_processable(visit, expire) -> bool:
     return True
 
 
-def create_app():
-    try:
-        setup_usdf_logger(
-            labels={"instrument": instrument_name},
-        )
-
-        # Check initialization and abort early
-        import_iers_cache()
-        ServiceSetup.run_init_checks()
-
-        app = flask.Flask(__name__)
-        app.add_url_rule("/next-visit", view_func=next_visit_handler, methods=["POST"])
-        app.register_error_handler(IgnorableVisit, skip_visit)
-        app.register_error_handler(InvalidVisitError, invalid_visit)
-        app.register_error_handler(RetriableError, request_retry)
-        app.register_error_handler(NonRetriableError, forbid_retry)
-        app.register_error_handler(500, server_error)
-        _log.info("Worker ready to handle requests.")
-        return app
-    except Exception as e:
-        _log.critical("Failed to start worker; aborting.")
-        _log.exception(e)
-        # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
-        sys.exit(3)
-
-
 def keda_start():
 
     try:
@@ -713,37 +685,6 @@ def with_signal(signum: int,
     return decorator
 
 
-def parse_next_visit(http_request):
-    """Parse a next_visit event and extract its data.
-
-    Parameters
-    ----------
-    http_request : `flask.Request`
-        The request to be parsed.
-
-    Returns
-    -------
-    next_visit : `shared.visit.FannedOutVisit`
-        The next_visit message contained in the request.
-
-    Raises
-    ------
-    ValueError
-        Raised if ``http_request`` is not a valid message.
-    """
-    event = cloudevents.http.from_http(http_request.headers, http_request.get_data())
-    if not event:
-        raise ValueError("no CloudEvent received")
-    if not event.data:
-        raise ValueError("empty CloudEvent received")
-
-    # Message format is determined by the nextvisit-start deployment.
-    data = json.loads(event.data)
-    visit = FannedOutVisit(**data)
-    _log.debug("Unpacked message as %r.", visit)
-    return visit
-
-
 def _ingest_existing_raws(expected_visit, expected_snaps, ingester, expid_set):
     """Check if any snaps have already arrived, and ingest raws if found.
 
@@ -927,43 +868,6 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
         return False
 
 
-def next_visit_handler() -> tuple[str, int]:
-    """A Flask view function for handling next-visit events.
-
-    Like all Flask handlers, this function accepts input through the
-    ``flask.request`` global rather than parameters.
-
-    Returns
-    -------
-    message : `str`
-        The HTTP response reason to return to the client.
-    status : `int`
-        The HTTP response status code to return to the client.
-    """
-    _log.info(f"Starting next_visit_handler for {flask.request}.")
-
-    try:
-        try:
-            expected_visit = parse_next_visit(flask.request)
-        except ValueError as e:
-            _log.exception("Bad Request")
-            return f"Bad Request: {e}", 400
-        if is_processable(expected_visit, visit_expire):
-            process_visit(expected_visit)
-            return "Pipeline executed", 200
-        else:
-            return "Stale request, ignoring", 403
-    except GracefulShutdownInterrupt:
-        # Safety net to minimize chance of interrupt propagating out of the worker.
-        # Ideally, this would be a Flask.errorhandler, but Flask ignores BaseExceptions.
-        _log.error("Service interrupted. Shutting down *without* syncing to the central repo.")
-        return "The worker was interrupted before it could complete the request. " \
-               "Retrying the request may not be safe.", 500
-    finally:
-        # Want to know when the handler exited for any reason.
-        _log.info("next_visit handling completed.")
-
-
 @with_signal(signal.SIGHUP, _graceful_shutdown)
 @with_signal(signal.SIGTERM, _graceful_shutdown)
 def process_visit(expected_visit: FannedOutVisit):
@@ -1103,54 +1007,9 @@ def process_visit(expected_visit: FannedOutVisit):
                             from e
 
 
-def invalid_visit(e: InvalidVisitError) -> tuple[str, int]:
-    _log.exception("Invalid visit")
-    return f"Cannot process visit: {e}.", 422
-
-
-def skip_visit(e: IgnorableVisit) -> tuple[str, int]:
-    _log.info("Skipping visit: %s", e)
-    return f"Skipping visit without processing: {e}.", 422
-
-
-def request_retry(e: RetriableError):
-    error = e.nested if e.nested else e
-    _log.error("Processing failed but can be retried: ", exc_info=error)
-    # Service unavailable is not quite right, but no better standard response
-    response = flask.make_response(
-        f"The server could not process the request, but it can be retried: {error}",
-        503,
-        {"Retry-After": 30})
-    return response
-
-
-def forbid_retry(e: NonRetriableError) -> tuple[str, int]:
-    error = e.nested if e.nested else e
-    _log.error("Processing failed: ", exc_info=error)
-    return f"An error occurred during processing: {error}.\nThe system's state has " \
-           "permanently changed, so this request should **NOT** be retried.", 500
-
-
-def server_error(e: Exception) -> tuple[str, int]:
-    _log.exception("An error occurred during a request.")
-    return (
-        f"""
-    An internal error occurred: <pre>{e}</pre>
-    See logs for full stacktrace.
-    """,
-        500,
-    )
-
-
 def main():
-    # Knative deployments call `create_app()()` through Gunicorn.
-    # Keda deployments invoke main.
-    if platform == "knative":
-        _log.info("starting standalone Flask app")
-        app = create_app()
-        app.run(host="127.0.0.1", port=8080, debug=True)
     # starts keda instance of the application
-    elif platform == "keda":
+    if platform == "keda":
         _log.info("starting keda instance")
         keda_start()
     else:
