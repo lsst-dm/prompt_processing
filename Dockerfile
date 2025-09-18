@@ -15,6 +15,7 @@ COPY pipelines pipelines/
 COPY config/astropy.cfg $XDG_CONFIG_HOME/astropy/
 COPY config/gunicorn.conf.py ./
 COPY maps maps/
+# Can't use a here-document with CMD
 CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
-    && exec gunicorn --bind :$PORT --config gunicorn.conf.py 'activator.activator:create_app()'
+    && exec python3 -m activator.activator
