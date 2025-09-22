@@ -112,6 +112,10 @@ Please note that the tag does not include a ``v`` at the beginning.
    * Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
    * Incompatibility with an old `APDB schema`_, `ApdbSql`_, `ApdbCassandra`_, or `ApdbCassandraReplica`_ version (see `DMTN-269`_ for the distinction)
    * Incompatibility with an old `Butler dimensions-config`_ version
+   * Incompatibility with an old `Butler Writer Service`_ version
+   * Incompatibility with an old Sattle version
+   * Incompatibility with an old MPSky version
+   * Incompatibility with an old raw microservice version
    * A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
 
    For the `next_visit_fan_out`_ service:
@@ -140,6 +144,10 @@ Please note that the tag does not include a ``v`` at the beginning.
    * Supported `APDB schema`_ and `ApdbSql`_/ `ApdbCassandra`_/ `ApdbCassandraReplica`_ versions (see `DMTN-269`_ for rationale).
      A stack quoting a given minor version is compatible with *older* APDBs of that major version but not necessarily newer ones; for example, a release whose baseline is APDB schema 1.4.0 can access a schema 1.0.0 or 1.4.1 database, but not schema 1.5.
    * Supported `Butler dimensions-config`_ versions
+   * Supported `Butler Writer Service`_ versions
+   * Supported Sattle versions
+   * Supported MPSky versions
+   * Supported raw microservice versions
    * The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
 
    Select **Publish Release**.
@@ -152,6 +160,8 @@ Please note that the tag does not include a ``v`` at the beginning.
 .. _DMTN-269: https://dmtn-269.lsst.io/
 
 .. _Butler dimensions-config: https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/dimensions.html#dimension-universe-change-history
+
+.. _Butler Writer Service: https://github.com/lsst-dm/prompt_processing_butler_writer/tags
 
 .. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/python/lsst/sdm/schemas/apdb.yaml#L4
 
