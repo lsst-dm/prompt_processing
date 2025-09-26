@@ -871,18 +871,20 @@ def _parse_bucket_notifications(payload):
             _log.error("Invalid S3 bucket notification: %s", e)
 
 
-def _filter_exposures(exposures, visit, mwi):
+def _filter_exposures(exposures, visit, get_skyangle):
     """Check exposures against the nextVisit and remove any that aren't safe
     to process.
 
     Parameters
     ----------
     exposures : collection [`int`]
-        The exposures to filter. Must have been ingested.
+        The exposures to filter.
     visit : `shared.visit.FannedOutVisit`
         The nextVisit for the exposures.
-    mwi : `activator.middleware_interface.MiddlewareInterface`
-        An interface for checking metadata against the local repo.
+    get_skyangle : callable [(`int`), `astropy.coordinates.Angle`]
+        A callable that takes an exposure ID and returns its rotation angle.
+        Called on each element of ``exposures``; this function's caller is
+        responsible for ensuring they meet any prerequisites.
 
     Returns
     -------
@@ -893,7 +895,7 @@ def _filter_exposures(exposures, visit, mwi):
     if visit.rotationSystem != FannedOutVisit.RotSys.NONE:
         expected_angle = visit.get_rotation_sky()
         for expid in exposures:
-            angle = mwi.get_observed_skyangle(expid)
+            angle = get_skyangle(expid)
             if angle is not None and not math.isnan(angle.degree):
                 diff = (angle - expected_angle).wrap_at("180d")
                 if abs(diff).degree > 1.0:
@@ -1076,7 +1078,7 @@ def process_visit(expected_visit: FannedOutVisit):
             if len(expid_set) < expected_visit.nimages:
                 _log.warning(f"Found {len(expid_set)} snaps, expected {expected_visit.nimages}.")
 
-            expid_set = _filter_exposures(expid_set, expected_visit, mwi)
+            expid_set = _filter_exposures(expid_set, expected_visit, mwi.get_observed_skyangle)
             if not expid_set:
                 raise RuntimeError("All images rejected as unprocessable.")
 
