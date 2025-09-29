@@ -29,6 +29,7 @@ from activator.setup import ServiceSetup
 class ServiceSetupTest(unittest.TestCase):
     def setUp(self):
         super().setUp()
+        ServiceSetup.reset()
         self.addCleanup(ServiceSetup.reset)
 
     def test_empty(self):
