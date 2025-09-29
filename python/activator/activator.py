@@ -573,11 +573,11 @@ def process_visit(expected_visit: FannedOutVisit):
 
                 _log.debug("Waiting for snaps...")
                 start = time.time()
-                while len(expid_set) < expected_snaps and time.time() - start < timeout:
+                while len(expid_set) < expected_snaps and time_since(start) < timeout:
                     if startup_response:
                         response = startup_response
                     else:
-                        time_remaining = max(0.0, timeout - (time.time() - start))
+                        time_remaining = max(0.0, timeout - time_since(start))
                         response = consumer.consume(num_messages=1, timeout=time_remaining + 1.0)
                     end = time.time()
                     messages = _filter_messages(response)
