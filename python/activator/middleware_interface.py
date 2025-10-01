@@ -1540,21 +1540,9 @@ class MiddlewareInterface:
                                 data_ids=where,
                                 label="main",
                                 )
-        except GracefulShutdownInterrupt as e:
-            try:
-                state_changed = self._check_permanent_changes(where)
-            except Exception:
-                # Failure in registry or APDB queries
-                _log.exception("Could not determine APDB state, assuming modified.")
-                raise NonRetriableError("APDB potentially modified") from e
-            else:
-                if state_changed:
-                    raise NonRetriableError("APDB modified") from e
-                else:
-                    raise RetriableError("External interrupt") from e
         # Catch Exception just in case there's a surprise -- raising
         # NonRetriableError on *all* irrevocable changes is important.
-        except Exception as e:
+        except (Exception, GracefulShutdownInterrupt) as e:
             try:
                 state_changed = self._check_permanent_changes(where)
             except (Exception, GracefulShutdownInterrupt):
@@ -1564,6 +1552,8 @@ class MiddlewareInterface:
             else:
                 if state_changed:
                     raise NonRetriableError("APDB modified") from e
+                elif isinstance(e, GracefulShutdownInterrupt):
+                    raise RetriableError("External interrupt") from e
                 else:
                     raise
 
