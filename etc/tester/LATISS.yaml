@@ -3,4 +3,4 @@ query:
   collections: LATISS/raw/all
   # Observations before 2024-04-09 are not compatible with calibs in dev repo
   where: "exposure.science_program in ('AUXTEL_PHOTO_IMAGING', 'BLOCK-306') and exposure.day_obs in (20240409..20241001)"
-repo: embargo_old
+repo: main

@@ -1,0 +1,5 @@
+instrument: LSSTCam
+query:
+  collections: LSSTCam/raw/all
+  where: "exposure.science_program='BLOCK-365'"
+repo: main

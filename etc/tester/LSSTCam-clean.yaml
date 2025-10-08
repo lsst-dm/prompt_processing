@@ -1,0 +1,5 @@
+instrument: LSSTCam
+query:
+  collections: u/hchiang2/tagged/DM-51822/dayobs20250525
+  where: "exposure.science_program='BLOCK-365'"
+repo: main

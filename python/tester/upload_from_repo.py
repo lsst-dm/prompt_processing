@@ -29,8 +29,8 @@ import random
 import tempfile
 import time
 import yaml
+import zipfile
 
-import astropy
 from astropy.io import fits
 import boto3
 from botocore.handlers import validate_bucket_name
@@ -47,7 +47,6 @@ from tester.utils import (
     get_last_group,
     increment_group,
     make_exposure_id,
-    make_imsim_time_headers,
     replace_header_key,
     send_next_visit,
 )
@@ -141,17 +140,19 @@ def main():
             tempfile.TemporaryDirectory() as temp_dir:
         for visit in visit_list:
             group = increment_group(instrument, group, 1)
-            # For imSim, use current time as the event publish time. This does
-            # not guarantee that the actual exposure will occur at a specific time.
-            exposure_start = astropy.time.Time.now().unix_tai + 2*float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
-            refs = prepare_one_visit(kafka_url, group, butler, instrument, visit, exposure_start)
+            refs = prepare_one_visit(kafka_url, group, butler, instrument, visit)
             ref_dict = butler.get_many_uris(refs)
+            result = load_raw_to_temp(temp_dir, ref_dict, pool=pool)
             _log.info(f"Slewing to group {group}, with {instrument} visit {visit}")
             time.sleep(SLEW_INTERVAL)
             _log.info(f"Taking exposure for group {group}")
             time.sleep(EXPOSURE_INTERVAL)
+            _log.info(f"Finishing exposure for group {group}")
+            # Wait for the temp_dir loading to finish
+            if result["async_result"]:
+                result["async_result"].wait()
             _log.info(f"Uploading detector images for group {group}")
-            upload_images(pool, temp_dir, group, ref_dict, exposure_start)
+            upload_images(pool, temp_dir, group, ref_dict)
         pool.close()
         _log.info("Waiting for uploads to finish...")
         pool.join()
@@ -190,7 +191,7 @@ def get_visit_list(butler, n_sample, ordered=False, **kwargs):
         return visits
 
 
-def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id, start_time_unix_tai):
+def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
     """Extract metadata and send next_visit events for one visit
 
     One ``next_visit`` message is sent to the development fan-out service,
@@ -208,9 +209,6 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id, start_t
         The short instrument name of this visit.
     visit_id : `int`
         The ID of a visit in the dataset.
-    start_time_unix_tai : `float`
-        The Unix time (TAI) of the exposure start.
-        This is only used for LSSTCam-imSim.
 
     Returns
     -------
@@ -226,10 +224,8 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id, start_t
     duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
     # all items in refs share the same visit info and one event is to be sent
     for data_id in refs.dataIds.limit(1).expanded():
-        # All instruments except LSSTCam-imSim uses original exposure timespan.
+        # All instruments use original exposure timespan.
         start_time = data_id.records["exposure"].timespan.begin
-        if instrument == "LSSTCam-imSim":
-            start_time = astropy.time.Time(start_time_unix_tai, format="unix_tai")
         visit = SummitVisit(
             instrument=instrument,
             groupId=group_id,
@@ -254,7 +250,73 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id, start_t
     return refs
 
 
-def upload_images(pool, temp_dir, group_id, ref_dict, exposure_start):
+def load_raw_to_temp(temp_dir, ref_dict, pool=None):
+    """
+    Copy the raw data from the source butler to a temporary folder
+
+    Parameters
+    ----------
+    temp_dir : `str`
+        A directory in which to temporarily hold the images so that their
+        metadata can be modified.
+    ref_dict : `dict` [ `lsst.daf.butler.DatasetRef`, `lsst.daf.butler.datastore.DatasetRefURIs` ]
+        A dict of the datasetRefs to upload and their corresponding URIs.
+    pool : `multiprocessing.Pool`, optional
+        A multiprocessing pool to use for parallel file copying.
+
+    Returns
+    -------
+    result : `dict`
+        A dictionary with:
+        - "mode": "zip", "fits-serial", or "fits-parallel"
+        - "async_result": `multiprocessing.AsyncResult` if multiprocessing is used, else `None`.
+
+    Notes
+    -----
+    A data butler repo can store raw data in two formats: one fits file
+    for each detector, or one zip file for each exposure containing all
+    detector fits files. This function assumes that either all refs point
+    to one same zip file, or each ref is its own fits file. For zip,
+    extract all files to the temporary folder. Either way, the temporary
+    folder will be loaded with detector-level fits files.
+    """
+    if not ref_dict:
+        raise ValueError("ref_dict is empty")
+
+    uri = next(iter(ref_dict.values())).primaryURI
+    # Determine whether the detector data is stored as zip file
+    if uri.fragment and (uri.getExtension() == ".zip"):
+        _log.info(f"Extracting zip file {uri.basename()}")
+        with uri.open("rb") as fd:
+            with zipfile.ZipFile(fd) as zf:
+                zf.extractall(temp_dir)
+        return {
+            "mode": "zip",
+            "async_result": None,
+        }
+
+    if pool is None:
+        _log.warning("Multiprocessing pool is not provided; fallback to serial.")
+        for r in ref_dict:
+            _load_one_detector_to_temp(temp_dir, r, ref_dict[r].primaryURI)
+        return {
+            "mode": "fits-serial",
+            "async_result": None,
+        }
+
+    async_result = pool.starmap_async(
+        _load_one_detector_to_temp,
+        [(temp_dir, r, ref_dict[r].primaryURI) for r in ref_dict],
+        error_callback=_log.exception,
+        chunksize=5,
+    )
+    return {
+        "mode": "fits-parallel",
+        "async_result": async_result,
+    }
+
+
+def upload_images(pool, temp_dir, group_id, ref_dict):
     """Upload one group of raw images to the central repo
 
     Parameters
@@ -268,15 +330,18 @@ def upload_images(pool, temp_dir, group_id, ref_dict, exposure_start):
         The group ID under which to store the images.
     ref_dict : `dict` [ `lsst.daf.butler.DatasetRef`, `lsst.daf.butler.datastore.DatasetRefURIs` ]
         A dict of the datasetRefs to upload and their corresponding URIs.
-    exposure_start : `float`
-        The Unix time (TAI) of the exposure start.
     """
     # Non-blocking assignment lets us upload during the next exposure.
     # Can't time these tasks directly, but the blocking equivalent took
     # 12-20 s depending on tuning, or less than a single exposure.
+    args = []
+    for ref in ref_dict:
+        uri = ref_dict[ref].primaryURI
+        filename = uri.fragment.partition("=")[-1] if uri.fragment else uri.basename()
+        args.append((temp_dir, group_id, ref, filename))
     pool.starmap_async(
         _upload_one_image,
-        [(temp_dir, group_id, r, ref_dict[r].primaryURI, exposure_start) for r in ref_dict],
+        args,
         error_callback=_log.exception,
         chunksize=5  # Works well across a broad range of # processes
     )
@@ -297,8 +362,14 @@ def _get_max_processes():
         return 4
 
 
-def _upload_one_image(temp_dir, group_id, ref, uri, exposure_start):
-    """Upload a raw image to the central repo.
+def _load_one_detector_to_temp(temp_dir, ref, uri):
+    path = os.path.join(temp_dir, uri.basename())
+    ResourcePath(path).transfer_from(uri, transfer="copy")
+    _log.debug(f"Raw file for {ref.dataId} was copied from Butler to {path}")
+
+
+def _upload_one_image(temp_dir, group_id, ref, filename):
+    """Upload a raw detector image to the central repo.
 
     Parameters
     ----------
@@ -309,17 +380,13 @@ def _upload_one_image(temp_dir, group_id, ref, uri, exposure_start):
         The group ID under which to store the images.
     ref : `lsst.daf.butler.DatasetRef`
         The dataset to upload.
-    uri : `lsst.resources.ResourcePath`
-        URI to the image to upload.
-    exposure_start : `float`
-        The Unix time (TAI) of the exposure start.
-        Currently only used in imSim tests.
+    filename : `str`
+        The fits file with the raw image to upload. The file is expected to
+        exist in `temp_dir`.
     """
     instrument = ref.dataId["instrument"]
     with time_this(log=_log, msg="Single-image processing", prefix=None):
         exposure_num, headers = make_exposure_id(instrument, group_id, 0)
-        if instrument == "LSSTCam-imSim":
-            headers.update(make_imsim_time_headers(EXPOSURE_INTERVAL, exposure_start))
         dest_key = get_raw_path(
             instrument,
             ref.dataId["detector"],
@@ -329,37 +396,23 @@ def _upload_one_image(temp_dir, group_id, ref, uri, exposure_start):
             ref.dataId["physical_filter"],
         )
 
-        sidecar_uploaded = False
-        if instrument in _LSST_CAMERA_LIST:
-            # Upload a corresponding sidecar json file
-            sidecar = uri.updatedExtension("json")
-            if sidecar.exists():
-                with sidecar.open("r") as f:
-                    md = json.load(f)
-                    md.update(headers)
-                    dest_bucket.put_object(
-                        Body=json.dumps(md), Key=dest_key.removesuffix("fits") + "json"
-                    )
-                sidecar_uploaded = True
-
-        path = os.path.join(temp_dir, uri.basename())
-        ResourcePath(path).transfer_from(uri, transfer="copy")
-        _log.debug(
-            f"Raw file for {ref.dataId} was copied from Butler to {path}"
-        )
+        path = os.path.join(temp_dir, filename)
         try:
             with open(path, "r+b") as temp_file:
                 for header_key in headers:
                     replace_header_key(temp_file, header_key, headers[header_key])
-                if not sidecar_uploaded and instrument in _LSST_CAMERA_LIST:
+                if instrument in _LSST_CAMERA_LIST:
                     with fits.open(temp_file, mode="update") as hdul:
+                        header = {k: v for k, v in hdul[0].header.items() if k != ""}
                         dest_bucket.put_object(
-                            Body=json.dumps(dict(hdul[0].header)),
+                            Body=json.dumps(header, indent=2),
                             Key=dest_key.removesuffix("fits") + "json",
                         )
             with open(path, "rb") as temp_file:
                 dest_bucket.put_object(Body=temp_file, Key=dest_key)
             _log.debug(f"{dest_key} was written at {dest_bucket}")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"{filename} not found in {temp_dir}")
         finally:
             os.remove(path)
 
