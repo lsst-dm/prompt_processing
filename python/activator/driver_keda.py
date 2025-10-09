@@ -311,6 +311,7 @@ def keda_start():
                     and (time_since(fan_out_listen_start_time) < fanned_out_msg_listen_timeout):
 
                 # Ensure consistent day_obs for whole run, even if it crosses the boundary
+                # This is needed for Grafana dashboards that compile statistics by day_obs
                 with logging_context(day_obs=get_day_obs(astropy.time.Time.now())):
                     try:
                         redis_streams_message_id, fan_out_visit_decoded = redis_session.read_message()
