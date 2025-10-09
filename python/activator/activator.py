@@ -490,14 +490,8 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
         return False
 
 
-@with_signal(signal.SIGHUP, _graceful_shutdown)
-@with_signal(signal.SIGTERM, _graceful_shutdown)
 def process_visit(expected_visit: FannedOutVisit):
     """Prepare and run a pipeline on a nextVisit message.
-
-    This function should not make any assumptions about the execution framework
-    for the Prompt Processing system; in particular, it should not assume it is
-    running on a web server.
 
     Parameters
     ----------
@@ -526,6 +520,28 @@ def process_visit(expected_visit: FannedOutVisit):
         processing failed in a way that is expected to be transient. This
         exception is always chained to another exception representing the
         original error.
+    """
+    _process_visit_or_cancel(expected_visit)
+
+
+@with_signal(signal.SIGHUP, _graceful_shutdown)
+@with_signal(signal.SIGTERM, _graceful_shutdown)
+def _process_visit_or_cancel(expected_visit: FannedOutVisit):
+    """Implementation of preparing and running a pipeline on a nextVisit
+    message.
+
+    This function should not make any assumptions about the execution framework
+    for the Prompt Processing system; in particular, it should not assume it is
+    running on a web server.
+
+    Parameters
+    ----------
+    expected_visit : `shared.visit.FannedOutVisit`
+        The visit to process.
+
+    Raises
+    ------
+    As for `process_visit`
     """
     with contextlib.ExitStack() as cleanups:
         consumer = _get_notification_consumer()
