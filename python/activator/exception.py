@@ -21,6 +21,7 @@
 
 
 __all__ = ["NonRetriableError", "RetriableError", "GracefulShutdownInterrupt",
+           "InvalidStateError",
            "InvalidVisitError", "IgnorableVisit",
            "InvalidPipelineError", "NoGoodPipelinesError",
            "PipelinePreExecutionError", "PipelineExecutionError",
@@ -86,6 +87,12 @@ class GracefulShutdownInterrupt(BaseException):
     Like all interrupts, ``GracefulShutdownInterrupt`` can be raised between
     *any* two bytecode instructions, and handling it requires special care. See
     `the Python docs <https://docs.python.org/3.11/library/signal.html#handlers-and-exceptions>`__.
+    """
+
+
+class InvalidStateError(RuntimeError):
+    """Exception raised if the program detects a condition it cannot recover
+    from.
     """
 
 

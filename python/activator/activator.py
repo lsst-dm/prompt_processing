@@ -19,14 +19,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = []
+__all__ = ["time_since", "is_processable", "process_visit"]
 
 import collections.abc
+import concurrent.futures
 import contextlib
 import functools
 import json
 import logging
 import math
+import multiprocessing
 import os
 import signal
 import time
@@ -39,7 +41,7 @@ from botocore.handlers import validate_bucket_name
 import confluent_kafka as kafka
 
 from shared.config import PipelinesConfig
-from shared.logger import logging_context
+from shared.logger import setup_usdf_logger, logging_context
 from shared.raw import (
     check_for_snap,
     is_path_consistent,
@@ -48,7 +50,7 @@ from shared.raw import (
 )
 from shared.visit import FannedOutVisit
 from .exception import GracefulShutdownInterrupt, IgnorableVisit, \
-    NonRetriableError, RetriableError
+    NonRetriableError, RetriableError, InvalidStateError
 from .middleware_interface import get_central_butler, \
     make_local_repo, make_local_cache, MiddlewareInterface, ButlerWriter, DirectButlerWriter
 from .kafka_butler_writer import KafkaButlerWriter
@@ -59,6 +61,8 @@ from .setup import ServiceSetup
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
 # The skymap to use in the central repo
 skymap = os.environ["SKYMAP"]
+# The maximum total time a worker can spend processing one visit.
+global_timeout = float(os.environ["WORKER_TIMEOUT"])
 # URI to the main repository to contain processing results
 write_repo = os.environ["CENTRAL_REPO"]
 # URI to the main repository containing calibs and templates
@@ -490,14 +494,26 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
         return False
 
 
-@with_signal(signal.SIGHUP, _graceful_shutdown)
-@with_signal(signal.SIGTERM, _graceful_shutdown)
+# lru_cache needed so that the cache can be cleared
+@functools.lru_cache(1)
+def _get_futures_executor() -> concurrent.futures.Executor:
+    """Lazy initialization of executor for visit processing.
+
+    This executor is mainly intended to make it possible to interrupt
+    processing at any moment. It is not optimized for processing multiple
+    visits in parallel; for that use separate pods/workers.
+    """
+    # Fork doesn't play well with connection pools, especially Boto
+    ctx = multiprocessing.get_context("spawn")
+    return concurrent.futures.ProcessPoolExecutor(
+        max_workers=1,
+        mp_context=ctx,
+        initializer=setup_usdf_logger,
+    )
+
+
 def process_visit(expected_visit: FannedOutVisit):
     """Prepare and run a pipeline on a nextVisit message.
-
-    This function should not make any assumptions about the execution framework
-    for the Prompt Processing system; in particular, it should not assume it is
-    running on a web server.
 
     Parameters
     ----------
@@ -526,6 +542,44 @@ def process_visit(expected_visit: FannedOutVisit):
         processing failed in a way that is expected to be transient. This
         exception is always chained to another exception representing the
         original error.
+    activator.exception.InvalidStateError
+        Raised if the service can't process visits at all and should be
+        restarted.
+    """
+    n_tries = 3
+    for i in range(n_tries):
+        executor = _get_futures_executor()
+        try:
+            future = executor.submit(_process_visit_or_cancel, expected_visit)
+            future.result(global_timeout)
+            return
+        except (TimeoutError, concurrent.futures.CancelledError) as e:
+            raise NonRetriableError("Internal abort, processing ended abruptly") from e
+        except concurrent.futures.BrokenExecutor:
+            _log.error("Executor is in an unusable state, restarting.")
+            _get_futures_executor.cache_clear()
+            executor.shutdown(wait=True, cancel_futures=True)
+    raise InvalidStateError(f"Could not start executor in {n_tries} tries.")
+
+
+@with_signal(signal.SIGHUP, _graceful_shutdown)
+@with_signal(signal.SIGTERM, _graceful_shutdown)
+def _process_visit_or_cancel(expected_visit: FannedOutVisit):
+    """Implementation of preparing and running a pipeline on a nextVisit
+    message.
+
+    This function should not make any assumptions about the execution framework
+    for the Prompt Processing system; in particular, it should not assume it is
+    running on a web server.
+
+    Parameters
+    ----------
+    expected_visit : `shared.visit.FannedOutVisit`
+        The visit to process.
+
+    Raises
+    ------
+    As for `process_visit`
     """
     with contextlib.ExitStack() as cleanups:
         consumer = _get_notification_consumer()

@@ -40,7 +40,7 @@ from shared.run_utils import get_day_obs
 from shared.visit import FannedOutVisit
 from .activator import time_since, is_processable, process_visit
 from .exception import GracefulShutdownInterrupt, IgnorableVisit, \
-    NonRetriableError, RetriableError
+    NonRetriableError, RetriableError, InvalidStateError
 from .repo_tracker import LocalRepoTracker
 from .setup import ServiceSetup
 
@@ -311,6 +311,7 @@ def keda_start():
                     and (time_since(fan_out_listen_start_time) < fanned_out_msg_listen_timeout):
 
                 # Ensure consistent day_obs for whole run, even if it crosses the boundary
+                # This is needed for Grafana dashboards that compile statistics by day_obs
                 with logging_context(day_obs=get_day_obs(astropy.time.Time.now())):
                     try:
                         redis_streams_message_id, fan_out_visit_decoded = redis_session.read_message()
@@ -383,6 +384,11 @@ def handle_keda_visit(visit):
     try:
         process_visit(visit)
         processing_result = "Success"
+    except InvalidStateError:
+        # TODO: need to implement retry of the visit
+        _log.critical("Service had an unrecoverable internal error:", exc_info=True)
+        processing_result = "Error"
+        sys.exit(1)
     except IgnorableVisit as e:
         _log.info("Skipping visit: %s", e)
         processing_result = "Ignore"
