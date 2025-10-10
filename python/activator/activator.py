@@ -520,6 +520,9 @@ def process_visit(expected_visit: FannedOutVisit):
         processing failed in a way that is expected to be transient. This
         exception is always chained to another exception representing the
         original error.
+    activator.exception.InvalidStateError
+        Raised if the service can't process visits at all and should be
+        restarted.
     """
     _process_visit_or_cancel(expected_visit)
 

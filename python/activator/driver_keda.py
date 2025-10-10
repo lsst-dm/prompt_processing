@@ -40,7 +40,7 @@ from shared.run_utils import get_day_obs
 from shared.visit import FannedOutVisit
 from .activator import time_since, is_processable, process_visit
 from .exception import GracefulShutdownInterrupt, IgnorableVisit, \
-    NonRetriableError, RetriableError
+    NonRetriableError, RetriableError, InvalidStateError
 from .repo_tracker import LocalRepoTracker
 from .setup import ServiceSetup
 
@@ -383,6 +383,11 @@ def handle_keda_visit(visit):
     try:
         process_visit(visit)
         processing_result = "Success"
+    except InvalidStateError:
+        # TODO: need to implement retry of the visit
+        _log.critical("Service had an unrecoverable internal error:", exc_info=True)
+        processing_result = "Error"
+        sys.exit(1)
     except IgnorableVisit as e:
         _log.info("Skipping visit: %s", e)
         processing_result = "Ignore"
