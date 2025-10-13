@@ -39,7 +39,7 @@ from shared.logger import setup_usdf_logger, logging_context
 from shared.run_utils import get_day_obs
 from shared.visit import FannedOutVisit
 from .activator import time_since, is_processable, process_visit
-from .exception import GracefulShutdownInterrupt, IgnorableVisit, \
+from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, IgnorableVisit, \
     NonRetriableError, RetriableError
 from .repo_tracker import LocalRepoTracker
 from .setup import ServiceSetup
@@ -408,7 +408,7 @@ def handle_keda_visit(visit):
         else:
             _log.exception("Processing failed:")
             processing_result = "Error"
-    except Exception:
+    except (Exception, TimeoutInterrupt):
         _log.exception("Processing failed:")
         processing_result = "Error"
     finally:

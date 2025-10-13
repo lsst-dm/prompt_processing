@@ -22,7 +22,8 @@
 
 import unittest
 
-from activator.exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError
+from activator.exception import GracefulShutdownInterrupt, TimeoutInterrupt, \
+    NonRetriableError, RetriableError
 
 
 class NonRetriableErrorTest(unittest.TestCase):
@@ -120,5 +121,22 @@ class GracefulShutdownInterruptTest(unittest.TestCase):
         with self.assertRaises(GracefulShutdownInterrupt):
             try:
                 raise GracefulShutdownInterrupt("Last call!")
+            except Exception:
+                pass  # assertRaises should fail
+
+
+class TimeoutInterruptTest(unittest.TestCase):
+    def test_catchable(self):
+        try:
+            raise TimeoutInterrupt("What's the holdup?")
+        except TimeoutInterrupt:
+            pass
+        else:
+            self.fail("Did not catch TimeoutInterrupt.")
+
+    def test_uncatchable(self):
+        with self.assertRaises(TimeoutInterrupt):
+            try:
+                raise TimeoutInterrupt("What's the holdup?")
             except Exception:
                 pass  # assertRaises should fail

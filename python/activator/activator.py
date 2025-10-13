@@ -506,6 +506,12 @@ def process_visit(expected_visit: FannedOutVisit):
         `~activator.exception.NonRetriableError` or
         `~activator.exception.RetriableError`, depending on the program state
         at the time.
+    activator.exception.TimeoutInterrupt
+        Raised if the process timed out at an unexpected point. Terminations
+        during preprocessing or processing are chained by
+        `~activator.exception.NonRetriableError` or
+        `~activator.exception.RetriableError`, depending on the program state
+        at the time.
     activator.exception.IgnorableVisit
         Raised if the service is configured to not process ``expected_visit``.
     activator.exception.InvalidVisitError

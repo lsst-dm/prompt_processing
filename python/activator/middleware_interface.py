@@ -60,7 +60,7 @@ import shared.connect_utils as connect
 import shared.run_utils as runs
 from shared.visit import FannedOutVisit
 from .caching import DatasetCache
-from .exception import GracefulShutdownInterrupt, NonRetriableError, RetriableError, \
+from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, NonRetriableError, RetriableError, \
     InvalidPipelineError, NoGoodPipelinesError, PipelinePreExecutionError, PipelineExecutionError
 from .timer import enforce_schema, time_this_to_bundle
 
@@ -1542,10 +1542,10 @@ class MiddlewareInterface:
                                 )
         # Catch Exception just in case there's a surprise -- raising
         # NonRetriableError on *all* irrevocable changes is important.
-        except (Exception, GracefulShutdownInterrupt) as e:
+        except (Exception, GracefulShutdownInterrupt, TimeoutInterrupt) as e:
             try:
                 state_changed = self._check_permanent_changes(where)
-            except (Exception, GracefulShutdownInterrupt):
+            except (Exception, GracefulShutdownInterrupt, TimeoutInterrupt):
                 # Failure in registry or APDB queries
                 _log.exception("Could not determine APDB state, assuming modified.")
                 raise NonRetriableError("APDB potentially modified") from e
@@ -1554,6 +1554,8 @@ class MiddlewareInterface:
                     raise NonRetriableError("APDB modified") from e
                 elif isinstance(e, GracefulShutdownInterrupt):
                     raise RetriableError("External interrupt") from e
+                elif isinstance(e, TimeoutInterrupt):
+                    raise RetriableError("Processing timed out, assuming transient problem.") from e
                 else:
                     raise
 
