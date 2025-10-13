@@ -47,7 +47,7 @@ from shared.raw import (
     get_group_id_from_oid,
 )
 from shared.visit import FannedOutVisit
-from .exception import GracefulShutdownInterrupt, IgnorableVisit, \
+from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, IgnorableVisit, \
     NonRetriableError, RetriableError
 from .middleware_interface import get_central_butler, \
     make_local_repo, make_local_cache, MiddlewareInterface, ButlerWriter, DirectButlerWriter
@@ -59,6 +59,8 @@ from .setup import ServiceSetup
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
 # The skymap to use in the central repo
 skymap = os.environ["SKYMAP"]
+# The maximum total time a worker can spend processing one visit.
+global_timeout = int(os.environ["WORKER_TIMEOUT"])
 # URI to the main repository to contain processing results
 write_repo = os.environ["CENTRAL_REPO"]
 # URI to the main repository containing calibs and templates
@@ -279,6 +281,29 @@ def _graceful_shutdown(signum: int, stack_frame):
     raise GracefulShutdownInterrupt(f"Received signal {signame}.")
 
 
+def _handle_timeout(signum: int, stack_frame):
+    """Signal handler for externally enforced timeouts.
+
+    Parameters
+    ----------
+    signum : `int`
+        The signal received.
+    stack_frame : `frame` or `None`
+        The "current" stack frame.
+
+    Raises
+    ------
+    activator.exception.TimeoutInterrupt
+        Raised unconditionally.
+    """
+    signame = signal.Signals(signum).name
+    _log.info("Signal %s detected, aborting processing.", signame)
+    # Raising in signal handlers is dangerous, but since one of the cases for a
+    # timeout is the program getting stuck in I/O code, we can't rely on any
+    # sort of polling.
+    raise TimeoutInterrupt("Processing timed out and had to be aborted.")
+
+
 def with_signal(signum: int,
                 handler: collections.abc.Callable | signal.Handlers,
                 ) -> collections.abc.Callable:
@@ -490,6 +515,7 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
         return False
 
 
+@with_signal(signal.SIGALRM, _handle_timeout)
 def process_visit(expected_visit: FannedOutVisit):
     """Prepare and run a pipeline on a nextVisit message.
 
@@ -527,7 +553,14 @@ def process_visit(expected_visit: FannedOutVisit):
         exception is always chained to another exception representing the
         original error.
     """
-    _process_visit_or_cancel(expected_visit)
+    prev = signal.alarm(global_timeout)
+    if prev:
+        _log.warning("Previously scheduled alarm for %s seconds overwritten.", prev)
+    try:
+        _process_visit_or_cancel(expected_visit)
+    finally:
+        # Don't let the alarm trip while waiting for visits
+        signal.alarm(0)
 
 
 @with_signal(signal.SIGHUP, _graceful_shutdown)
