@@ -297,9 +297,8 @@ def keda_start():
 
         _log.info("Worker ready to handle requests.")
 
-    except Exception as e:
-        _log.critical("Failed to start worker; aborting.")
-        _log.exception(e)
+    except Exception:
+        _log.critical("Failed to start worker; aborting.", exc_info=True)
         sys.exit(1)
 
     fan_out_listen_start_time = time.time()
@@ -336,9 +335,8 @@ def keda_start():
                         _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
 
                     # TODO Review Redis Errors and determine what should be retriable.
-                    except redis.exceptions.RedisError as e:
-                        _log.critical("Redis Streams error; aborting.")
-                        _log.exception(e)
+                    except redis.exceptions.RedisError:
+                        _log.critical("Redis Streams error; aborting.", exc_info=True)
                         sys.exit(1)
                     except ValueError as e:
                         _log.error("Invalid redis stream message %s", e)
