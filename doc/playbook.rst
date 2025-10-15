@@ -386,6 +386,12 @@ One raw was ingested, visit-defined, and kept in the development central repo, s
    pipetask run -b s3://rubin-pp-dev-users/central_repo_2 -i LSSTCam/raw/all,LSSTCam/defaults,LSSTCam/templates -o u/${USER}/add-dataset-types -d "instrument='LSSTCam' and exposure=2025050100367 and detector=30" -p $AP_PIPE_DIR/pipelines/LSSTCam/ApPipe.yaml -c parameters:apdb_config=apdb_config.yaml -c associateApdb:doPackageAlerts=False --register-dataset-types --init-only
    pipetask run -b s3://rubin-pp-dev-users/central_repo_2 -i LSSTCam/raw/all,LSSTCam/defaults,LSSTCam/templates -o u/${USER}/add-dataset-types -d "instrument='LSSTCam' and exposure=2025050100367 and detector=30" -p $AP_PIPE_DIR/pipelines/LSSTCam/SingleFrame.yaml -c parameters:apdb_config=apdb_config.yaml --register-dataset-types --init-only
 
+If the exposure ID in the example is out of date, you can find a new one with:
+
+.. code-block:: sh
+
+   butler query-dimension-records s3://rubin-pp-dev-users/central_repo_2 exposure --where "instrument='LSSTCam' and exposure.can_see_sky" --limit 10
+
 .. note::
 
    The use of ``$AP_PIPE_DIR`` is not a typo.
