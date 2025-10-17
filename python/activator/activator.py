@@ -19,7 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = []
+__all__ = ["time_since", "is_processable", "process_visit"]
 
 import collections.abc
 import contextlib
@@ -47,7 +47,7 @@ from shared.raw import (
     get_group_id_from_oid,
 )
 from shared.visit import FannedOutVisit
-from .exception import GracefulShutdownInterrupt, IgnorableVisit, \
+from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, IgnorableVisit, \
     NonRetriableError, RetriableError
 from .middleware_interface import get_central_butler, \
     make_local_repo, make_local_cache, MiddlewareInterface, ButlerWriter, DirectButlerWriter
@@ -59,6 +59,8 @@ from .setup import ServiceSetup
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
 # The skymap to use in the central repo
 skymap = os.environ["SKYMAP"]
+# The maximum total time a worker can spend processing one visit.
+global_timeout = int(os.environ["WORKER_TIMEOUT"])
 # URI to the main repository to contain processing results
 write_repo = os.environ["CENTRAL_REPO"]
 # URI to the main repository containing calibs and templates
@@ -279,6 +281,29 @@ def _graceful_shutdown(signum: int, stack_frame):
     raise GracefulShutdownInterrupt(f"Received signal {signame}.")
 
 
+def _handle_timeout(signum: int, stack_frame):
+    """Signal handler for externally enforced timeouts.
+
+    Parameters
+    ----------
+    signum : `int`
+        The signal received.
+    stack_frame : `frame` or `None`
+        The "current" stack frame.
+
+    Raises
+    ------
+    activator.exception.TimeoutInterrupt
+        Raised unconditionally.
+    """
+    signame = signal.Signals(signum).name
+    _log.info("Signal %s detected, aborting processing.", signame)
+    # Raising in signal handlers is dangerous, but since one of the cases for a
+    # timeout is the program getting stuck in I/O code, we can't rely on any
+    # sort of polling.
+    raise TimeoutInterrupt("Processing timed out and had to be aborted.")
+
+
 def with_signal(signum: int,
                 handler: collections.abc.Callable | signal.Handlers,
                 ) -> collections.abc.Callable:
@@ -490,14 +515,9 @@ def _try_export(mwi: MiddlewareInterface, exposures: set[int], log: logging.Logg
         return False
 
 
-@with_signal(signal.SIGHUP, _graceful_shutdown)
-@with_signal(signal.SIGTERM, _graceful_shutdown)
+@with_signal(signal.SIGALRM, _handle_timeout)
 def process_visit(expected_visit: FannedOutVisit):
     """Prepare and run a pipeline on a nextVisit message.
-
-    This function should not make any assumptions about the execution framework
-    for the Prompt Processing system; in particular, it should not assume it is
-    running on a web server.
 
     Parameters
     ----------
@@ -509,6 +529,12 @@ def process_visit(expected_visit: FannedOutVisit):
     activator.exception.GracefulShutdownInterrupt
         Raised if the process was terminated at an unexpected point.
         Terminations during preprocessing or processing are chained by
+        `~activator.exception.NonRetriableError` or
+        `~activator.exception.RetriableError`, depending on the program state
+        at the time.
+    activator.exception.TimeoutInterrupt
+        Raised if the process timed out at an unexpected point. Terminations
+        during preprocessing or processing are chained by
         `~activator.exception.NonRetriableError` or
         `~activator.exception.RetriableError`, depending on the program state
         at the time.
@@ -526,6 +552,35 @@ def process_visit(expected_visit: FannedOutVisit):
         processing failed in a way that is expected to be transient. This
         exception is always chained to another exception representing the
         original error.
+    """
+    prev = signal.alarm(global_timeout)
+    if prev:
+        _log.warning("Previously scheduled alarm for %s seconds overwritten.", prev)
+    try:
+        _process_visit_or_cancel(expected_visit)
+    finally:
+        # Don't let the alarm trip while waiting for visits
+        signal.alarm(0)
+
+
+@with_signal(signal.SIGHUP, _graceful_shutdown)
+@with_signal(signal.SIGTERM, _graceful_shutdown)
+def _process_visit_or_cancel(expected_visit: FannedOutVisit):
+    """Implementation of preparing and running a pipeline on a nextVisit
+    message.
+
+    This function should not make any assumptions about the execution framework
+    for the Prompt Processing system; in particular, it should not assume it is
+    running on a web server.
+
+    Parameters
+    ----------
+    expected_visit : `shared.visit.FannedOutVisit`
+        The visit to process.
+
+    Raises
+    ------
+    As for `process_visit`
     """
     with contextlib.ExitStack() as cleanups:
         consumer = _get_notification_consumer()

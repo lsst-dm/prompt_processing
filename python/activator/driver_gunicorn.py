@@ -99,9 +99,8 @@ def create_app():
         app.register_error_handler(500, server_error)
         _log.info("Worker ready to handle requests.")
         return app
-    except Exception as e:
-        _log.critical("Failed to start worker; aborting.")
-        _log.exception(e)
+    except Exception:
+        _log.critical("Failed to start worker; aborting.", exc_info=True)
         # gunicorn assumes exit code 3 means "Worker failed to boot", though this is not documented
         sys.exit(3)
 

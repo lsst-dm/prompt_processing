@@ -39,7 +39,7 @@ from shared.logger import setup_usdf_logger, logging_context
 from shared.run_utils import get_day_obs
 from shared.visit import FannedOutVisit
 from .activator import time_since, is_processable, process_visit
-from .exception import GracefulShutdownInterrupt, IgnorableVisit, \
+from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, IgnorableVisit, \
     NonRetriableError, RetriableError
 from .repo_tracker import LocalRepoTracker
 from .setup import ServiceSetup
@@ -297,9 +297,8 @@ def keda_start():
 
         _log.info("Worker ready to handle requests.")
 
-    except Exception as e:
-        _log.critical("Failed to start worker; aborting.")
-        _log.exception(e)
+    except Exception:
+        _log.critical("Failed to start worker; aborting.", exc_info=True)
         sys.exit(1)
 
     fan_out_listen_start_time = time.time()
@@ -311,6 +310,7 @@ def keda_start():
                     and (time_since(fan_out_listen_start_time) < fanned_out_msg_listen_timeout):
 
                 # Ensure consistent day_obs for whole run, even if it crosses the boundary
+                # This is needed for Grafana dashboards that compile statistics by day_obs
                 with logging_context(day_obs=get_day_obs(astropy.time.Time.now())):
                     try:
                         redis_streams_message_id, fan_out_visit_decoded = redis_session.read_message()
@@ -335,9 +335,8 @@ def keda_start():
                         _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
 
                     # TODO Review Redis Errors and determine what should be retriable.
-                    except redis.exceptions.RedisError as e:
-                        _log.critical("Redis Streams error; aborting.")
-                        _log.exception(e)
+                    except redis.exceptions.RedisError:
+                        _log.critical("Redis Streams error; aborting.", exc_info=True)
                         sys.exit(1)
                     except ValueError as e:
                         _log.error("Invalid redis stream message %s", e)
@@ -408,7 +407,7 @@ def handle_keda_visit(visit):
         else:
             _log.exception("Processing failed:")
             processing_result = "Error"
-    except Exception:
+    except (Exception, TimeoutInterrupt):
         _log.exception("Processing failed:")
         processing_result = "Error"
     finally:

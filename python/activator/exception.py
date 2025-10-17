@@ -20,7 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-__all__ = ["NonRetriableError", "RetriableError", "GracefulShutdownInterrupt",
+__all__ = ["NonRetriableError", "RetriableError", "GracefulShutdownInterrupt", "TimeoutInterrupt",
            "InvalidVisitError", "IgnorableVisit",
            "InvalidPipelineError", "NoGoodPipelinesError",
            "PipelinePreExecutionError", "PipelineExecutionError",
@@ -85,6 +85,16 @@ class GracefulShutdownInterrupt(BaseException):
 
     Like all interrupts, ``GracefulShutdownInterrupt`` can be raised between
     *any* two bytecode instructions, and handling it requires special care. See
+    `the Python docs <https://docs.python.org/3.11/library/signal.html#handlers-and-exceptions>`__.
+    """
+
+
+class TimeoutInterrupt(BaseException):
+    """An interrupt indicating that an operation took too long and should be
+    aborted.
+
+    Like all interrupts, ``TimeoutInterrupt`` can be raised between *any* two
+    bytecode instructions, and handling it requires special care. See
     `the Python docs <https://docs.python.org/3.11/library/signal.html#handlers-and-exceptions>`__.
     """
 

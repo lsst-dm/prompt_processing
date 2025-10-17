@@ -36,6 +36,7 @@ import activator.setup
 # Mandatory envvars are loaded at import time
 os.environ["RUBIN_INSTRUMENT"] = "LSSTCam"
 os.environ["SKYMAP"] = "lsst_cells_v1"
+os.environ["WORKER_TIMEOUT"] = "60"
 os.environ["CENTRAL_REPO"] = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data", "central_repo")
 os.environ["S3_ENDPOINT_URL"] = "https://this.is.a.test"
 os.environ["IMAGE_BUCKET"] = "test-bucket-test"
