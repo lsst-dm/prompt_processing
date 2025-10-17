@@ -105,14 +105,14 @@ def _export_for_copy(butler, target_butler, wants):
             with the matching criteria provided via the selection expressions.
             Each selection expression has the keyworded argument dictionary to
             be passed to butler to query datasets; it has the same meanings
-            as the parameters of `lsst.daf.butler.Registry.queryDatasets`.
+            as the parameters of `lsst.daf.butler.Butler.query_datasets`.
         ``"collections"``, optional
             A list of collection selection expressions (`list` of `dict`).
             The list is iterated over to find matching collections in the butler,
             with the matching criteria provided via the selection expressions.
             Each selection expression has the keyworded argument dictionary to
             be passed to butler to query collectionss; it has the same meanings
-            as the parameters of `lsst.daf.butler.Registry.queryCollections`.
+            as the parameters of `lsst.daf.butler.ButlerCollections.query`.
     """
     with butler.export(format="yaml") as contents:
         if "datasets" in wants:
@@ -139,10 +139,11 @@ def _export_for_copy(butler, target_butler, wants):
         # Save selected collections and chains
         if "collections" in wants:
             for selection in wants["collections"]:
-                for collection in butler.registry.queryCollections(**selection):
+                for collection in butler.collections.query(**selection):
                     logging.debug(f"Selecting collection {collection}")
                     try:
-                        target_butler.registry.queryCollections(collection)
+                        if not target_butler.collections.query(collection):
+                            contents.saveCollection(collection)
                     except daf_butler.registry.MissingCollectionError:
                         # MissingCollectionError is raised if the collection does not exist in target_butler.
                         contents.saveCollection(collection)
