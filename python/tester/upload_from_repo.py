@@ -158,7 +158,7 @@ def main():
         pool.join()
 
 
-def get_visit_list(butler, n_sample, ordered=False, **kwargs):
+def get_visit_list(butler, n_sample, instrument, ordered=False, **kwargs):
     """Return a list of selected raw visits in the butler repo.
 
     Parameters
@@ -167,12 +167,14 @@ def get_visit_list(butler, n_sample, ordered=False, **kwargs):
         The Butler in which to search for records of raw data.
     n_sample : `int`
         The number of visits to select.
+    instrument : `str`
+        The short name for the instrument to query.
     ordered : `bool`
         If `True`, return the first ``n_sample`` visits in the order of the visit
         IDs. Otherwise, return ``n_sample`` randomly selected visit IDs.
     **kwargs
         Additional parameters for the butler query. They have the same meanings
-        as the parameters of `lsst.daf.butler.Registry.queryDimensionRecords`.
+        as the parameters of `lsst.daf.butler.Butler.query_datasets`.
         The query must be valid for ``butler``.
 
     Returns
@@ -180,15 +182,20 @@ def get_visit_list(butler, n_sample, ordered=False, **kwargs):
     visits : `list` [`int`]
         A list of ``n_sample`` selected visit IDs from the dataset.
     """
-    results = butler.registry.queryDimensionRecords("visit", datasets="raw", **kwargs)
-    records = [record.id for record in set(results)]
-    if n_sample > len(records):
-        raise ValueError(f"Requested {n_sample} groups, but only {len(records)} are available.")
+    # Only general-purpose query that supports the essential collections constraint
+    # If kwargs were only collections, we could use Query.join_dataset_search to be more efficient
+    results = butler.query_datasets("raw", find_first=True, instrument=instrument, **kwargs)
+    exposures = {raw.dataId["exposure"] for raw in results}
+    visit_ids = butler.query_data_ids("visit", instrument=instrument,
+                                      where="exposure IN (:exposures)", bind={"exposures": exposures},
+                                      )
+    visits = [id["visit"] for id in visit_ids]
+    if n_sample > len(visits):
+        raise ValueError(f"Requested {n_sample} groups, but only {len(visits)} are available.")
     if ordered:
-        return sorted(records)[:n_sample]
+        return sorted(visits)[:n_sample]
     else:
-        visits = random.sample(records, k=n_sample)
-        return visits
+        return random.sample(visits, k=n_sample)
 
 
 def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
@@ -215,15 +222,17 @@ def prepare_one_visit(kafka_url, group_id, butler, instrument, visit_id):
     refs : iterable of `lsst.daf.butler.DatasetRef`
         The datasets for which the events are sent.
     """
-    refs = butler.registry.queryDatasets(
-        datasetType="raw",
+    refs = butler.query_datasets(
+        dataset_type="raw",
         collections=f"{instrument}/raw/all",
-        dataId={"visit": visit_id, "instrument": instrument},
+        data_id={"visit": visit_id, "instrument": instrument},
+        with_dimension_records=True,
     )
 
     duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
     # all items in refs share the same visit info and one event is to be sent
-    for data_id in refs.dataIds.limit(1).expanded():
+    if refs:
+        data_id = refs[0].dataId
         # All instruments use original exposure timespan.
         start_time = data_id.records["exposure"].timespan.begin
         visit = SummitVisit(
