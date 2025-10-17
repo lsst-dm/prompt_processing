@@ -150,10 +150,8 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
     instrument = lsst.obs.base.Instrument.from_string(instrument, central_butler.registry)
     instrument.register(butler.registry)
 
-    butler.registry.registerCollection(instrument.makeUmbrellaCollectionName(),
-                                       CollectionType.CHAINED)
-    butler.registry.registerCollection(instrument.makeDefaultRawIngestRunName(),
-                                       CollectionType.RUN)
+    butler.collections.register(instrument.makeUmbrellaCollectionName(), CollectionType.CHAINED)
+    butler.collections.register(instrument.makeDefaultRawIngestRunName(), CollectionType.RUN)
 
     return repo_dir
 
@@ -616,7 +614,7 @@ class MiddlewareInterface:
         present_types = net_types.copy()
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find inputs)", level=logging.DEBUG):
             for type_name in net_types:
-                dstype = self.read_central_butler.registry.getDatasetType(type_name)
+                dstype = self.read_central_butler.get_dataset_type(type_name)
                 try:
                     if dstype.isCalibration():
                         new_calibs = self._find_calibs(dstype, self.visit.detector, self.visit.filters)
@@ -1115,11 +1113,11 @@ class MiddlewareInterface:
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
         """
-        self.butler.registry.registerCollection(
+        self.butler.collections.register(
             runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
             CollectionType.RUN)
         for pipeline_file in self._get_combined_pipeline_files():
-            self.butler.registry.registerCollection(
+            self.butler.collections.register(
                 runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
@@ -1957,7 +1955,7 @@ def _remove_run_completely(butler, run):
     run : `str`
         The run to remove.
     """
-    for chain in butler.registry.getCollectionParentChains(run):
+    for chain in butler.collections.get_info(run, include_parents=True).parents:
         butler.collections.remove_from_chain(chain, [run])
     butler.removeRuns([run])
 

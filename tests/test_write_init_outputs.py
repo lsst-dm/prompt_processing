@@ -183,7 +183,7 @@ class InitOutputsTest(unittest.TestCase):
 
         def _make_init_outputs(butler, instrument, apdb, deploy_id, pipeline):
             run = os.path.basename(pipeline).replace(".", "_")
-            butler.registry.registerCollection(run)
+            butler.collections.register(run)
             return run
 
         with unittest.mock.patch.dict(os.environ, {"RUBIN_INSTRUMENT": "LSSTCam",
