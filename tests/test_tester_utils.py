@@ -129,8 +129,8 @@ class TesterUtilsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as repo:
             butler = butler_tests.makeTestRepo(repo)
             HyperSuprimeCam().register(butler.registry)
-            instruments = list(butler.registry.queryDimensionRecords(
-                "instrument", dataId={"instrument": "HSC"}))
+            instruments = list(butler.query_dimension_records(
+                "instrument", data_id={"instrument": "HSC"}))
             self.assertEqual(len(instruments), 1)
             exp_max = instruments[0].exposure_max
 
