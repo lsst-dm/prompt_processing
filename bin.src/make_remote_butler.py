@@ -73,20 +73,20 @@ def _add_chains(butler, instrument_name):
     instrument_name : `str`
         The short name of the instrument.
     """
-    butler.registry.registerCollection(f"{instrument_name}/templates", type=CollectionType.CHAINED)
+    butler.collections.register(f"{instrument_name}/templates", type=CollectionType.CHAINED)
 
-    butler.registry.registerCollection("refcats", type=CollectionType.CHAINED)
-    butler.registry.setCollectionChain(
+    butler.collections.register("refcats", type=CollectionType.CHAINED)
+    butler.collections.redefine_chain(
         "refcats",
-        list(butler.registry.queryCollections("refcats/*", collectionTypes=CollectionType.RUN))
+        list(butler.collections.query("refcats/*", collectionTypes=CollectionType.RUN))
     )
 
     instrument = Instrument.fromName(instrument_name, butler.registry)
     defaults = instrument.makeUmbrellaCollectionName()
-    butler.registry.registerCollection(defaults, type=CollectionType.CHAINED)
+    butler.collections.register(defaults, type=CollectionType.CHAINED)
     calib_collection = instrument.makeCalibrationCollectionName()
-    butler.registry.registerCollection(calib_collection, type=CollectionType.CHAINED)
-    butler.registry.setCollectionChain(
+    butler.collections.register(calib_collection, type=CollectionType.CHAINED)
+    butler.collections.redefine_chain(
         defaults,
         [calib_collection, f"{instrument_name}/templates", "skymaps", "refcats", "pretrained_models"]
     )

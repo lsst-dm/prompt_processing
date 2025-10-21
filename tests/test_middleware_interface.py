@@ -1016,15 +1016,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         cat = lsst.afw.table.SourceCatalog()
         # Since we're not calling prep_butler, need to set up the collections by hand
         raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
-        butler.registry.registerCollection(raw_collection, CollectionType.RUN)
+        butler.collections.register(raw_collection, CollectionType.RUN)
         out_collection = get_output_run(self.interface.instrument, self.deploy_id,
                                         "ApPipe.yaml", self.interface._day_obs)
-        butler.registry.registerCollection(out_collection, CollectionType.RUN)
+        butler.collections.register(out_collection, CollectionType.RUN)
         calib_collection = self.interface.instrument.makeCalibrationCollectionName()
-        butler.registry.registerCollection(calib_collection, CollectionType.RUN)
+        butler.collections.register(calib_collection, CollectionType.RUN)
         chain = self.interface.instrument.makeUmbrellaCollectionName()
-        butler.registry.registerCollection(chain, CollectionType.CHAINED)
-        butler.registry.setCollectionChain(chain, [out_collection, raw_collection, calib_collection])
+        butler.collections.register(chain, CollectionType.CHAINED)
+        butler.collections.redefine_chain(chain, [out_collection, raw_collection, calib_collection])
 
         butler.put(exp, "raw", raw_data_id, run=raw_collection)
         butler.put(cat, "src", processed_data_id, run=out_collection)
@@ -1058,12 +1058,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self._assert_not_in_collection(butler, "*", ref.datasetType, ref.dataId)
 
     @staticmethod
-    def _make_expanded_ref(registry, dtype, data_id, run):
+    def _make_expanded_ref(butler, dtype, data_id, run):
         """Make an expanded dataset ref with the given dataset type, data ID,
         and run, and the corresponding dimension records.
         """
-        return lsst.daf.butler.DatasetRef(registry.getDatasetType(dtype), data_id, run=run) \
-            .expanded(registry.expandDataId(data_id))
+        return lsst.daf.butler.DatasetRef(butler.get_dataset_type(dtype), data_id, run=run) \
+            .expanded(butler.registry.expandDataId(data_id))
 
     @staticmethod
     def _make_test_graph(n_quanta):
@@ -1098,12 +1098,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """Test that _filter_datasets provides the correct values.
         """
         # Much easier to create DatasetRefs with a real repo.
-        registry = self.read_butler.registry
-        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 5},
+        data1 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 5},
                                         "dummy")
-        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 0},
+        data2 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 0},
                                         "dummy")
-        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 1},
+        data3 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 1},
                                         "dummy")
 
         combinations = [{data1, data2}, {data1, data2, data3}]
@@ -1132,8 +1131,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         destination repository.
         """
         # Much easier to create DatasetRefs with a real repo.
-        registry = self.read_butler.registry
-        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 1},
+        data1 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 1},
                                         "dummy")
 
         src_butler = unittest.mock.Mock()
@@ -1159,12 +1157,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.assertEqual(expected, incoming)
 
         # Much easier to create DatasetRefs with a real repo.
-        registry = self.read_butler.registry
-        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 5},
+        data1 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 5},
                                         "dummy")
-        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 0},
+        data2 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 0},
                                         "dummy")
-        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 1},
+        data3 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 1},
                                         "dummy")
 
         combinations = [{data1, data2}, {data1, data2, data3}]
@@ -1205,12 +1202,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
     def test_generic_query(self):
         # Much easier to create DatasetRefs with a real repo.
-        registry = self.read_butler.registry
-        data1 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 5},
+        data1 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 5},
                                         "dummy")
-        data2 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 0},
+        data2 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 0},
                                         "dummy")
-        data3 = self._make_expanded_ref(registry, "bias", {"instrument": "LSSTCam", "detector": 1},
+        data3 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 1},
                                         "dummy")
         refs = [data1, data2, data3]
 
@@ -1453,7 +1449,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         even if they do not carry useful data.
         """
         write_butler = Butler(self.central_repo.name, writeable=True)
-        write_butler.registry.registerCollection("emptyrun", CollectionType.RUN)
+        write_butler.collections.register("emptyrun", CollectionType.RUN)
         write_butler.collections.prepend_chain("refcats", ["emptyrun"])
         read_butler = Butler(self.central_repo.name, writeable=False)
 

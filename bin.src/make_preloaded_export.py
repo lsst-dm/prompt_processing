@@ -81,12 +81,14 @@ def _export_for_copy(repo):
     butler = daf_butler.Butler(repo)
     with butler.export(format="yaml") as contents:
         # Need all detectors, even those without data, for visit definition
-        contents.saveDataIds(butler.registry.queryDataIds({"detector"}).expanded())
-        contents.saveDatasets(butler.registry.queryDatasets(
-            datasetType=_get_dataset_types(), collections=...))
+        contents.saveDataIds(butler.query_data_ids({"detector"}, with_dimension_records=True))
+        contents.saveDatasets(butler.query_all_datasets(
+            name=_get_dataset_types(), collections=butler.collections.query("*"),
+            find_first=False, limit=None,
+        ))
         # Save calibration collection
-        for collection in butler.registry.queryCollections(
-                collectionTypes=daf_butler.CollectionType.CALIBRATION):
+        for collection in butler.collections.query(
+                collection_types=daf_butler.CollectionType.CALIBRATION):
             contents.saveCollection(collection)
         # Do not export chains, as they will need to be reworked to satisfy
         # prompt processing's assumptions.
