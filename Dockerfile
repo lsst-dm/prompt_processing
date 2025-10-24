@@ -18,7 +18,7 @@ COPY maps maps/
 
 USER root
 RUN groupadd -g 4085 -o rubin_users \
-    && useradd -u 17951 -g 4085 lsstsvc1 \
+    && useradd -u 17951 -g 4085 lsstsvc1 -m \
     # Ensure that the target directories and files created by this Dockerfile are owned by lsstsvc1
     && chown -R lsstsvc1:rubin_users $APP_HOME
 USER lsstsvc1
