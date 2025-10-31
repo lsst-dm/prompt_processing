@@ -387,6 +387,23 @@ def get_group_id_from_oid(oid: str) -> str:
         oid.removesuffix(m["extension"])
         + ".json"
     )
+    group_id = _get_group_id_from_sidecar(sidecar)
+    return group_id
+
+
+def _get_group_id_from_sidecar(sidecar):
+    """Read the group id from a sidecar JSON file.
+
+    Parameters
+    ----------
+    sidecar : `lsst.resources.ResourcePath`
+        URI to a sidecar JSON file.
+
+    Returns
+    -------
+    group_id : `str`
+        The group identifier as a string.
+    """
     # Wait a bit but not too long for the file.
     # It should normally show up before the image.
     count = 0
