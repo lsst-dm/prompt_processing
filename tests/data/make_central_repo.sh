@@ -8,6 +8,7 @@ REPO="${PROMPT_PROCESSING_DIR:?Can\'t find prompt_processing repo; is it set up?
 # For compatibility testing, use the lowest version we offer support for
 butler create "$REPO" --dimension-config "$DAF_BUTLER_DIR/python/lsst/daf/butler/configs/old_dimensions/daf_butler_universe7.yaml"
 butler register-instrument "$REPO" lsst.obs.lsst.LsstCam
+butler register-dataset-type "$REPO" gain_correction IsrCalib instrument detector --is-calibration
 
 # Import datasets
 butler write-curated-calibrations "$REPO" LSSTCam --collection LSSTCam/calib/DM-50520
