@@ -21,5 +21,6 @@ tasks:
       doDefect: false
       doDeferredCharge: false
       doFlat: false
+      doCorrectGains: false
       doLinearize: false
       doSuspect: false
