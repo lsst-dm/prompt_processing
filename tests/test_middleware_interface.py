@@ -41,7 +41,7 @@ import lsst.pex.config
 import lsst.afw.image
 import lsst.afw.table
 from lsst.dax.apdb import ApdbSql
-from lsst.daf.butler import Butler, CollectionType, DataCoordinate, DimensionUniverse
+from lsst.daf.butler import Butler, CollectionType, DataCoordinate, DimensionUniverse, EmptyQueryResultError
 import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
@@ -1259,8 +1259,13 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as export_file:
             with data_butler.export(filename=export_file.name) as export:
                 for dtype in data_butler.registry.queryDatasetTypes(...):
-                    export.saveDatasets(data_butler.query_datasets(dtype, collections=...,
-                                                                   find_first=False, explain=False))
+                    empty_types = []
+                    try:
+                        refs = data_butler.query_datasets(dtype, collections=...,
+                                                          find_first=False, explain=True)
+                    except EmptyQueryResultError:
+                        empty_types.append(dtype)
+                    export.saveDatasets(refs)
                 for collection in data_butler.collections.query("*"):
                     export.saveCollection(collection)
             dimension_config = data_butler.dimensions.dimensionConfig
@@ -1268,6 +1273,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                     writeable=True,
                                     )
             central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
+
+            # Register dataset types that do not have datasets
+            for dtype in empty_types:
+                central_butler.registry.registerDatasetType(dtype)
 
     def setUp(self):
         self._create_copied_repo()
