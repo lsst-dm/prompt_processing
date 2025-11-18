@@ -37,7 +37,6 @@ __all__ = [
     "get_raw_path",
 ]
 
-import json
 import logging
 import os
 import re
@@ -45,6 +44,7 @@ import time
 import urllib.parse
 
 import botocore.exceptions
+import pydantic_core
 import requests
 
 from lsst.obs.lsst import LsstCam, LsstCamImSim, LsstComCam, LsstComCamSim
@@ -414,7 +414,7 @@ def _get_group_id_from_sidecar(sidecar):
     count = 0
     while count <= 20:
         try:
-            md = json.loads(sidecar.read())
+            md = pydantic_core.from_json(sidecar.read())
             return md.get("GROUPID", "")
         # If no such sidecar exists, a FileNotFoundError is raised.
         except FileNotFoundError:
