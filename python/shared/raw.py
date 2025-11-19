@@ -37,19 +37,21 @@ __all__ = [
     "get_raw_path",
 ]
 
-import json
 import logging
 import os
 import re
 import time
 import urllib.parse
 
+import botocore.exceptions
+import pydantic_core
 import requests
 
 from lsst.obs.lsst import LsstCam, LsstCamImSim, LsstComCam, LsstComCamSim
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 from lsst.resources import ResourcePath
 
+from .connect_utils import retry
 from .visit import FannedOutVisit
 
 _log = logging.getLogger("lsst." + __name__)
@@ -387,19 +389,38 @@ def get_group_id_from_oid(oid: str) -> str:
         oid.removesuffix(m["extension"])
         + ".json"
     )
-    # Wait a bit but not too long for the file.
-    # It should normally show up before the image.
+    group_id = _get_group_id_from_sidecar(sidecar)
+    return group_id
+
+
+@retry(4, botocore.exceptions.ClientError, wait=5)
+def _get_group_id_from_sidecar(sidecar):
+    """Read the group id from a sidecar JSON file.
+
+    The sidecar file normally show up before the image. If not present, wait a
+    bit but not too long for the file. Sometimes, the object store gives other
+    transient ClientErrors, which are retried in a longer timescale.
+
+    Parameters
+    ----------
+    sidecar : `lsst.resources.ResourcePath`
+        URI to a sidecar JSON file.
+
+    Returns
+    -------
+    group_id : `str`
+        The group identifier as a string.
+    """
     count = 0
-    while not sidecar.exists():
-        count += 1
-        if count > 20:
-            raise RuntimeError(f"Unable to retrieve JSON sidecar: {sidecar}")
-        time.sleep(0.1)
-
-    with sidecar.open("r") as f:
-        md = json.load(f)
-
-    return md.get("GROUPID", "")
+    while count <= 20:
+        try:
+            md = pydantic_core.from_json(sidecar.read())
+            return md.get("GROUPID", "")
+        # If no such sidecar exists, a FileNotFoundError is raised.
+        except FileNotFoundError:
+            count += 1
+            time.sleep(0.1)
+    raise RuntimeError(f"Unable to retrieve JSON sidecar: {sidecar}")
 
 
 def get_raw_path(instrument, detector, group, snap, exposure_id, physical_filter):

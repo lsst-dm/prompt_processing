@@ -1198,6 +1198,7 @@ class MiddlewareInterface:
         """
         return self._prep_pipeline(pipeline_file).to_graph()
 
+    @connect.retry(2, botocore.exceptions.ClientError, wait=5)
     def _download(self, remote):
         """Download an image located on a remote store.
 
