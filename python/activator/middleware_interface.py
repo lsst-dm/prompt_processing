@@ -49,6 +49,7 @@ from lsst.daf.butler import Butler, CollectionType, DatasetType, DatasetRef, Tim
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
+from lsst.obs.base.utils import createInitialSkyWcsFromBoresight
 import lsst.pipe.base
 from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilderError
 import lsst.analysis.tools
@@ -486,8 +487,7 @@ class MiddlewareInterface:
         except RuntimeError as e:
             raise _NoPositionError(str(e)) from e
 
-        formatter = self.instrument.getRawFormatter({"detector": detector.getId()})
-        return formatter.makeRawSkyWcsFromBoresight(boresight_center, orientation, detector)
+        return createInitialSkyWcsFromBoresight(boresight_center, orientation, detector)
 
     def _compute_region(self) -> lsst.sphgeom.Region:
         """Compute the sky region of this visit for preload
