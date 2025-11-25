@@ -46,6 +46,7 @@ from lsst.pipe.base.separable_pipeline_executor import SeparablePipelineExecutor
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, DatasetRef, Timespan, \
     DataIdValueError, DimensionRecord, MissingDatasetTypeError, MissingCollectionError
+from lsst.daf.butler import Config as dafButlerConfig
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
@@ -81,6 +82,8 @@ do_export = bool(int(os.environ.get("DEBUG_EXPORT_OUTPUTS", '1')))
 padding = float(os.environ.get("PRELOAD_PADDING", 30))
 # The (jittered) number of seconds to delay retrying connections to the central Butler.
 repo_retry = float(os.environ.get("REPO_RETRY_DELAY", 30))
+# An optional file with local butler repo config overrides.
+local_repo_config = os.environ.get("LOCAL_REPO_CONFIG", None)
 
 
 # TODO: revisit which cases should be retried after DM-50934
@@ -142,7 +145,11 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
     """
     dimension_config = central_butler.dimensions.dimensionConfig
     repo_dir = tempfile.TemporaryDirectory(dir=local_storage, prefix="butler-")
-    butler = Butler(Butler.makeRepo(repo_dir.name, dimensionConfig=dimension_config), writeable=True)
+    config = dafButlerConfig(local_repo_config)
+    butler = Butler(
+        Butler.makeRepo(repo_dir.name, config=config, dimensionConfig=dimension_config),
+        writeable=True,
+    )
     _log.info("Created local Butler repo at %s with dimensions-config %s %d.",
               repo_dir.name, dimension_config["namespace"], dimension_config["version"])
 
