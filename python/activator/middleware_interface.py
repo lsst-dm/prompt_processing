@@ -465,6 +465,55 @@ class MiddlewareInterface:
         except LookupError as e:
             raise RuntimeError("Cache is too small for one run's worth of datasets.") from e
 
+    def _pad_region(self,
+                    initial_region: lsst.sphgeom.Region,
+                    wcs: lsst.afw.geom.SkyWcs,
+                    ) -> lsst.sphgeom.Region:
+        """Pad the expected footprint to allow for slew errors.
+
+        This method emits a warning if the preload padding is too small.
+
+        Parameters
+        ----------
+        initial_region : `lsst.sphgeom.Region`
+            The unpadded region to expand.
+        wcs : `lsst.afw.geom.SkyWcs`
+            A WCS for the current image. Only needs to be good enough to get
+            the plate scale.
+
+        Returns
+        -------
+        region : `lsst.sphgeom.Region`
+            The padded region.
+
+        Raises
+        ------
+        TypeError
+            Raised if padding is not supported for ``initial_region``.
+        """
+        # Compare the preload region padding versus the visit region padding
+        # in the middleware visit definition.
+        visit_definition_padding = (
+            self.define_visits.config.computeVisitRegions["single-raw-wcs"].padding
+            * wcs.getPixelScale().asArcseconds()
+        )
+        preload_region_padding = self.padding.asArcseconds()
+        if preload_region_padding < visit_definition_padding:
+            _log.warning("Preload padding (%.1f arcsec) is smaller than "
+                         "visit definition's region padding (%.1f arcsec).",
+                         preload_region_padding, visit_definition_padding)
+
+        if isinstance(initial_region, lsst.sphgeom.ConvexPolygon):
+            center = lsst.geom.SpherePoint(initial_region.getCentroid())
+            corners = [lsst.geom.SpherePoint(c) for c in initial_region.getVertices()]
+            padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
+            return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
+        elif isinstance(initial_region, lsst.sphgeom.Circle):
+            return lsst.sphgeom.Circle(initial_region.getCenter(),
+                                       initial_region.getOpeningAngle() + self.padding)
+        else:
+            raise TypeError(f"Cannot pad region {initial_region!r}.")
+
     def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector) -> lsst.afw.geom.SkyWcs:
         """Calculate the expected detector WCS for an incoming observation.
 
@@ -513,22 +562,8 @@ class MiddlewareInterface:
         detector = self.camera[self.visit.detector]
         wcs = self._predict_wcs(detector)
 
-        # Compare the preload region padding versus the visit region padding
-        # in the middleware visit definition.
-        visit_definition_padding = (
-            self.define_visits.config.computeVisitRegions["single-raw-wcs"].padding
-            * wcs.getPixelScale().asArcseconds()
-        )
-        preload_region_padding = self.padding.asArcseconds()
-        if preload_region_padding < visit_definition_padding:
-            _log.warning("Preload padding (%.1f arcsec) is smaller than "
-                         "visit definition's region padding (%.1f arcsec).",
-                         preload_region_padding, visit_definition_padding)
-
-        center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
         corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
-        padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
-        return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
+        return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in corners])
 
     def prep_butler(self) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
@@ -548,7 +583,8 @@ class MiddlewareInterface:
                 _log.info(f"Preparing Butler for visit {self.visit!r}")
 
                 try:
-                    region = self._compute_region()
+                    region = self._pad_region(self._compute_region(),
+                                              self._predict_wcs(self.camera[self.visit.detector]))
                     _log.debug(
                         f"Preload region {region} including padding {self.padding.asArcseconds()} arcsec.")
                     self._write_region_time(region)  # Must be done before preprocessing pipeline
