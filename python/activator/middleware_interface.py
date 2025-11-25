@@ -44,7 +44,7 @@ import lsst.afw.cameraGeom
 from lsst.pipe.base.mp_graph_executor import MPGraphExecutor
 from lsst.pipe.base.separable_pipeline_executor import SeparablePipelineExecutor
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
-from lsst.daf.butler import Butler, CollectionType, DatasetType, DatasetRef, Timespan, \
+from lsst.daf.butler import Butler, Config, CollectionType, DatasetType, DatasetRef, Timespan, \
     DataIdValueError, DimensionRecord, MissingDatasetTypeError, MissingCollectionError
 import lsst.dax.apdb
 import lsst.geom
@@ -142,7 +142,18 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
     """
     dimension_config = central_butler.dimensions.dimensionConfig
     repo_dir = tempfile.TemporaryDirectory(dir=local_storage, prefix="butler-")
-    butler = Butler(Butler.makeRepo(repo_dir.name, dimensionConfig=dimension_config), writeable=True)
+    # temporary HACK
+    config = Config()
+    config[".datastore.formatters.preliminary_visit_image.formatter"] = (
+        "lsst.obs.base.formatters.fitsExposure.FitsExposureFormatter"
+    )
+    config[".datastore.formatters.preliminary_visit_image.parameters.recipe"] = (
+        "lossy16"
+    )
+    butler = Butler(
+        Butler.makeRepo(repo_dir.name, config=config, dimensionConfig=dimension_config),
+        writeable=True,
+    )
     _log.info("Created local Butler repo at %s with dimensions-config %s %d.",
               repo_dir.name, dimension_config["namespace"], dimension_config["version"])
 
