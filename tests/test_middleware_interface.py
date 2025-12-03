@@ -699,10 +699,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             ``pipe_files`` and ``graphs``.
         """
         with unittest.mock.patch(
-            "activator.middleware_interface.MiddlewareInterface._get_pre_pipeline_files",
+            "activator.middleware_interface.MiddlewareInterface.get_pre_pipeline_files",
             return_value=pipe_files), \
                 unittest.mock.patch(
-                    "activator.middleware_interface.MiddlewareInterface._get_main_pipeline_files",
+                    "activator.middleware_interface.MiddlewareInterface.get_main_pipeline_files",
                     return_value=pipe_files), \
                 unittest.mock.patch(
                     "activator.middleware_interface.SeparablePipelineExecutor.make_quantum_graph",
