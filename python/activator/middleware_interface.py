@@ -595,7 +595,7 @@ class MiddlewareInterface:
         """
         net_types = set().union(*self._get_preloadable_types().values())
         # Filter outputs made by preprocessing and consumed by main.
-        for pipeline_file in self._get_pre_pipeline_files():
+        for pipeline_file in self.get_pre_pipeline_files():
             net_types.difference_update(self._get_pipeline_output_types(pipeline_file))
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find init-outputs)", level=logging.DEBUG):
@@ -639,7 +639,7 @@ class MiddlewareInterface:
             that pipeline.
         """
         input_types = {}
-        for pipeline_file in self._get_combined_pipeline_files():
+        for pipeline_file in self.get_combined_pipeline_files():
             inputs = self._get_pipeline_input_types(pipeline_file)
             # Not preloaded
             inputs.discard("regionTimeInfo")
@@ -664,7 +664,7 @@ class MiddlewareInterface:
             `True` if and only if at least one pipeline has all inputs.
         """
         pre_outputs = set()
-        for pipeline_file in self._get_pre_pipeline_files():
+        for pipeline_file in self.get_pre_pipeline_files():
             input_types = self._get_pipeline_input_types(pipeline_file, include_optional=False)
             input_types.discard("regionTimeInfo")
             if input_types <= present_types:
@@ -673,7 +673,7 @@ class MiddlewareInterface:
             else:
                 _log.debug("Missing inputs for %s: %s.", pipeline_file, input_types - present_types)
         main_inputs = present_types | pre_outputs
-        for pipeline_file in self._get_main_pipeline_files():
+        for pipeline_file in self.get_main_pipeline_files():
             input_types = self._get_pipeline_input_types(pipeline_file, include_optional=False)
             input_types.discard("regionTimeInfo")
             input_types.discard("raw")
@@ -937,7 +937,7 @@ class MiddlewareInterface:
             The datasets to be exported.
         """
         datasets = set()
-        for pipeline_file in self._get_combined_pipeline_files():
+        for pipeline_file in self.get_combined_pipeline_files():
             run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
             types = self._get_init_output_types(pipeline_file)
             # Output runs are always cleared after execution, so _filter_datasets would always warn.
@@ -1107,12 +1107,12 @@ class MiddlewareInterface:
         self.butler.collections.register(
             runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
             CollectionType.RUN)
-        for pipeline_file in self._get_combined_pipeline_files():
+        for pipeline_file in self.get_combined_pipeline_files():
             self.butler.collections.register(
                 runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
-    def _get_combined_pipeline_files(self) -> collections.abc.Collection[str]:
+    def get_combined_pipeline_files(self) -> collections.abc.Collection[str]:
         """Identify the pipelines to be run at any point, based on the
         configured instrument and visit.
 
@@ -1122,11 +1122,11 @@ class MiddlewareInterface:
             The paths to a configured pipeline file. The order is undefined.
         """
         # A pipeline appearing in both configs is unlikely, but not impossible.
-        all = set(self._get_pre_pipeline_files())
-        all.update(self._get_main_pipeline_files())
+        all = set(self.get_pre_pipeline_files())
+        all.update(self.get_main_pipeline_files())
         return all
 
-    def _get_pre_pipeline_files(self) -> collections.abc.Sequence[str]:
+    def get_pre_pipeline_files(self) -> collections.abc.Sequence[str]:
         """Identify the pipelines to be run during preprocessing, based on the
         configured instrument and visit.
 
@@ -1138,9 +1138,9 @@ class MiddlewareInterface:
         """
         return self.pre_pipelines.get_pipeline_files(self.visit)
 
-    def _get_main_pipeline_files(self) -> collections.abc.Sequence[str]:
-        """Identify the pipelines to be run, based on the configured instrument
-        and visit.
+    def get_main_pipeline_files(self) -> collections.abc.Sequence[str]:
+        """Identify the pipelines to be run on the raws, based on the
+        configured instrument and visit.
 
         Returns
         -------
@@ -1409,7 +1409,7 @@ class MiddlewareInterface:
         activator.exception.PipelineExecutionError
             Raised if pipeline execution was attempted but failed.
         """
-        pipeline_files = self._get_pre_pipeline_files()
+        pipeline_files = self.get_pre_pipeline_files()
         if not pipeline_files:
             _log.info(f"No preprocessing pipeline configured for {self.visit}, skipping.")
             return
@@ -1421,7 +1421,7 @@ class MiddlewareInterface:
         )
         preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
 
-        self._try_pipelines(self._get_pre_pipeline_files(),
+        self._try_pipelines(self.get_pre_pipeline_files(),
                             in_collections=[preload_run],
                             data_ids=where,
                             label="preprocessing",
@@ -1522,10 +1522,10 @@ class MiddlewareInterface:
         )
         preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
         pre_runs = [runs.get_output_run(self.instrument, self._deployment, f, self._day_obs)
-                    for f in self._get_pre_pipeline_files()]
+                    for f in self.get_pre_pipeline_files()]
 
         try:
-            self._try_pipelines(self._get_main_pipeline_files(),
+            self._try_pipelines(self.get_main_pipeline_files(),
                                 in_collections=pre_runs + [preload_run],
                                 data_ids=where,
                                 label="main",
@@ -1582,7 +1582,7 @@ class MiddlewareInterface:
         _log.debug(f"Will export datasets {export_types}")
         # Rather than determining which pipeline was run, just try to export all of them.
         output_runs = [runs.get_preload_run(self.instrument, self._deployment, self._day_obs)]
-        for f in self._get_combined_pipeline_files():
+        for f in self.get_combined_pipeline_files():
             output_runs.append(runs.get_output_run(self.instrument, self._deployment, f, self._day_obs))
         try:
             with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
@@ -1807,7 +1807,7 @@ class MiddlewareInterface:
             # Outputs are all in their own runs, so just drop them.
             preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
             _remove_run_completely(self.butler, preload_run)
-            for pipeline_file in self._get_combined_pipeline_files():
+            for pipeline_file in self.get_combined_pipeline_files():
                 output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file,
                                                  self._day_obs)
                 _log_trace.debug("Removing run %s.", output_run)
