@@ -114,7 +114,7 @@ Please note that the tag does not include a ``v`` at the beginning.
    * Incompatibility with an old `Butler dimensions-config`_ version
    * Incompatibility with an old `Butler Writer Service`_ version
    * Incompatibility with an old Sattle version
-   * Incompatibility with an old MPSky version
+   * Incompatibility with an old ``mpsky`` version
    * Incompatibility with an old raw microservice version
    * A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
 
@@ -146,7 +146,7 @@ Please note that the tag does not include a ``v`` at the beginning.
    * Supported `Butler dimensions-config`_ versions
    * Supported `Butler Writer Service`_ versions
    * Supported Sattle versions
-   * Supported MPSky versions
+   * Supported ``mpsky`` versions
    * Supported raw microservice versions
    * The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
 
