@@ -161,7 +161,7 @@ Please note that the tag does not include a ``v`` at the beginning.
 
 .. _Butler dimensions-config: https://pipelines.lsst.io/v/daily/modules/lsst.daf.butler/dimensions.html#dimension-universe-change-history
 
-.. _Butler Writer Service: https://github.com/lsst-dm/prompt_processing_butler_writer/tags
+.. _Butler Writer Service: https://github.com/lsst-dm/prompt_processing_butler_writer/blob/main/CHANGELOG.md
 
 .. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/python/lsst/sdm/schemas/apdb.yaml#L4
 
