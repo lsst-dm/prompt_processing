@@ -357,12 +357,12 @@ class MiddlewareInterface:
         self._day_obs = runs.get_day_obs(now)
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
+        self._init_governor_datasets(now, skymap)
         self.cache = local_cache  # DO NOT copy -- we want to persist this state!
         self._prep_collections()
         self._define_dimensions()
         self._init_ingester()
         self._init_visit_definer()
-        self._init_governor_datasets(now, skymap)
 
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
@@ -1103,6 +1103,8 @@ class MiddlewareInterface:
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
+
+        ``self._init_governor_datasets`` must have already been run.
         """
         self.butler.collections.register(
             runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
@@ -1136,7 +1138,7 @@ class MiddlewareInterface:
             A sequence of paths to a configured pipeline file, in order from
             most preferred to least preferred.
         """
-        return self.pre_pipelines.get_pipeline_files(self.visit)
+        return self.pre_pipelines.get_pipeline_files(self.visit, self.camera)
 
     def get_main_pipeline_files(self) -> collections.abc.Sequence[str]:
         """Identify the pipelines to be run on the raws, based on the
@@ -1148,7 +1150,7 @@ class MiddlewareInterface:
             A sequence of paths to a configured pipeline file, in order from
             most preferred to least preferred.
         """
-        return self.main_pipelines.get_pipeline_files(self.visit)
+        return self.main_pipelines.get_pipeline_files(self.visit, self.camera)
 
     @functools.cache
     def _prep_pipeline(self, pipeline_file) -> lsst.pipe.base.Pipeline:

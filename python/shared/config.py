@@ -29,6 +29,8 @@ import numbers
 import os
 import typing
 
+import lsst.afw.cameraGeom
+
 from .maps import PredicateMapHealpix
 from .visit import FannedOutVisit
 
@@ -281,13 +283,15 @@ class PipelinesConfig:
             if duplicates:
                 raise ValueError(f"Pipeline names must be unique, found multiple copies of {duplicates}.")
 
-        def matches(self, visit: FannedOutVisit) -> bool:
+        def matches(self, visit: FannedOutVisit, camera: lsst.afw.cameraGeom.Camera) -> bool:
             """Test whether a visit matches the conditions for this spec.
 
             Parameters
             ----------
             visit : `shared.visit.FannedOutVisit`
                 The visit to test against this spec.
+            camera : `lsst.afw.cameraGeom.Camera`
+                Information about the active camera's geometry.
 
             Returns
             -------
@@ -357,7 +361,7 @@ class PipelinesConfig:
             items.append(PipelinesConfig._Spec(node))
         return items
 
-    def get_pipeline_files(self, visit: FannedOutVisit) -> list[str]:
+    def get_pipeline_files(self, visit: FannedOutVisit, camera: lsst.afw.cameraGeom.Camera) -> list[str]:
         """Identify the pipeline to be run, based on the provided visit.
 
         The first node that matches the visit is returned, and no other nodes
@@ -367,6 +371,8 @@ class PipelinesConfig:
         ----------
         visit : `shared.visit.FannedOutVisit`
             The visit for which a pipeline must be selected.
+        camera : `lsst.afw.cameraGeom.Camera`
+            Information about the active camera's geometry.
 
         Returns
         -------
@@ -381,7 +387,7 @@ class PipelinesConfig:
             Raised if the visit has invalid or unsupported fields.
         """
         for node in self._specs:
-            if node.matches(visit):
+            if node.matches(visit, camera):
                 return node.pipeline_files
         raise RuntimeError(f"No pipelines config matches {visit}")
 
