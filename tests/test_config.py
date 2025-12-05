@@ -25,6 +25,7 @@ import os
 import unittest
 
 from lsst.utils import getPackageDir
+import lsst.daf.butler
 
 from shared.config import PipelinesConfig
 from shared.visit import FannedOutVisit
@@ -37,8 +38,9 @@ class PipelinesConfigTest(unittest.TestCase):
     def setUp(self):
         super().setUp()
 
+        instname = "LSSTCam"
         self.visit = FannedOutVisit(
-            instrument="NotACam",
+            instrument=instname,
             detector=42,
             groupId="2023-01-23T23:33:14.762",
             nimages=2,
@@ -57,12 +59,16 @@ class PipelinesConfigTest(unittest.TestCase):
             private_sndStamp=1_674_516_794.0,
         )
 
+        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+        test_butler = lsst.daf.butler.Butler(os.path.join(data_dir, "central_repo"))
+        self.camera = test_butler.get("camera", instrument=instname, collections="LSSTCam/calib/unbounded")
+
     def test_main_survey(self):
         config = PipelinesConfig([{"survey": "TestSurvey",
                                    "pipelines": ["${PROMPT_PROCESSING_DIR}/pipelines/NotACam/ApPipe.yaml"],
                                    }])
         self.assertEqual(
-            config.get_pipeline_files(self.visit),
+            config.get_pipeline_files(self.visit, self.camera),
             [os.path.normpath(os.path.join(TESTDIR, "..", "pipelines", "NotACam", "ApPipe.yaml"))]
         )
         self.assertEqual(
@@ -81,15 +87,15 @@ class PipelinesConfigTest(unittest.TestCase):
                                   {"survey": "", "pipelines": ["Default.yaml"]},
                                   ])
         self.assertEqual(
-            config.get_pipeline_files(self.visit),
+            config.get_pipeline_files(self.visit, self.camera),
             [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
         )
         self.assertEqual(
-            config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest")),
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest"), self.camera),
             [os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml"))]
         )
         self.assertEqual(
-            config.get_pipeline_files(dataclasses.replace(self.visit, survey="")),
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey=""), self.camera),
             [os.path.abspath("Default.yaml")]
         )
         self.assertEqual(
@@ -106,7 +112,7 @@ class PipelinesConfigTest(unittest.TestCase):
                                                  "${AP_PIPE_DIR}/pipelines/Isr.yaml",
                                                  ]}])
         self.assertEqual(
-            config.get_pipeline_files(self.visit),
+            config.get_pipeline_files(self.visit, self.camera),
             [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml")),
              os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml"))]
         )
@@ -122,11 +128,11 @@ class PipelinesConfigTest(unittest.TestCase):
                                   {"survey": "CameraTest", "pipelines": ["/etc/pipelines/SingleFrame.yaml"]},
                                   ])
         self.assertEqual(
-            config.get_pipeline_files(self.visit),
+            config.get_pipeline_files(self.visit, self.camera),
             [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
         )
         self.assertEqual(
-            config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest")),
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest"), self.camera),
             [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
         )
         self.assertEqual(
@@ -142,12 +148,14 @@ class PipelinesConfigTest(unittest.TestCase):
                                   {"survey": "CameraTest", "pipelines": []},
                                   ])
         self.assertEqual(
-            config.get_pipeline_files(self.visit),
+            config.get_pipeline_files(self.visit, self.camera),
             [os.path.abspath(os.path.join("None shall pass", "pipelines", "SingleFrame.yaml"))]
         )
-        self.assertEqual(config.get_pipeline_files(dataclasses.replace(self.visit, survey="Camera Test")),
+        self.assertEqual(config.get_pipeline_files(dataclasses.replace(self.visit, survey="Camera Test"),
+                                                   self.camera),
                          [])
-        self.assertEqual(config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest")),
+        self.assertEqual(config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest"),
+                                                   self.camera),
                          [])
         self.assertEqual(
             set(config.get_all_pipeline_files()),
@@ -164,7 +172,7 @@ class PipelinesConfigTest(unittest.TestCase):
                                    },
                                   ])
         with self.assertRaises(RuntimeError):
-            config.get_pipeline_files(dataclasses.replace(self.visit, survey="Surprise"))
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey="Surprise"), self.camera)
         self.assertEqual(
             set(config.get_all_pipeline_files()),
             {os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml")),
@@ -215,7 +223,7 @@ class PipelinesConfigTest(unittest.TestCase):
                                   ])
         # Second TestSurvey spec should be ignored
         self.assertEqual(
-            config.get_pipeline_files(self.visit),
+            config.get_pipeline_files(self.visit, self.camera),
             [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
         )
 
@@ -227,43 +235,47 @@ class PipelinesConfigTest(unittest.TestCase):
                                   {"survey": "", "pipelines": ["Default.yaml"]},
                                   ])
         self.assertEqual(
-            config.get_pipeline_files(self.visit),
+            config.get_pipeline_files(self.visit, self.camera),
             [os.path.normpath(os.path.join("/etc", "pipelines", "SingleFrame.yaml"))]
         )
         self.assertEqual(
             # Matches the second node, which has no constraints
-            config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest")),
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey="CameraTest"), self.camera),
             [os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml"))]
         )
         self.assertEqual(
             # Matches the second node, which has no constraints
-            config.get_pipeline_files(dataclasses.replace(self.visit, survey="")),
+            config.get_pipeline_files(dataclasses.replace(self.visit, survey=""), self.camera),
             [os.path.normpath(os.path.join(getPackageDir("ap_pipe"), "pipelines", "Isr.yaml"))]
         )
 
     def _check_boresight(self, config, inside_visit, outside_visits):
-        self.assertEqual(config.get_pipeline_files(inside_visit), [os.path.abspath("ApPipe.yaml")])
+        self.assertEqual(config.get_pipeline_files(inside_visit, self.camera),
+                         [os.path.abspath("ApPipe.yaml")])
         for v in outside_visits:
-            self.assertEqual(config.get_pipeline_files(v), [])
+            self.assertEqual(config.get_pipeline_files(v, self.camera), [])
 
         # Rotation is ignored for boresight constraints
         for rot in FannedOutVisit.RotSys:
             self.assertEqual(
-                config.get_pipeline_files(dataclasses.replace(inside_visit, rotationSystem=rot)),
+                config.get_pipeline_files(dataclasses.replace(inside_visit, rotationSystem=rot), self.camera),
                 [os.path.abspath("ApPipe.yaml")]
             )
         # If no coordinates, all ra constraints automatically fail
         self.assertEqual(
             config.get_pipeline_files(
-                dataclasses.replace(inside_visit, coordinateSystem=FannedOutVisit.CoordSys.NONE)),
+                dataclasses.replace(inside_visit, coordinateSystem=FannedOutVisit.CoordSys.NONE),
+                self.camera),
             []
         )
         with self.assertRaises(ValueError):
             config.get_pipeline_files(
-                dataclasses.replace(inside_visit, coordinateSystem=FannedOutVisit.CoordSys.OBSERVED))
+                dataclasses.replace(inside_visit, coordinateSystem=FannedOutVisit.CoordSys.OBSERVED),
+                self.camera)
         with self.assertRaises(ValueError):
             config.get_pipeline_files(
-                dataclasses.replace(inside_visit, coordinateSystem=FannedOutVisit.CoordSys.MOUNT))
+                dataclasses.replace(inside_visit, coordinateSystem=FannedOutVisit.CoordSys.MOUNT),
+                self.camera)
 
     def test_ra_boresight(self):
         config = PipelinesConfig([{"survey": "TestSurvey",
@@ -367,12 +379,13 @@ class PipelinesConfigTest(unittest.TestCase):
                                   ])
         self.assertEqual(
             # Galactic center
-            config.get_pipeline_files(dataclasses.replace(self.visit, position=[266.40, -28.94])),
+            config.get_pipeline_files(dataclasses.replace(self.visit, position=[266.40, -28.94]),
+                                      self.camera),
             []
         )
         self.assertEqual(
             # South Galactic pole
-            config.get_pipeline_files(dataclasses.replace(self.visit, position=[12.85, -27.13])),
+            config.get_pipeline_files(dataclasses.replace(self.visit, position=[12.85, -27.13]), self.camera),
             [os.path.abspath("ApPipe.yaml")]
         )
 
