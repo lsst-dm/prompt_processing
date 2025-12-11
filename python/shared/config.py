@@ -29,6 +29,8 @@ import numbers
 import os
 import typing
 
+import astropy.coordinates
+
 import lsst.afw.cameraGeom
 
 from .maps import PredicateMapHealpix
@@ -306,10 +308,7 @@ class PipelinesConfig:
             if self._survey is not None and self._survey != visit.survey:
                 return False
             if self._positions:
-                try:
-                    visit_radec = visit.get_boresight_icrs()
-                except RuntimeError as e:
-                    raise ValueError(str(e)) from e
+                visit_radec = self._get_visit_position(visit, camera)
                 if visit_radec is None:
                     return False
 
@@ -321,6 +320,35 @@ class PipelinesConfig:
                     # at() may return False or None
                     return False
             return True
+
+        def _get_visit_position(self,
+                                visit: FannedOutVisit,
+                                camera: lsst.afw.cameraGeom.Camera) -> astropy.coordinates.SkyCoord | None:
+            """Calculate the position to use for all spatial constraints.
+
+            Parameters
+            ----------
+            visit : `shared.visit.FannedOutVisit`
+                The visit whose position is desired.
+            camera : `lsst.afw.cameraGeom.Camera`
+                Information about the active camera's geometry.
+
+            Returns
+            -------
+            position : `astropy.coordinates.SkyCoord` or `None`
+                The ICRS coordinates to use, or `None` if the visit does not
+                have a position. RA is guaranteed to be normalized to [0, 360)
+                degrees.
+
+            Raises
+            ------
+            ValueError
+                Raised if the visit has invalid or unsupported fields.
+            """
+            try:
+                return visit.get_boresight_icrs()
+            except RuntimeError as e:
+                raise ValueError(str(e)) from e
 
         @property
         def pipeline_files(self) -> collections.abc.Sequence[str]:
