@@ -25,6 +25,7 @@ __all__ = ["PipelinesConfig"]
 
 import collections
 import collections.abc
+import enum
 import numbers
 import os
 import typing
@@ -62,9 +63,13 @@ class PipelinesConfig:
             The path to an integer or boolean Healpix map (`str`, optional).
             Only all-sky maps with implicit indexing are supported.
             16 is assumed to represent "unknown".
-            The node matches if the boresight position evaluates to `True`.
+            The node matches if the position evaluates to `True`.
             Visits with no position *never* match a node with map
             constraints.
+        ``"coord-type"``
+            Which coordinates should be tested with ``ra``, ``dec``, or
+            ``binary-map`` ({"detector", "boresight"}, optional). Matches are
+            case-insensitive. If omitted, the detector center is used.
         ``"pipelines"``
             A list of zero or more pipelines (sequence [`str`] or `None`). Each
             pipeline path may contain environment variables, and the list of
@@ -135,12 +140,21 @@ class PipelinesConfig:
             `PipelinesConfig` constructor.
         """
 
+        class _CoordType(enum.Enum):
+            """The type of coordinates used for spatial constraints.
+            """
+            DETECTOR = enum.auto()
+            """Apply constraints to the detector center."""
+            BORESIGHT = enum.auto()
+            """Apply constraints to the telescope boresight."""
+
         def __init__(self, config: collections.abc.Mapping[str, typing.Any]):
             specs = dict(config)
             try:
                 self._filenames = self._parse_pipelines(specs.pop('pipelines'))
                 self._check_pipelines(self._filenames)
 
+                self._coord_type = self._parse_coord_type(specs.pop('coord-type', 'detector'))
                 self._ra = self._parse_minmax(specs.pop('ra', None), _WrapRange, wrap=360.0)
                 self._dec = self._parse_minmax(specs.pop('dec', None), _LinearRange)
                 self._map = self._parse_map(specs.pop('binary-map', None))
@@ -205,6 +219,28 @@ class PipelinesConfig:
                 raise ValueError(f"{config} is not a valid survey name.")
 
         _RangeType = typing.TypeVar('T', bound=collections.abc.Container)
+
+        @staticmethod
+        def _parse_coord_type(config: typing.Any) -> _CoordType:
+            """Convert a coordinate flag into an enum.
+
+            Parameters
+            ----------
+            config : `str`
+                The coordinate type constraint in the config. Expected to match
+                one of the enum values (any case). This method is responsible
+                for any type checking.
+
+            Returns
+            -------
+            survey : `PipelinesConfig._Spec._CoordType`
+                The validated coordinate type. Unlike most survey constraints,
+                this field cannot be `None`.
+            """
+            try:
+                return PipelinesConfig._Spec._CoordType[config.upper()]
+            except (KeyError, AttributeError):
+                raise ValueError(f"{config!r} is not a valid coordinate type.") from None
 
         @staticmethod
         def _parse_minmax(config: typing.Any,
@@ -346,7 +382,21 @@ class PipelinesConfig:
                 Raised if the visit has invalid or unsupported fields.
             """
             try:
-                return visit.get_boresight_icrs()
+                match self._coord_type:
+                    case self._CoordType.BORESIGHT:
+                        return visit.get_boresight_icrs()
+                    case self._CoordType.DETECTOR:
+                        region = visit.get_detector_icrs_region(camera)
+                        if not region:
+                            return None
+                        vec = region.getBoundingCircle().getCenter()
+                        # Don't use represent_as -- it strips the ICRS frame from the coordinates
+                        coords = astropy.coordinates.SkyCoord(vec.x(), vec.y(), vec.z(),
+                                                              representation_type="cartesian")
+                        coords.representation_type = "spherical"
+                        return coords
+                    case _:
+                        raise AssertionError(f"Invalid coordinate type {self._coord_type!r}")
             except RuntimeError as e:
                 raise ValueError(str(e)) from e
 
