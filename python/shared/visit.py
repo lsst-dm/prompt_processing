@@ -27,6 +27,10 @@ import enum
 import astropy.coordinates
 import astropy.units as u
 
+import lsst.afw.cameraGeom
+import lsst.afw.geom
+import lsst.obs.base
+
 
 @dataclass(frozen=True, kw_only=True)
 class BareVisit:
@@ -198,6 +202,69 @@ class FannedOutVisit(BareVisit):
         info.pop("detector")
         info.pop("private_sndStamp")
         return info
+
+    def predict_wcs(self, camera: lsst.afw.cameraGeom.Camera) -> lsst.afw.geom.SkyWcs:
+        """Calculate the expected detector WCS for this visit.
+
+        Parameters
+        ----------
+        camera : `lsst.afw.cameraGeom.Camera`
+            The camera for which to generate a WCS.
+
+        Returns
+        -------
+        wcs : `lsst.afw.geom.SkyWcs` or `None`
+            An approximate WCS for this visit, or `None` if the visit does not
+            have a position.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if the coordinates or rotation are in an unsupported system.
+        """
+        icrs = self.get_boresight_icrs()
+        if icrs is None:
+            return None
+        else:
+            icrs = lsst.geom.SpherePoint(icrs.ra.degree, icrs.dec.degree, lsst.geom.degrees)
+
+        rotation = self.get_rotation_sky()
+        if rotation is None:
+            return None
+        else:
+            rotation = rotation.degree * lsst.geom.degrees
+
+        detector = camera[self.detector]
+        return lsst.obs.base.utils.createInitialSkyWcsFromBoresight(icrs, rotation, detector)
+
+    def get_detector_icrs_region(self,
+                                 camera: lsst.afw.cameraGeom.Camera,
+                                 ) -> lsst.sphgeom.Region | None:
+        """Return the detector region in ICRS coordinates.
+
+        Parameters
+        ----------
+        camera : `lsst.afw.cameraGeom.Camera`
+            The camera whose detector footprint is desired.
+
+        Returns
+        -------
+        region : `lsst.sphgeom.Region` or `None`
+            The expected detector footprint, or `None` if the visit does not
+            have a position.
+
+        Raises
+        ------
+        RuntimeError
+            Raised if the coordinates or rotation are in an unsupported system.
+        """
+        wcs = self.predict_wcs(camera)
+        if wcs is None:
+            return None
+
+        detector = camera[self.detector]
+        corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
+        return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in corners])
 
 
 @dataclass(frozen=True, kw_only=True)

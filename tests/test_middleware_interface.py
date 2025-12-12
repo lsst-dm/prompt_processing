@@ -699,10 +699,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             ``pipe_files`` and ``graphs``.
         """
         with unittest.mock.patch(
-            "activator.middleware_interface.MiddlewareInterface._get_pre_pipeline_files",
+            "activator.middleware_interface.MiddlewareInterface.get_pre_pipeline_files",
             return_value=pipe_files), \
                 unittest.mock.patch(
-                    "activator.middleware_interface.MiddlewareInterface._get_main_pipeline_files",
+                    "activator.middleware_interface.MiddlewareInterface.get_main_pipeline_files",
                     return_value=pipe_files), \
                 unittest.mock.patch(
                     "activator.middleware_interface.SeparablePipelineExecutor.make_quantum_graph",
@@ -1555,15 +1555,3 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.assertEqual(
             self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),
             1)
-
-    def test_compute_region(self):
-        """Test preload region computation."""
-        region = self.interface._compute_region()
-        self.assertTrue(isinstance(region, lsst.sphgeom.Region))
-        results = self.interface.butler.query_dimension_records(
-            "visit_detector_region", instrument=instname, group="1", detector=90,
-        )
-        self.assertEqual(len(results), 1)
-        visit_detector_region = results[0].region
-        # TODO: DM-47460 for a better test.
-        self.assertTrue(visit_detector_region.intersects(region))

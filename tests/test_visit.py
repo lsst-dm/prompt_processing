@@ -21,10 +21,13 @@
 
 import dataclasses
 import json
+import os.path
 import unittest
 
 import astropy.coordinates
 import astropy.units as u
+
+import lsst.daf.butler
 
 from shared.visit import FannedOutVisit, BareVisit
 
@@ -35,8 +38,9 @@ class FannedOutVisitTest(unittest.TestCase):
     def setUp(self):
         super().setUp()
 
+        self.instname = "LSSTCam"
         self.testbed = FannedOutVisit(
-            instrument="NotACam",
+            instrument=self.instname,
             detector=42,
             groupId="2023-01-23T23:33:14.762",
             nimages=2,
@@ -77,6 +81,24 @@ class FannedOutVisitTest(unittest.TestCase):
         self.assertNotEqual(str(self.testbed), repr(self.testbed))
         self.assertIn(str(self.testbed.detector), str(self.testbed))
         self.assertIn(str(self.testbed.groupId), str(self.testbed))
+
+    def test_predict_wcs(self):
+        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+        test_butler = lsst.daf.butler.Butler(os.path.join(data_dir, "central_repo"))
+        camera = test_butler.get("camera", instrument=self.instname, collections="LSSTCam/calib/unbounded")
+
+        wcs = self.testbed.predict_wcs(camera)
+        self.assertIsNotNone(wcs)
+        # TODO: DM-47460 for a better test.
+
+    def test_get_detector_icrs_region(self):
+        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+        test_butler = lsst.daf.butler.Butler(os.path.join(data_dir, "central_repo"))
+        camera = test_butler.get("camera", instrument=self.instname, collections="LSSTCam/calib/unbounded")
+
+        region = self.testbed.get_detector_icrs_region(camera)
+        self.assertIsInstance(region, lsst.sphgeom.Region)
+        # TODO: DM-47460 for a better test.
 
 
 class BareVisitTest(unittest.TestCase):
