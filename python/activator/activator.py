@@ -592,8 +592,6 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
 
         assert expected_visit.instrument == instrument_name, \
             f"Expected {instrument_name}, received {expected_visit.instrument}."
-        if not main_pipelines.get_pipeline_files(expected_visit):
-            raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
 
         with logging_context(group=expected_visit.groupId,
                              survey=expected_visit.survey,
@@ -613,6 +611,8 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
                                           skymap,
                                           _get_local_repo().name,
                                           _get_local_cache())
+                if not mwi.get_main_pipeline_files():
+                    raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
                 # TODO: pipeline execution requires a clean run until DM-38041.
                 cleanups.callback(mwi.clean_local_repo, expid_set)
                 # Copy calibrations for this detector/visit

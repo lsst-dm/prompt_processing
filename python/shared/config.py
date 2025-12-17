@@ -25,9 +25,14 @@ __all__ = ["PipelinesConfig"]
 
 import collections
 import collections.abc
+import enum
 import numbers
 import os
 import typing
+
+import astropy.coordinates
+
+import lsst.afw.cameraGeom
 
 from .maps import PredicateMapHealpix
 from .visit import FannedOutVisit
@@ -58,9 +63,13 @@ class PipelinesConfig:
             The path to an integer or boolean Healpix map (`str`, optional).
             Only all-sky maps with implicit indexing are supported.
             16 is assumed to represent "unknown".
-            The node matches if the boresight position evaluates to `True`.
+            The node matches if the position evaluates to `True`.
             Visits with no position *never* match a node with map
             constraints.
+        ``"coord-type"``
+            Which coordinates should be tested with ``ra``, ``dec``, or
+            ``binary-map`` ({"detector", "boresight"}, optional). Matches are
+            case-insensitive. If omitted, the detector center is used.
         ``"pipelines"``
             A list of zero or more pipelines (sequence [`str`] or `None`). Each
             pipeline path may contain environment variables, and the list of
@@ -131,12 +140,21 @@ class PipelinesConfig:
             `PipelinesConfig` constructor.
         """
 
+        class _CoordType(enum.Enum):
+            """The type of coordinates used for spatial constraints.
+            """
+            DETECTOR = enum.auto()
+            """Apply constraints to the detector center."""
+            BORESIGHT = enum.auto()
+            """Apply constraints to the telescope boresight."""
+
         def __init__(self, config: collections.abc.Mapping[str, typing.Any]):
             specs = dict(config)
             try:
                 self._filenames = self._parse_pipelines(specs.pop('pipelines'))
                 self._check_pipelines(self._filenames)
 
+                self._coord_type = self._parse_coord_type(specs.pop('coord-type', 'detector'))
                 self._ra = self._parse_minmax(specs.pop('ra', None), _WrapRange, wrap=360.0)
                 self._dec = self._parse_minmax(specs.pop('dec', None), _LinearRange)
                 self._map = self._parse_map(specs.pop('binary-map', None))
@@ -201,6 +219,28 @@ class PipelinesConfig:
                 raise ValueError(f"{config} is not a valid survey name.")
 
         _RangeType = typing.TypeVar('T', bound=collections.abc.Container)
+
+        @staticmethod
+        def _parse_coord_type(config: typing.Any) -> _CoordType:
+            """Convert a coordinate flag into an enum.
+
+            Parameters
+            ----------
+            config : `str`
+                The coordinate type constraint in the config. Expected to match
+                one of the enum values (any case). This method is responsible
+                for any type checking.
+
+            Returns
+            -------
+            survey : `PipelinesConfig._Spec._CoordType`
+                The validated coordinate type. Unlike most survey constraints,
+                this field cannot be `None`.
+            """
+            try:
+                return PipelinesConfig._Spec._CoordType[config.upper()]
+            except (KeyError, AttributeError):
+                raise ValueError(f"{config!r} is not a valid coordinate type.") from None
 
         @staticmethod
         def _parse_minmax(config: typing.Any,
@@ -281,13 +321,15 @@ class PipelinesConfig:
             if duplicates:
                 raise ValueError(f"Pipeline names must be unique, found multiple copies of {duplicates}.")
 
-        def matches(self, visit: FannedOutVisit) -> bool:
+        def matches(self, visit: FannedOutVisit, camera: lsst.afw.cameraGeom.Camera) -> bool:
             """Test whether a visit matches the conditions for this spec.
 
             Parameters
             ----------
             visit : `shared.visit.FannedOutVisit`
                 The visit to test against this spec.
+            camera : `lsst.afw.cameraGeom.Camera`
+                Information about the active camera's geometry.
 
             Returns
             -------
@@ -302,10 +344,7 @@ class PipelinesConfig:
             if self._survey is not None and self._survey != visit.survey:
                 return False
             if self._positions:
-                try:
-                    visit_radec = visit.get_boresight_icrs()
-                except RuntimeError as e:
-                    raise ValueError(str(e)) from e
+                visit_radec = self._get_visit_position(visit, camera)
                 if visit_radec is None:
                     return False
 
@@ -317,6 +356,49 @@ class PipelinesConfig:
                     # at() may return False or None
                     return False
             return True
+
+        def _get_visit_position(self,
+                                visit: FannedOutVisit,
+                                camera: lsst.afw.cameraGeom.Camera) -> astropy.coordinates.SkyCoord | None:
+            """Calculate the position to use for all spatial constraints.
+
+            Parameters
+            ----------
+            visit : `shared.visit.FannedOutVisit`
+                The visit whose position is desired.
+            camera : `lsst.afw.cameraGeom.Camera`
+                Information about the active camera's geometry.
+
+            Returns
+            -------
+            position : `astropy.coordinates.SkyCoord` or `None`
+                The ICRS coordinates to use, or `None` if the visit does not
+                have a position. RA is guaranteed to be normalized to [0, 360)
+                degrees.
+
+            Raises
+            ------
+            ValueError
+                Raised if the visit has invalid or unsupported fields.
+            """
+            try:
+                match self._coord_type:
+                    case self._CoordType.BORESIGHT:
+                        return visit.get_boresight_icrs()
+                    case self._CoordType.DETECTOR:
+                        region = visit.get_detector_icrs_region(camera)
+                        if not region:
+                            return None
+                        vec = region.getBoundingCircle().getCenter()
+                        # Don't use represent_as -- it strips the ICRS frame from the coordinates
+                        coords = astropy.coordinates.SkyCoord(vec.x(), vec.y(), vec.z(),
+                                                              representation_type="cartesian")
+                        coords.representation_type = "spherical"
+                        return coords
+                    case _:
+                        raise AssertionError(f"Invalid coordinate type {self._coord_type!r}")
+            except RuntimeError as e:
+                raise ValueError(str(e)) from e
 
         @property
         def pipeline_files(self) -> collections.abc.Sequence[str]:
@@ -357,7 +439,7 @@ class PipelinesConfig:
             items.append(PipelinesConfig._Spec(node))
         return items
 
-    def get_pipeline_files(self, visit: FannedOutVisit) -> list[str]:
+    def get_pipeline_files(self, visit: FannedOutVisit, camera: lsst.afw.cameraGeom.Camera) -> list[str]:
         """Identify the pipeline to be run, based on the provided visit.
 
         The first node that matches the visit is returned, and no other nodes
@@ -367,6 +449,8 @@ class PipelinesConfig:
         ----------
         visit : `shared.visit.FannedOutVisit`
             The visit for which a pipeline must be selected.
+        camera : `lsst.afw.cameraGeom.Camera`
+            Information about the active camera's geometry.
 
         Returns
         -------
@@ -381,7 +465,7 @@ class PipelinesConfig:
             Raised if the visit has invalid or unsupported fields.
         """
         for node in self._specs:
-            if node.matches(visit):
+            if node.matches(visit, camera):
                 return node.pipeline_files
         raise RuntimeError(f"No pipelines config matches {visit}")
 

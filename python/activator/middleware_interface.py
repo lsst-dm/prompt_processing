@@ -50,7 +50,6 @@ from lsst.daf.butler import Config as dafButlerConfig
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
-from lsst.obs.base.utils import createInitialSkyWcsFromBoresight
 import lsst.pipe.base
 from lsst.pipe.base.quantum_graph_builder import QuantumGraphBuilderError
 import lsst.analysis.tools
@@ -358,12 +357,12 @@ class MiddlewareInterface:
         self._day_obs = runs.get_day_obs(now)
 
         self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
+        self._init_governor_datasets(now, skymap)
         self.cache = local_cache  # DO NOT copy -- we want to persist this state!
         self._prep_collections()
         self._define_dimensions()
         self._init_ingester()
         self._init_visit_definer()
-        self._init_governor_datasets(now, skymap)
 
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
@@ -465,54 +464,32 @@ class MiddlewareInterface:
         except LookupError as e:
             raise RuntimeError("Cache is too small for one run's worth of datasets.") from e
 
-    def _predict_wcs(self, detector: lsst.afw.cameraGeom.Detector) -> lsst.afw.geom.SkyWcs:
-        """Calculate the expected detector WCS for an incoming observation.
+    def _pad_region(self,
+                    initial_region: lsst.sphgeom.Region,
+                    wcs: lsst.afw.geom.SkyWcs,
+                    ) -> lsst.sphgeom.Region:
+        """Pad the expected footprint to allow for slew errors.
+
+        This method emits a warning if the preload padding is too small.
 
         Parameters
         ----------
-        detector : `lsst.afw.cameraGeom.Detector`
-            The detector for which to generate a WCS.
-
-        Returns
-        -------
+        initial_region : `lsst.sphgeom.Region`
+            The unpadded region to expand.
         wcs : `lsst.afw.geom.SkyWcs`
-            An approximate WCS for this object's visit.
-
-        Raises
-        ------
-        _NoPositionError
-            Raised if the nextVisit message does not have coordinates
-            in a supported format.
-        """
-        try:
-            sky_position = self.visit.get_boresight_icrs()
-            boresight_center = lsst.geom.SpherePoint(sky_position.ra.degree, sky_position.dec.degree,
-                                                     lsst.geom.degrees)
-            orientation = self.visit.get_rotation_sky().degree * lsst.geom.degrees
-        except (AttributeError, TypeError) as e:
-            raise _NoPositionError("nextVisit does not have a position.") from e
-        except RuntimeError as e:
-            raise _NoPositionError(str(e)) from e
-
-        return createInitialSkyWcsFromBoresight(boresight_center, orientation, detector)
-
-    def _compute_region(self) -> lsst.sphgeom.Region:
-        """Compute the sky region of this visit for preload
+            A WCS for the current image. Only needs to be good enough to get
+            the plate scale.
 
         Returns
         -------
         region : `lsst.sphgeom.Region`
-            Region for preload.
+            The padded region.
 
         Raises
         ------
-        _NoPositionError
-            Raised if the nextVisit message does not have coordinates
-            in a supported format.
+        TypeError
+            Raised if padding is not supported for ``initial_region``.
         """
-        detector = self.camera[self.visit.detector]
-        wcs = self._predict_wcs(detector)
-
         # Compare the preload region padding versus the visit region padding
         # in the middleware visit definition.
         visit_definition_padding = (
@@ -525,10 +502,16 @@ class MiddlewareInterface:
                          "visit definition's region padding (%.1f arcsec).",
                          preload_region_padding, visit_definition_padding)
 
-        center = wcs.pixelToSky(detector.getCenter(lsst.afw.cameraGeom.PIXELS))
-        corners = wcs.pixelToSky(detector.getCorners(lsst.afw.cameraGeom.PIXELS))
-        padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
-        return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
+        if isinstance(initial_region, lsst.sphgeom.ConvexPolygon):
+            center = lsst.geom.SpherePoint(initial_region.getCentroid())
+            corners = [lsst.geom.SpherePoint(c) for c in initial_region.getVertices()]
+            padded = [c.offset(center.bearingTo(c), self.padding) for c in corners]
+            return lsst.sphgeom.ConvexPolygon.convexHull([c.getVector() for c in padded])
+        elif isinstance(initial_region, lsst.sphgeom.Circle):
+            return lsst.sphgeom.Circle(initial_region.getCenter(),
+                                       initial_region.getOpeningAngle() + self.padding)
+        else:
+            raise TypeError(f"Cannot pad region {initial_region!r}.")
 
     def prep_butler(self) -> None:
         """Prepare a temporary butler repo for processing the incoming data.
@@ -547,14 +530,15 @@ class MiddlewareInterface:
             with lsst.utils.timer.time_this(_log, msg="prep_butler", level=logging.DEBUG):
                 _log.info(f"Preparing Butler for visit {self.visit!r}")
 
-                try:
-                    region = self._compute_region()
+                wcs = self.visit.predict_wcs(self.camera)
+                if wcs:
+                    region = self._pad_region(self.visit.get_detector_icrs_region(self.camera), wcs)
                     _log.debug(
                         f"Preload region {region} including padding {self.padding.asArcseconds()} arcsec.")
                     self._write_region_time(region)  # Must be done before preprocessing pipeline
-                except _NoPositionError as e:
-                    _log.warning("Could not get sky position from visit %s: %s. "
-                                 "Spatial datasets won't be loaded.", self.visit, e)
+                else:
+                    _log.warning("Could not get sky position from visit %s. "
+                                 "Spatial datasets won't be loaded.", self.visit)
                     region = None
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
@@ -611,7 +595,7 @@ class MiddlewareInterface:
         """
         net_types = set().union(*self._get_preloadable_types().values())
         # Filter outputs made by preprocessing and consumed by main.
-        for pipeline_file in self._get_pre_pipeline_files():
+        for pipeline_file in self.get_pre_pipeline_files():
             net_types.difference_update(self._get_pipeline_output_types(pipeline_file))
 
         with lsst.utils.timer.time_this(_log, msg="prep_butler (find init-outputs)", level=logging.DEBUG):
@@ -655,7 +639,7 @@ class MiddlewareInterface:
             that pipeline.
         """
         input_types = {}
-        for pipeline_file in self._get_combined_pipeline_files():
+        for pipeline_file in self.get_combined_pipeline_files():
             inputs = self._get_pipeline_input_types(pipeline_file)
             # Not preloaded
             inputs.discard("regionTimeInfo")
@@ -680,7 +664,7 @@ class MiddlewareInterface:
             `True` if and only if at least one pipeline has all inputs.
         """
         pre_outputs = set()
-        for pipeline_file in self._get_pre_pipeline_files():
+        for pipeline_file in self.get_pre_pipeline_files():
             input_types = self._get_pipeline_input_types(pipeline_file, include_optional=False)
             input_types.discard("regionTimeInfo")
             if input_types <= present_types:
@@ -689,7 +673,7 @@ class MiddlewareInterface:
             else:
                 _log.debug("Missing inputs for %s: %s.", pipeline_file, input_types - present_types)
         main_inputs = present_types | pre_outputs
-        for pipeline_file in self._get_main_pipeline_files():
+        for pipeline_file in self.get_main_pipeline_files():
             input_types = self._get_pipeline_input_types(pipeline_file, include_optional=False)
             input_types.discard("regionTimeInfo")
             input_types.discard("raw")
@@ -953,7 +937,7 @@ class MiddlewareInterface:
             The datasets to be exported.
         """
         datasets = set()
-        for pipeline_file in self._get_combined_pipeline_files():
+        for pipeline_file in self.get_combined_pipeline_files():
             run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
             types = self._get_init_output_types(pipeline_file)
             # Output runs are always cleared after execution, so _filter_datasets would always warn.
@@ -1119,16 +1103,18 @@ class MiddlewareInterface:
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
+
+        ``self._init_governor_datasets`` must have already been run.
         """
         self.butler.collections.register(
             runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
             CollectionType.RUN)
-        for pipeline_file in self._get_combined_pipeline_files():
+        for pipeline_file in self.get_combined_pipeline_files():
             self.butler.collections.register(
                 runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
-    def _get_combined_pipeline_files(self) -> collections.abc.Collection[str]:
+    def get_combined_pipeline_files(self) -> collections.abc.Collection[str]:
         """Identify the pipelines to be run at any point, based on the
         configured instrument and visit.
 
@@ -1138,11 +1124,11 @@ class MiddlewareInterface:
             The paths to a configured pipeline file. The order is undefined.
         """
         # A pipeline appearing in both configs is unlikely, but not impossible.
-        all = set(self._get_pre_pipeline_files())
-        all.update(self._get_main_pipeline_files())
+        all = set(self.get_pre_pipeline_files())
+        all.update(self.get_main_pipeline_files())
         return all
 
-    def _get_pre_pipeline_files(self) -> collections.abc.Sequence[str]:
+    def get_pre_pipeline_files(self) -> collections.abc.Sequence[str]:
         """Identify the pipelines to be run during preprocessing, based on the
         configured instrument and visit.
 
@@ -1152,11 +1138,11 @@ class MiddlewareInterface:
             A sequence of paths to a configured pipeline file, in order from
             most preferred to least preferred.
         """
-        return self.pre_pipelines.get_pipeline_files(self.visit)
+        return self.pre_pipelines.get_pipeline_files(self.visit, self.camera)
 
-    def _get_main_pipeline_files(self) -> collections.abc.Sequence[str]:
-        """Identify the pipelines to be run, based on the configured instrument
-        and visit.
+    def get_main_pipeline_files(self) -> collections.abc.Sequence[str]:
+        """Identify the pipelines to be run on the raws, based on the
+        configured instrument and visit.
 
         Returns
         -------
@@ -1164,7 +1150,7 @@ class MiddlewareInterface:
             A sequence of paths to a configured pipeline file, in order from
             most preferred to least preferred.
         """
-        return self.main_pipelines.get_pipeline_files(self.visit)
+        return self.main_pipelines.get_pipeline_files(self.visit, self.camera)
 
     @functools.cache
     def _prep_pipeline(self, pipeline_file) -> lsst.pipe.base.Pipeline:
@@ -1425,7 +1411,7 @@ class MiddlewareInterface:
         activator.exception.PipelineExecutionError
             Raised if pipeline execution was attempted but failed.
         """
-        pipeline_files = self._get_pre_pipeline_files()
+        pipeline_files = self.get_pre_pipeline_files()
         if not pipeline_files:
             _log.info(f"No preprocessing pipeline configured for {self.visit}, skipping.")
             return
@@ -1437,7 +1423,7 @@ class MiddlewareInterface:
         )
         preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
 
-        self._try_pipelines(self._get_pre_pipeline_files(),
+        self._try_pipelines(self.get_pre_pipeline_files(),
                             in_collections=[preload_run],
                             data_ids=where,
                             label="preprocessing",
@@ -1538,10 +1524,10 @@ class MiddlewareInterface:
         )
         preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
         pre_runs = [runs.get_output_run(self.instrument, self._deployment, f, self._day_obs)
-                    for f in self._get_pre_pipeline_files()]
+                    for f in self.get_pre_pipeline_files()]
 
         try:
-            self._try_pipelines(self._get_main_pipeline_files(),
+            self._try_pipelines(self.get_main_pipeline_files(),
                                 in_collections=pre_runs + [preload_run],
                                 data_ids=where,
                                 label="main",
@@ -1598,7 +1584,7 @@ class MiddlewareInterface:
         _log.debug(f"Will export datasets {export_types}")
         # Rather than determining which pipeline was run, just try to export all of them.
         output_runs = [runs.get_preload_run(self.instrument, self._deployment, self._day_obs)]
-        for f in self._get_combined_pipeline_files():
+        for f in self.get_combined_pipeline_files():
             output_runs.append(runs.get_output_run(self.instrument, self._deployment, f, self._day_obs))
         try:
             with lsst.utils.timer.time_this(_log, msg="export_outputs", level=logging.DEBUG):
@@ -1823,7 +1809,7 @@ class MiddlewareInterface:
             # Outputs are all in their own runs, so just drop them.
             preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
             _remove_run_completely(self.butler, preload_run)
-            for pipeline_file in self._get_combined_pipeline_files():
+            for pipeline_file in self.get_combined_pipeline_files():
                 output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file,
                                                  self._day_obs)
                 _log_trace.debug("Removing run %s.", output_run)
@@ -1846,12 +1832,6 @@ class _MissingDatasetError(RuntimeError):
     where expected.
     """
     pass
-
-
-class _NoPositionError(RuntimeError):
-    """An exception flagging that the nextVisit does not have readable
-    position information.
-    """
 
 
 _DatasetResults: typing.TypeAlias = collections.abc.Iterable[lsst.daf.butler.DatasetRef]
