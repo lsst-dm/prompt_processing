@@ -1359,14 +1359,14 @@ class MiddlewareInterface:
             try:
                 with lsst.utils.timer.time_this(
                         _log, msg=f"executor.make_quantum_graph ({label})", level=logging.DEBUG):
-                    qgraph = executor.make_quantum_graph(pipeline, where=data_ids)
+                    qg = executor.build_quantum_graph(pipeline, where=data_ids)
                     # If this is a fresh (local) repo, then types like calexp,
                     # *Diff_diaSrcTable, etc. have not been registered.
-                    qgraph.pipeline_graph.register_dataset_types(exec_butler)
+                    qg.pipeline_graph.register_dataset_types(exec_butler)
             except (QuantumGraphBuilderError, FileNotFoundError, MissingDatasetTypeError):
                 _log.exception(f"Building quantum graph for {pipeline_file} failed.")
                 continue
-            if len(qgraph) == 0:
+            if len(qg) == 0:
                 # Diagnostic logs are the responsibility of GraphBuilder.
                 _log.error(f"Empty quantum graph for {pipeline_file}; see previous logs for details.")
                 continue
@@ -1374,13 +1374,13 @@ class MiddlewareInterface:
             # Don't retry -- either fail (raise) or break.
 
             _log.info(f"Running '{pipeline_file}' on {data_ids}")
-            for quantum_node in qgraph.inputQuanta:
-                _log.debug(f"Running with input datasets {quantum_node.quantum.inputs.values()}")
+            for dataset_type_name, _ in qg.pipeline_graph.iter_overall_inputs():
+                _log.debug(f"Running with input datasets {qg.datasets_by_type[dataset_type_name]}")
             try:
                 with lsst.utils.timer.time_this(
                         _log, msg=f"executor.run_pipeline ({label})", level=logging.DEBUG):
                     executor.run_pipeline(
-                        qgraph,
+                        qg,
                         graph_executor=self._get_graph_executor(exec_butler, factory)
                     )
                     _log.info(f"{label.capitalize()} pipeline successfully run.")
