@@ -45,7 +45,7 @@ from lsst.daf.butler import Butler, CollectionType, DataCoordinate, DimensionUni
 import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
-from lsst.pipe.base import QuantumGraph
+from lsst.pipe.base.quantum_graph import PredictedQuantumGraph
 from lsst.pipe.base.tests.simpleQGraph import makeSimpleQGraph
 import lsst.resources
 import lsst.sphgeom
@@ -705,7 +705,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                     "activator.middleware_interface.MiddlewareInterface.get_main_pipeline_files",
                     return_value=pipe_files), \
                 unittest.mock.patch(
-                    "activator.middleware_interface.SeparablePipelineExecutor.make_quantum_graph",
+                    "activator.middleware_interface.SeparablePipelineExecutor.build_quantum_graph",
                     side_effect=graphs), \
                 unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
                 unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
@@ -1067,7 +1067,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
     @staticmethod
     def _make_test_graph(n_quanta):
-        """Make a `QuantumGraph` for tests.
+        """Make a `PredictedQuantumGraph` for tests.
 
         Parameters
         ----------
@@ -1076,16 +1076,19 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         Returns
         -------
-        qgraph : `QuantumGraph`
+        qgraph : `PredictedQuantumGraph`
             Quantum graph instance.
         """
         if n_quanta == 0:
-            return QuantumGraph({}, universe=DimensionUniverse())
+            return PredictedQuantumGraph.make_empty(universe=DimensionUniverse(), output_run="test")
         elif n_quanta < 0:
             raise RuntimeError("Invalid input")
         else:
             with tempfile.TemporaryDirectory() as tmpdir:
-                return makeSimpleQGraph(n_quanta, root=tmpdir)[1]
+                # TODO[DM-53776]: upgrade this to use only the new QG types.
+                return PredictedQuantumGraph.from_old_quantum_graph(
+                    makeSimpleQGraph(n_quanta, root=tmpdir)[1]
+                )
 
     def test_get_sasquatch_dispatcher(self):
         self.assertIsNone(_get_sasquatch_dispatcher())

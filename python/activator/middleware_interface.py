@@ -1359,7 +1359,7 @@ class MiddlewareInterface:
             try:
                 with lsst.utils.timer.time_this(
                         _log, msg=f"executor.make_quantum_graph ({label})", level=logging.DEBUG):
-                    qgraph = executor.make_quantum_graph(pipeline, where=data_ids)
+                    qgraph = executor.build_quantum_graph(pipeline, where=data_ids)
                     # If this is a fresh (local) repo, then types like calexp,
                     # *Diff_diaSrcTable, etc. have not been registered.
                     qgraph.pipeline_graph.register_dataset_types(exec_butler)
@@ -1374,8 +1374,11 @@ class MiddlewareInterface:
             # Don't retry -- either fail (raise) or break.
 
             _log.info(f"Running '{pipeline_file}' on {data_ids}")
-            for quantum_node in qgraph.inputQuanta:
-                _log.debug(f"Running with input datasets {quantum_node.quantum.inputs.values()}")
+            input_dataset_info = {
+                dataset_type_name: list(qgraph.datasets_by_type[dataset_type_name].keys())
+                for dataset_type_name, _ in qgraph.pipeline_graph.iter_overall_inputs()
+            }
+            _log.debug(f"Running with input datasets {input_dataset_info}.")
             try:
                 with lsst.utils.timer.time_this(
                         _log, msg=f"executor.run_pipeline ({label})", level=logging.DEBUG):
