@@ -62,7 +62,8 @@ import shared.run_utils as runs
 from shared.visit import FannedOutVisit
 from .caching import DatasetCache
 from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, NonRetriableError, RetriableError, \
-    InvalidPipelineError, NoGoodPipelinesError, PipelinePreExecutionError, PipelineExecutionError
+    InvalidPipelineError, NoGoodPipelinesError, PipelinePreExecutionError, PipelineExecutionError, \
+    ProvenanceDimensionsError
 from .timer import enforce_schema, time_this_to_bundle
 
 _log = logging.getLogger("lsst." + __name__)
@@ -363,6 +364,7 @@ class MiddlewareInterface:
         self._define_dimensions()
         self._init_ingester()
         self._init_visit_definer()
+        self._init_provenance_dataset_type()
 
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
@@ -438,6 +440,18 @@ class MiddlewareInterface:
         self.skymap_name = skymap
         self.skymap = self.read_central_butler.get("skyMap", skymap=self.skymap_name,
                                                    collections=self._collection_skymap)
+
+    def _init_provenance_dataset_type(self):
+        """Register the dataset types used to store provenance information.
+
+        ``self._init_local_butler`` must have already been run.
+        """
+        self._provenance_dataset_type = DatasetType(
+            "prompt_provenance",
+            self.butler.dimensions.conform(["group", "detector"]),
+            "ProvenanceQuantumGraph",
+        )
+        self.butler.registry.registerDatasetType(self._provenance_dataset_type)
 
     def _define_dimensions(self):
         """Define any dimensions that must be computed from this object's visit.
@@ -1292,7 +1306,7 @@ class MiddlewareInterface:
         )
         graph_executor = MPGraphExecutor(
             # TODO: re-enable parallel execution once we can log as desired with CliLog or a successor
-            # (see issues linked from DM-42063)
+            # (see issues linked from DM-42063) AND once provenance is supported with multiprocessing.
             num_proc=1,  # Avoid spawning processes, because they bypass our logger
             timeout=2_592_000.0,  # In practice, timeout is never helpful; set to 30 days.
             quantum_executor=quantum_executor,
@@ -1370,6 +1384,11 @@ class MiddlewareInterface:
                 # Diagnostic logs are the responsibility of GraphBuilder.
                 _log.error(f"Empty quantum graph for {pipeline_file}; see previous logs for details.")
                 continue
+            try:
+                provenance_ref = self._make_provenance_ref(data_ids, output_run)
+            except ProvenanceDimensionsError:
+                _log.exception(f"Failed to determine data ID for provenance for {pipeline_file}.")
+                continue
             # Past this point, partial execution creates datasets.
             # Don't retry -- either fail (raise) or break.
 
@@ -1384,7 +1403,8 @@ class MiddlewareInterface:
                         _log, msg=f"executor.run_pipeline ({label})", level=logging.DEBUG):
                     executor.run_pipeline(
                         qgraph,
-                        graph_executor=self._get_graph_executor(exec_butler, factory)
+                        graph_executor=self._get_graph_executor(exec_butler, factory),
+                        provenance_dataset_ref=provenance_ref,
                     )
                     _log.info(f"{label.capitalize()} pipeline successfully run.")
                     return output_run
@@ -1396,6 +1416,33 @@ class MiddlewareInterface:
             break
         else:
             raise NoGoodPipelinesError(f"No {label} pipeline graph could be built.")
+
+    def _make_provenance_ref(self, where, output_run):
+        """Make the provenance DatasetRef for a quantum graph.
+
+        Parameters
+        ----------
+        where : `str`
+            Butler query expression that can be related to a single
+            ``{group, detector}`` data ID.
+        output_run : `str`
+            Output RUN collection.
+
+        Returns
+        -------
+        ref : `lsst.daf.butler.DatasetRef`
+            A reference to a to-be-written provenance dataset in ``output_run``.
+        """
+        query_results = self.butler.query_data_ids(
+            self._provenance_dataset_type.dimensions, where=where, explain=False
+        )
+        try:
+            (data_id,) = query_results
+        except ValueError:
+            raise ProvenanceDimensionsError(
+                f"Expected exactly one data ID for {self._provenance_dataset_type}; got {query_results}."
+            ) from None
+        return DatasetRef(self._provenance_dataset_type, data_id, run=output_run)
 
     def _run_preprocessing(self) -> None:
         """Preprocess a visit ahead of incoming image(s).
