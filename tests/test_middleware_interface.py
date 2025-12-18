@@ -41,7 +41,9 @@ import lsst.pex.config
 import lsst.afw.image
 import lsst.afw.table
 from lsst.dax.apdb import ApdbSql
-from lsst.daf.butler import Butler, CollectionType, DataCoordinate, DimensionUniverse, EmptyQueryResultError
+from lsst.daf.butler import (
+    Butler, CollectionType, DataCoordinate, DatasetType, DimensionUniverse, EmptyQueryResultError
+)
 import lsst.daf.butler.tests as butler_tests
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
 from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
@@ -718,6 +720,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             The description of the pipeline that should be run, given
             ``pipe_files`` and ``graphs``.
         """
+        test_provenance_dataset_type = DatasetType(
+            "test_provenance",
+            self.interface.butler.dimensions.conform(["detector"]),
+            "ProvenanceQuantumGraph"
+        )
         with (
             unittest.mock.patch(
                 "activator.middleware_interface.MiddlewareInterface.get_pre_pipeline_files",
@@ -737,6 +744,23 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             unittest.mock.patch(
                 "activator.middleware_interface.SeparablePipelineExecutor.run_pipeline"
             ) as mock_run,
+            # Mocked QGs do not have realistic dimensions, and provenance
+            # dataset types need to have the same dimensions.
+            unittest.mock.patch.object(
+                self.interface,
+                "_group_provenance_dataset_type",
+                test_provenance_dataset_type
+            ),
+            unittest.mock.patch.object(
+                self.interface,
+                "_visit_provenance_dataset_type",
+                test_provenance_dataset_type
+            ),
+            unittest.mock.patch.object(
+                self.interface,
+                "_exposure_provenance_dataset_type",
+                test_provenance_dataset_type
+            ),
             self.assertLogs(self.logger_name, level="INFO") as logs
         ):
             callable()
