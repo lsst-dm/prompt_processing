@@ -429,8 +429,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """
-        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                as mock_pre:
+        with unittest.mock.patch(
+            "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+        ) as mock_pre:
             self.interface.prep_butler()
 
         expected_shards = {180002, 180177}
@@ -447,9 +448,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.visit,
             private_sndStamp=datetime.datetime.fromisoformat("20150313T000000Z").timestamp(),
         )
-        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                as mock_pre, \
-                self.assertRaises(NoGoodPipelinesError):
+        with (
+            unittest.mock.patch(
+                "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+            ) as mock_pre,
+            self.assertRaises(NoGoodPipelinesError)
+        ):
             self.interface.prep_butler()
 
         mock_pre.assert_not_called()
@@ -461,8 +465,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.visit,
             filters="",
         )
-        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                as mock_pre:
+        with unittest.mock.patch(
+            "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+        ) as mock_pre:
             self.interface.prep_butler()
 
         expected_shards = {180002, 180177}
@@ -480,8 +485,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             coordinateSystem=FannedOutVisit.CoordSys.NONE,
             position=[0.0, 0.0],
         )
-        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                as mock_pre:
+        with unittest.mock.patch(
+            "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+        ) as mock_pre:
             self.interface.prep_butler()
 
         expected_shards = set()
@@ -495,9 +501,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """Test that prep_butler can handle pipeline configs without templates.
         """
         self.interface.main_pipelines = pipelines_minimal
-        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                as mock_pre, \
-                self.assertNoLogs(level="ERROR"):
+        with (
+            unittest.mock.patch(
+                "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+            ) as mock_pre,
+            self.assertNoLogs(level="ERROR")
+        ):
             self.interface.prep_butler()
 
         # Hard to test actual pipeline output, so just check we're calling it
@@ -514,9 +523,12 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with warnings.catch_warnings():
             # Avoid "dubious year" warnings from using a 2050 date
             warnings.simplefilter("ignore", category=erfa.ErfaWarning)
-            with self.assertRaises(NoGoodPipelinesError), \
-                unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                    as mock_pre:
+            with (
+                self.assertRaises(NoGoodPipelinesError),
+                unittest.mock.patch(
+                    "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+                ) as mock_pre
+            ):
                 self.interface.prep_butler()
 
         mock_pre.assert_not_called()
@@ -528,8 +540,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         in the local butler" problem that's related to the "can't register
         the skymap in init" problem.
         """
-        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                as mock_pre:
+        with unittest.mock.patch(
+            "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+        ) as mock_pre:
             self.interface.prep_butler()
 
         # Second visit with everything same except group.
@@ -541,8 +554,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                self.local_repo.name, self.local_cache,
                                                prefix="file://")
 
-        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                as mock_pre:
+        with unittest.mock.patch(
+            "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+        ) as mock_pre:
             second_interface.prep_butler()
         expected_shards = {180002, 180177}
         self._check_imports(second_interface.butler, group="2", detector=90,
@@ -564,8 +578,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                               pre_pipelines_empty, pipelines, skymap_name,
                                               self.local_repo.name, self.local_cache,
                                               prefix="file://")
-        with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing") \
-                as mock_pre:
+        with unittest.mock.patch(
+            "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+        ) as mock_pre:
             third_interface.prep_butler()
         expected_shards.update({180002, 180177})
         self._check_imports(third_interface.butler, group="3", detector=91,
@@ -609,8 +624,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                       self.interface.butler.dimensions,
                                       self.interface.instrument,
                                       self.next_visit)
-        with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock, \
-                self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"):
+        with (
+            unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock,
+            self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist")
+        ):
             mock.return_value = file_data
             self.interface.ingest_image(filename)
         # There should not be any raw files in the registry.
@@ -673,9 +690,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface, "pre_pipelines", pre_pipelines_full):
             self._prepare_run_pipeline()
 
-            with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
-                 unittest.mock.patch("activator.middleware_interface."
-                                     "SeparablePipelineExecutor.run_pipeline") as mock_run:
+            with (
+                unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"),
+                unittest.mock.patch(
+                    "activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") as mock_run
+            ):
                 with self.assertLogs(self.logger_name, level="INFO") as logs:
                     self.interface.run_pipeline({1})
         # Execution should only run once, even if graph generation is attempted for multiple pipelines.
@@ -699,19 +718,27 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             The description of the pipeline that should be run, given
             ``pipe_files`` and ``graphs``.
         """
-        with unittest.mock.patch(
-            "activator.middleware_interface.MiddlewareInterface.get_pre_pipeline_files",
-            return_value=pipe_files), \
-                unittest.mock.patch(
-                    "activator.middleware_interface.MiddlewareInterface.get_main_pipeline_files",
-                    return_value=pipe_files), \
-                unittest.mock.patch(
-                    "activator.middleware_interface.SeparablePipelineExecutor.build_quantum_graph",
-                    side_effect=graphs), \
-                unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
-                unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
-                as mock_run, \
-                self.assertLogs(self.logger_name, level="INFO") as logs:
+        with (
+            unittest.mock.patch(
+                "activator.middleware_interface.MiddlewareInterface.get_pre_pipeline_files",
+                return_value=pipe_files
+            ),
+            unittest.mock.patch(
+                "activator.middleware_interface.MiddlewareInterface.get_main_pipeline_files",
+                return_value=pipe_files
+            ),
+            unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.build_quantum_graph",
+                side_effect=graphs
+            ),
+            unittest.mock.patch(
+                "lsst.pipe.base.PipelineGraph.register_dataset_types"
+            ),
+            unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.run_pipeline"
+            ) as mock_run,
+            self.assertLogs(self.logger_name, level="INFO") as logs
+        ):
             callable()
         mock_run.assert_called_once()
         # Check that we configured the right pipeline.
@@ -824,10 +851,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface, "pre_pipelines", pre_pipelines_full):
             self._prepare_run_pipeline()
 
-            with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
-                 unittest.mock.patch("activator.middleware_interface."
-                                     "SeparablePipelineExecutor.run_pipeline") as mock_run, \
-                 unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
+            with (
+                unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"),
+                unittest.mock.patch(
+                    "activator.middleware_interface.SeparablePipelineExecutor.run_pipeline"
+                ) as mock_run,
+                unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query
+            ):
                 mock_run.side_effect = ValueError("Error: not computable")
                 mock_query.return_value = False
                 with self.assertRaises(PipelineExecutionError):
@@ -839,10 +869,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface, "pre_pipelines", pre_pipelines_full):
             self._prepare_run_pipeline()
 
-            with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
-                 unittest.mock.patch("activator.middleware_interface."
-                                     "SeparablePipelineExecutor.run_pipeline") as mock_run, \
-                 unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
+            with (
+                unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"),
+                unittest.mock.patch(
+                    "activator.middleware_interface.SeparablePipelineExecutor.run_pipeline"
+                ) as mock_run,
+                unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query
+            ):
                 mock_run.side_effect = ValueError("Error: not computable")
                 mock_query.return_value = True
                 with self.assertRaises(NonRetriableError):
@@ -854,10 +887,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         with unittest.mock.patch.object(self.interface, "pre_pipelines", pre_pipelines_full):
             self._prepare_run_pipeline()
 
-            with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
-                 unittest.mock.patch("activator.middleware_interface."
-                                     "SeparablePipelineExecutor.run_pipeline") as mock_run, \
-                 unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
+            with (
+                unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"),
+                unittest.mock.patch(
+                    "activator.middleware_interface.SeparablePipelineExecutor.run_pipeline"
+                ) as mock_run,
+                unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query
+            ):
                 mock_run.side_effect = ValueError("Error: not computable")
                 mock_query.side_effect = psycopg2.OperationalError("Database? What database?")
                 with self.assertRaises(NonRetriableError):
@@ -868,11 +904,14 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         self._prepare_run_pipeline()
 
-        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
-             unittest.mock.patch("activator.middleware_interface."
-                                 "SeparablePipelineExecutor.run_pipeline") as mock_run, \
-             unittest.mock.patch.object(self.interface, "main_pipelines", pipelines_minimal), \
-             unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query:
+        with (
+            unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"),
+            unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.run_pipeline"
+            ) as mock_run,
+            unittest.mock.patch.object(self.interface, "main_pipelines", pipelines_minimal),
+            unittest.mock.patch("lsst.dax.apdb.ApdbSql.containsVisitDetector") as mock_query
+        ):
             mock_run.side_effect = ValueError("Error: not computable")
             mock_query.return_value = False
             with self.assertRaises(PipelineExecutionError):
@@ -898,10 +937,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         self._prepare_run_preprocessing()
 
-        with unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"), \
-             unittest.mock.patch("activator.middleware_interface.SeparablePipelineExecutor.run_pipeline") \
-                as mock_run, \
-             unittest.mock.patch.object(self.interface, "pre_pipelines", pre_pipelines_full):
+        with (
+            unittest.mock.patch("lsst.pipe.base.PipelineGraph.register_dataset_types"),
+            unittest.mock.patch(
+                "activator.middleware_interface.SeparablePipelineExecutor.run_pipeline"
+            ) as mock_run,
+            unittest.mock.patch.object(self.interface, "pre_pipelines", pre_pipelines_full)
+        ):
             with self.assertLogs(self.logger_name, level="INFO") as logs:
                 self.interface._run_preprocessing()
         # Execution should only run once, even if graph generation is attempted for multiple pipelines.
