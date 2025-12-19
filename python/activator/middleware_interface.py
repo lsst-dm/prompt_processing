@@ -363,6 +363,7 @@ class MiddlewareInterface:
         self._define_dimensions()
         self._init_ingester()
         self._init_visit_definer()
+        self._init_provenance_dataset_types()
 
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
@@ -438,6 +439,26 @@ class MiddlewareInterface:
         self.skymap_name = skymap
         self.skymap = self.read_central_butler.get("skyMap", skymap=self.skymap_name,
                                                    collections=self._collection_skymap)
+
+    def _init_provenance_dataset_types(self):
+        self._group_provenance_dataset_type = DatasetType(
+            "prompt_group_provenance",
+            self.butler.dimensions.conform(["group", "detector"]),
+            "ProvenanceQuantumGraph",
+        )
+        self.butler.registry.registerDatasetType(self._group_provenance_dataset_type)
+        self._visit_provenance_dataset_type = DatasetType(
+            "prompt_visit_provenance",
+            self.butler.dimensions.conform(["visit", "detector"]),
+            "ProvenanceQuantumGraph",
+        )
+        self.butler.registry.registerDatasetType(self._visit_provenance_dataset_type)
+        self._exposure_provenance_dataset_type = DatasetType(
+            "prompt_exposure_provenance",
+            self.butler.dimensions.conform(["exposure", "detector"]),
+            "ProvenanceQuantumGraph",
+        )
+        self.butler.registry.registerDatasetType(self._exposure_provenance_dataset_type)
 
     def _define_dimensions(self):
         """Define any dimensions that must be computed from this object's visit.
@@ -1292,14 +1313,14 @@ class MiddlewareInterface:
         )
         graph_executor = MPGraphExecutor(
             # TODO: re-enable parallel execution once we can log as desired with CliLog or a successor
-            # (see issues linked from DM-42063)
+            # (see issues linked from DM-42063) AND once provenance is supported with multiprocessing.
             num_proc=1,  # Avoid spawning processes, because they bypass our logger
             timeout=2_592_000.0,  # In practice, timeout is never helpful; set to 30 days.
             quantum_executor=quantum_executor,
         )
         return graph_executor
 
-    def _try_pipelines(self, pipelines, in_collections, data_ids, *, label):
+    def _try_pipelines(self, pipelines, in_collections, data_ids, *, label, provenance_dataset_type):
         """Attempt to run pipelines from a prioritized list.
 
         On success, exactly one of the pipelines is run, with outputs going to
@@ -1320,6 +1341,10 @@ class MiddlewareInterface:
         label : `str`
             A unique name to disambiguate this pipeline run for logging
             purposes.
+        provenance_dataset_type : `lsst.daf.butler.DatasetRef`
+            The butler dataset used to store provenance information.  Must have
+            dimensions that match the tasks of the pipeline and use the
+            "ProvenanceQuantumGraph" storage class.
 
         Returns
         -------
@@ -1359,29 +1384,34 @@ class MiddlewareInterface:
             try:
                 with lsst.utils.timer.time_this(
                         _log, msg=f"executor.make_quantum_graph ({label})", level=logging.DEBUG):
-                    qgraph = executor.make_quantum_graph(pipeline, where=data_ids)
+                    qg = executor.build_quantum_graph(pipeline, where=data_ids)
                     # If this is a fresh (local) repo, then types like calexp,
                     # *Diff_diaSrcTable, etc. have not been registered.
-                    qgraph.pipeline_graph.register_dataset_types(exec_butler)
+                    qg.pipeline_graph.register_dataset_types(exec_butler)
             except (QuantumGraphBuilderError, FileNotFoundError, MissingDatasetTypeError):
                 _log.exception(f"Building quantum graph for {pipeline_file} failed.")
                 continue
-            if len(qgraph) == 0:
+            if len(qg) == 0:
                 # Diagnostic logs are the responsibility of GraphBuilder.
                 _log.error(f"Empty quantum graph for {pipeline_file}; see previous logs for details.")
+                continue
+            provenance_ref = self._make_provenance_ref(provenance_dataset_type, qg, pipeline_file)
+            if provenance_ref is None:
+                # An error log is always emitted if None is returned.
                 continue
             # Past this point, partial execution creates datasets.
             # Don't retry -- either fail (raise) or break.
 
             _log.info(f"Running '{pipeline_file}' on {data_ids}")
-            for quantum_node in qgraph.inputQuanta:
-                _log.debug(f"Running with input datasets {quantum_node.quantum.inputs.values()}")
+            for dataset_type_name, _ in qg.pipeline_graph.iter_overall_inputs():
+                _log.debug(f"Running with input datasets {qg.datasets_by_type[dataset_type_name]}")
             try:
                 with lsst.utils.timer.time_this(
                         _log, msg=f"executor.run_pipeline ({label})", level=logging.DEBUG):
                     executor.run_pipeline(
-                        qgraph,
-                        graph_executor=self._get_graph_executor(exec_butler, factory)
+                        qg,
+                        graph_executor=self._get_graph_executor(exec_butler, factory),
+                        provenance_dataset_ref=provenance_ref,
                     )
                     _log.info(f"{label.capitalize()} pipeline successfully run.")
                     return output_run
@@ -1393,6 +1423,42 @@ class MiddlewareInterface:
             break
         else:
             raise NoGoodPipelinesError(f"No {label} pipeline graph could be built.")
+
+    def _make_provenance_ref(self, dataset_type, qg, pipeline_file):
+        """Make the provenance DatasetRef for a quantum graph.
+
+        Parameters
+        ----------
+        dataset_type : `lsst.daf.butler.DatasetType`
+            Provenance dataset type for this pipeline.
+        qg : `lsst.pipe.base.quantum_graph.PredictedQuantumGraph`
+            Quantum graph that predicts execution.
+        pipeline_file : `str`
+            Name of the pipeline (for log messages).
+
+        Returns
+        -------
+        ref : `lsst.daf.butler.DatasetRef` or `None`
+            A reference to a to-be-written provenance dataset, or `None` if the
+            quantum graph and the provenance dataset type are incompatible.
+            Error logs are always emitted when `None` is returned.
+        """
+        for task_node in qg.pipeline_graph.tasks.values():
+            if task_node.dimensions == dataset_type.dimensions:
+                data_ids = qg.quanta_by_task[task_node.label].keys()
+                if len(data_ids) == 1:
+                    return DatasetRef(dataset_type, next(iter(data_ids)), run=qg.header.output_run)
+                else:
+                    _log.error(
+                        f"Task {task_node.label} in pipeline {pipeline_file} has multiple quanta for the "
+                        f"dimensions {dataset_type.dimensions} of the provenance dataset."
+                    )
+                    return None
+        _log.error(
+            f"Pipeline {pipeline_file} has has no tasks with the "
+            f"dimensions {dataset_type.dimensions} of the provenance dataset."
+        )
+        return None
 
     def _run_preprocessing(self) -> None:
         """Preprocess a visit ahead of incoming image(s).
@@ -1427,6 +1493,7 @@ class MiddlewareInterface:
                             in_collections=[preload_run],
                             data_ids=where,
                             label="preprocessing",
+                            provenance_dataset_type=self._group_provenance_dataset_type,
                             )
 
     def _check_permanent_changes(self, where: str) -> bool:
@@ -1511,11 +1578,16 @@ class MiddlewareInterface:
         # faked raw file and appropriate SSO data during prep (and then
         # cleanup when ingesting the real data).
         try:
-            self.define_visits.run({"instrument": self.instrument.getName(),
-                                    "exposure": exp} for exp in exposure_ids)
+            visits_defined = self.define_visits.run({"instrument": self.instrument.getName(),
+                                                    "exposure": exp} for exp in exposure_ids)
         except lsst.daf.butler.registry.DataIdError as e:
             # TODO: a good place for a custom exception?
             raise RuntimeError("No data to process.") from e
+
+        if visits_defined.n_visits:
+            provenance_dataset_type = self._visit_provenance_dataset_type
+        else:
+            provenance_dataset_type = self._exposure_provenance_dataset_type
 
         # Inefficient, but most graph builders can't take equality constraints
         where = (
@@ -1531,6 +1603,7 @@ class MiddlewareInterface:
                                 in_collections=pre_runs + [preload_run],
                                 data_ids=where,
                                 label="main",
+                                provenance_dataset_type=provenance_dataset_type,
                                 )
         # Catch Exception just in case there's a surprise -- raising
         # NonRetriableError on *all* irrevocable changes is important.
