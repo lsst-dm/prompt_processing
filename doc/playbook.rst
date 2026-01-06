@@ -115,7 +115,7 @@ Please note that the tag does not include a ``v`` at the beginning.
    * Incompatibility with an old `Butler Writer Service`_ version
    * Incompatibility with an old Sattle version
    * Incompatibility with an old ``mpsky`` version
-   * Incompatibility with an old raw microservice version
+   * Incompatibility with an old `raw microservice`_ version (note: ``embargo-butler`` does not use semantic versions, so watch for changes to `presence.py <https://github.com/lsst-dm/embargo-butler/blob/main/src/presence.py>`__)
    * A new major version of the `Alerts schema`_ (see `DMTN-093`_ for details)
 
    For the `next_visit_fan_out`_ service:
@@ -147,7 +147,7 @@ Please note that the tag does not include a ``v`` at the beginning.
    * Supported `Butler Writer Service`_ versions
    * Supported Sattle versions
    * Supported ``mpsky`` versions
-   * Supported raw microservice versions
+   * Supported `raw microservice`_ versions
    * The `Alerts schema`_ version used for output (see `DMTN-093`_ for details)
 
    Select **Publish Release**.
@@ -170,6 +170,8 @@ Please note that the tag does not include a ``v`` at the beginning.
 .. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L87-L91
 
 .. _ApdbCassandraReplica: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandraReplica.py#L52-L56
+
+.. _raw microservice: https://github.com/lsst-dm/embargo-butler/tags
 
 .. _Alerts schema: https://github.com/lsst/alert_packet/blob/main/python/lsst/alert/packet/schema/latest.txt
 
