@@ -24,6 +24,9 @@ RUN groupadd -g 4085 -o rubin_users \
     # Ensure that the target directories and files created by this Dockerfile are owned by lsstsvc1
     && chown -R lsstsvc1:rubin_users $APP_HOME
 USER lsstsvc1
+# Create /home/lsstsvc1/.eups directory in the container
+RUN source /opt/lsst/software/stack/loadLSST.bash \
+    && setup lsst_distrib
 
 CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
