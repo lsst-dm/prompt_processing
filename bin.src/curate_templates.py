@@ -44,6 +44,10 @@ def _make_parser():
         help="An existing data repository containing the input collections.",
     )
     parser.add_argument(
+        "skymap",
+        help="The skymap used for this batch of templates.",
+    )
+    parser.add_argument(
         "tag",
         help="A Jira ticket number for the new template collection name.",
     )
@@ -60,7 +64,7 @@ def _make_parser():
     )
     parser.add_argument(
         "--where",
-        default="",
+        default="instrument='LSSTCam' AND skymap='lsst_cells_v2'",
         help="A string expression to select datasets in the input collections.",
     )
     parser.add_argument(
@@ -102,7 +106,7 @@ def select_ref(drefs, tract, patch, band, dtype="template_coadd"):
     return drefs[0]
 
 
-def make_threshold_cuts(butler, template_coadds, n_images, tracts, filter_by, cutoff):
+def make_threshold_cuts(butler, skymap, template_coadds, n_images, tracts, filter_by, cutoff):
     """Select template_coadd and template_coadd_n_image datasets that pass a depth threshold.
 
     Parameters
@@ -134,7 +138,7 @@ def make_threshold_cuts(butler, template_coadds, n_images, tracts, filter_by, cu
     rejected_drefs = []
 
     for tract in tracts:
-        coadd_depth_table = butler.get("template_coadd_depth_table", tract=tract)
+        coadd_depth_table = butler.get("template_coadd_depth_table", skymap=skymap, tract=tract)
         mask = (coadd_depth_table[filter_by] > cutoff)
 
         # --- Handle accepted patches/bands ---
@@ -345,9 +349,10 @@ def main():
 
     # Filter out template_coads that don't meet the cutoff and save them to record.
     logging.info("Starting curation.")
-    accepted_drefs, rejected_drefs, accepted_n_image_refs = make_threshold_cuts(butler, coadd_refs,
-                                                                                n_image_refs, tracts,
-                                                                                args.filter_by, args.cutoff
+    accepted_drefs, rejected_drefs, accepted_n_image_refs = make_threshold_cuts(butler, args.skymap,
+                                                                                coadd_refs, n_image_refs,
+                                                                                tracts, args.filter_by,
+                                                                                args.cutoff
                                                                                 )
     logging.info(f"Curation complete. Accepted {len(accepted_drefs)} out of {len(coadd_refs)}"
                  f" template_coadd datasets in {args.collections}.")
