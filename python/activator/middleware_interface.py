@@ -1723,6 +1723,7 @@ class MiddlewareInterface:
                         where="exposure in (exposure_ids)",
                         bind={"exposure_ids": exposure_ids},
                         with_dimension_records=True,
+                        find_first=False,  # Transfer ALL output datasets
                         explain=False,  # Failed runs might not have datasets of every type.
                         instrument=self.instrument.getName(),
                         detector=self.visit.detector,
@@ -1850,6 +1851,7 @@ class MiddlewareInterface:
                     'raw',
                     collections=self.instrument.makeDefaultRawIngestRunName(),
                     where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
+                    find_first=False,
                     explain=False,  # Raws might not have been ingested.
                     instrument=self.visit.instrument,
                     detector=self.visit.detector,
