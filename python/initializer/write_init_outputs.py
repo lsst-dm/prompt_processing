@@ -135,6 +135,7 @@ def main(args=None):
 
         butler.registry.refresh()  # Ensure Butler reflects new collections
         _make_output_chain(butler, instrument, runs)
+        _log.info("Initialization complete, ready to restart Prompt Processing.")
         return 0
     except Exception:
         _log.exception("Failed to prepare init-outputs for %s in %s.", instrument_name, repo)
