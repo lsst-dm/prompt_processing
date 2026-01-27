@@ -23,7 +23,7 @@
 __all__ = ["NonRetriableError", "RetriableError", "GracefulShutdownInterrupt", "TimeoutInterrupt",
            "InvalidVisitError", "IgnorableVisit",
            "InvalidPipelineError", "NoGoodPipelinesError",
-           "PipelinePreExecutionError", "PipelineExecutionError",
+           "PipelinePreExecutionError", "PipelineExecutionError", "ProvenanceDimensionsError",
            ]
 
 
@@ -143,4 +143,10 @@ class PipelineExecutionError(RuntimeError):
     """Exception raised if a pipeline attempted to run, but failed.
 
     Usually chained to an internal exception.
+    """
+
+
+class ProvenanceDimensionsError(RuntimeError):
+    """Exception raised if a viable data ID for provenance could not be
+    defined.
     """
