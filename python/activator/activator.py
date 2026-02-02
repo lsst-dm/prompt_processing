@@ -218,7 +218,7 @@ def time_since(start_time):
     Parameters
     ----------
     start_time : `float`
-        Time since a reference point, in seconds since Unix epoch.
+        A reference point, in seconds since Unix epoch.
 
     Returns
     -------
