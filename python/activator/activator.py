@@ -19,9 +19,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["time_since", "is_processable", "process_visit"]
+__all__ = ["time_since", "is_processable", "process_visit", "get_cached_detectors"]
 
-import collections.abc
+import collections
 import contextlib
 import functools
 import json
@@ -210,6 +210,35 @@ def _get_local_repo():
 def _get_local_cache():
     """Lazy initialization of local repo dataset cache."""
     return make_local_cache()
+
+
+def get_cached_detectors():
+    """Returns the set of detectors for which this worker already has cached
+    datasets.
+
+    This function accesses the cache through a module-private reference, to
+    allow clients to call it without depending on the cache object.
+
+    Returns
+    -------
+    detectors : set [`int`]
+        The detectors for which this worker has an established cache. Since
+        there are multiple datasets for each detector, the exact criteria are
+        an implementation detail.
+    """
+    cache = _get_local_cache()
+    by_detector = collections.Counter()
+    for ref in cache:
+        id = ref.dataId
+        if "detector" in id:
+            by_detector[id["detector"]] += 1
+
+    # Include detectors with at least half as many datasets cached as the max
+    if by_detector:
+        threshold = max(by_detector.values()) / 2  # not integer division
+        return {det for det, n in by_detector.items() if n >= threshold}
+    else:
+        return set()
 
 
 def time_since(start_time):

@@ -25,6 +25,8 @@ import signal
 import time
 import unittest
 
+import lsst.daf.butler
+
 import astropy.coordinates
 import astropy.time
 import astropy.units as u
@@ -32,6 +34,7 @@ import astropy.units as u
 import shared.raw
 from shared.visit import FannedOutVisit
 import activator.setup
+import activator.middleware_interface
 
 # Mandatory envvars are loaded at import time
 os.environ["RUBIN_INSTRUMENT"] = "LSSTCam"
@@ -45,7 +48,7 @@ os.environ["PREPROCESSING_PIPELINES_CONFIG"] = "- pipelines: []"
 os.environ["MAIN_PIPELINES_CONFIG"] = "- pipelines: []"
 
 from activator.activator import _filter_exposures, _ingest_existing_raws, is_processable, \
-    time_since, with_signal  # noqa: E402, no code before imports
+    time_since, with_signal, get_cached_detectors  # noqa: E402, no code before imports
 
 
 # Use of @ServiceSetup.check_on_init in activator interferes with unit tests of ServiceSetup itself
@@ -256,6 +259,90 @@ class IsProcessableTest(unittest.TestCase):
         self.assertFalse(is_processable(self.visit, 550.0))
         self.assertFalse(is_processable(self.visit, 510.0))  # Pad for possible slow run time
         self.assertFalse(is_processable(self.visit, 599.9))
+
+
+class GetCachedDetectorsTest(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+
+        # Mock data refs are a lot of work to create, so do them once
+        universe = lsst.daf.butler.DimensionUniverse()
+
+        self.types = []
+        self.types.append(lsst.daf.butler.DatasetType("int0", {"instrument"}, "int", universe=universe))
+        self.types.append(lsst.daf.butler.DatasetType("int1", {"instrument", "exposure", "detector"}, "int",
+                                                      universe=universe))
+        self.types.append(lsst.daf.butler.DatasetType("int2", {"instrument", "detector"}, "int",
+                                                      universe=universe))
+        self.types.append(lsst.daf.butler.DatasetType("int3", {"instrument", "detector"}, "int",
+                                                      universe=universe))
+
+        self.refs = []
+        self.refs.append(lsst.daf.butler.DatasetRef(
+            self.types[0],
+            lsst.daf.butler.DataCoordinate.standardize({"instrument": "NotACam"}, universe=universe),
+            run="testRun"))
+        for i in range(1, 4):
+            self.refs.append([])
+            for d in range(3):
+                self.refs[i].append(lsst.daf.butler.DatasetRef(
+                    self.types[i],
+                    # data ID is superset of what the type may take
+                    lsst.daf.butler.DataCoordinate.standardize(
+                        {"instrument": "NotACam", "exposure": 42, "detector": d},
+                        universe=universe),
+                    run="testRun",
+                ))
+
+        # Actual testbed
+        self.local_cache = activator.middleware_interface.DatasetCache(2)
+        self.enterContext(unittest.mock.patch("activator.activator._get_local_cache",
+                                              return_value=self.local_cache))
+
+    def test_empty_set(self):
+        self.assertEqual(set(get_cached_detectors()), set())
+
+    def test_non_detectors(self):
+        self.local_cache.update([self.refs[0]])  # instrument-only dataset
+        self.assertEqual(set(get_cached_detectors()), set())
+
+    def test_one_detector(self):
+        self.local_cache.update([self.refs[1][0]])
+        self.assertEqual(set(get_cached_detectors()), {0})
+        self.local_cache.update([self.refs[2][0]])
+        self.assertEqual(set(get_cached_detectors()), {0})
+        self.local_cache.update([self.refs[0]])  # no effect
+        self.assertEqual(set(get_cached_detectors()), {0})
+
+    def test_two_detectors_balanced(self):
+        self.local_cache.update([self.refs[1][0]])
+        self.local_cache.update([self.refs[1][1]])
+        self.assertEqual(set(get_cached_detectors()), {0, 1})
+        self.local_cache.update([self.refs[3][0]])
+        self.local_cache.update([self.refs[3][1]])
+        self.assertEqual(set(get_cached_detectors()), {0, 1})
+
+    def test_two_detectors_uneven(self):
+        self.local_cache.update([self.refs[1][0]])
+        # Three datasets have different types, so don't exceed cache limits
+        self.local_cache.update(rtype[1] for rtype in self.refs[1:4])
+        # Detector 0 has only one dataset, ignore
+        self.assertEqual(set(get_cached_detectors()), {1})
+        self.local_cache.update([self.refs[3][0]])
+        self.assertEqual(set(get_cached_detectors()), {0, 1})
+
+    def test_two_detectors_eviction(self):
+        evicted = set(self.local_cache.update([self.refs[2][0]]))
+        self.assertEqual(evicted, set())
+        evicted = set(self.local_cache.update([self.refs[2][1]]))
+        self.assertEqual(evicted, set())
+        evicted = set(self.local_cache.update([self.refs[2][2]]))
+        # Dataset for detector 0 or 1 evicted
+        self.assertEqual(len(evicted), 1)
+        self.assertEqual(evicted - set(self.refs[2][0:2]), set())
+        remaining = set(self.refs[2][0:3]) - evicted
+
+        self.assertEqual(set(get_cached_detectors()), {ref.dataId["detector"] for ref in remaining})
 
 
 class TimeSinceTest(unittest.TestCase):
