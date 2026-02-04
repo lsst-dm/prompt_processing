@@ -633,7 +633,10 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
                         response = startup_response
                     else:
                         time_remaining = max(0.0, timeout - time_since(start))
-                        response = consumer.consume(num_messages=1, timeout=time_remaining + 1.0)
+                        response = consumer.consume(num_messages=1,
+                                                    # Avoid blocking for long intervals
+                                                    timeout=min(time_remaining + 1.0, 15.0),
+                                                    )
                     end = time.time()
                     messages = _filter_messages(response)
                     response = []
