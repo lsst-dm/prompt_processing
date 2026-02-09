@@ -359,7 +359,7 @@ class MiddlewareInterface:
         now = astropy.time.Time.now()
         self._day_obs = runs.get_day_obs(now)
 
-        self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()], None)
+        self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()])
         self._init_governor_datasets(now, skymap)
         self.cache = local_cache  # DO NOT copy -- we want to persist this state!
         self._prep_collections()
@@ -388,7 +388,7 @@ class MiddlewareInterface:
             self.butler.close()
         self._closed = True
 
-    def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
+    def _init_local_butler(self, repo_uri: str, output_collections: list[str]):
         """Prepare the local butler to ingest into and process from.
 
         ``self.butler`` is correctly initialized after this method returns.
@@ -399,14 +399,11 @@ class MiddlewareInterface:
             A URI to the location of the local repository.
         output_collections : `list` [`str`]
             The collection(s) in which to search for inputs and outputs.
-        output_run : `str`
-            The run in which to place new pipeline outputs.
         """
         # Internal Butler keeps a reference to the newly prepared collection.
         # This reference makes visible any inputs for query purposes.
         self.butler = Butler(repo_uri,
                              collections=output_collections,
-                             run=output_run,
                              writeable=True,
                              )
 
