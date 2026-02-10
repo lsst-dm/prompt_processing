@@ -52,11 +52,11 @@ def _make_parser():
     parser.add_argument(
         "tag",
         help="The Jira ticket number associated with the vetted template collection."
-        " Will be used to construct the new collection version name.",
+        " Will be used to construct the new collection name.",
     )
     parser.add_argument(
-        "version",
-        help="A version tag following conventions YYYY-MM-DD.",
+        "release_num",
+        help="The release number (##) for the given tag.",
     )
     parser.add_argument(
         "--dest_repo",
@@ -108,7 +108,7 @@ def _make_parser():
         required=False,
         help="An output table file with records of selected template files."
         " The file can be used by butler ingest-files."
-        " Default is {version}_records.ecsv.",
+        " Default is {tag}_{release_num}_records.ecsv.",
     )
     return parser
 
@@ -185,12 +185,12 @@ def main():
         if not os.path.exists(directory):
             os.makedirs(directory)
 
-    # Set records default based on version if not provided
+    # Set records default if not provided
     if args.records is None:
-        args.records = f"{args.version}_records.ecsv"
+        args.records = f"{args.tag}_{args.release_num}_records.ecsv"
 
     # Create tagged collection, abort if it already exists.
-    tagged_collection = f"LSSTCam/templates/{args.tag}/{args.version}"
+    tagged_collection = f"LSSTCam/templates/{args.tag}/release_{args.release_num}"
     registered = butler_write.collections.register(
         tagged_collection, type=CollectionType.TAGGED
     )
@@ -261,7 +261,7 @@ def main():
 
         # Combine with existing refs and associate to new collection
         logging.info("Begin combining new template_coadds with existing template_coadds.")
-        new_refs = butler.query_datasets("template_coadd", collections=run_collection, limit=None)
+        new_refs = butler_write.query_datasets("template_coadd", collections=run_collection, limit=None)
         combined_refs = new_refs + old_refs
         logging.info("Combining complete.")
 
