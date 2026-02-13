@@ -784,19 +784,23 @@ class MiddlewareInterface:
             The refcats to be exported, after any filtering.
         """
         # Get shards from all refcats that overlap this region.
-        refcats = set(_filter_datasets(
-                      self.read_central_butler, self.butler,
-                      _generic_query([dataset_type],
-                                     collections=self.instrument.makeRefCatCollectionName(),
-                                     where="htm7.region OVERLAPS search_region",
-                                     bind={"search_region": region},
-                                     find_first=True,
-                                     ),
-                      # Don't cache refcats
-                      ))
-        if refcats:
-            _log.debug("Found %d new refcat datasets from catalog '%s'.", len(refcats), dataset_type.name)
-        return refcats
+        query = _generic_query([dataset_type],
+                               collections=self.instrument.makeRefCatCollectionName(),
+                               where="htm7.region OVERLAPS search_region",
+                               bind={"search_region": region},
+                               find_first=True,
+                               )
+        src_datasets = set(query(self.read_central_butler, "source datasets"))
+        if not src_datasets:
+            raise _MissingDatasetError("Source repo query found no matches.")
+        # Don't cache refcats
+        known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
+        missing = src_datasets - known_datasets
+        _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
+                         len(src_datasets), len(known_datasets), len(missing))
+        if missing:
+            _log.debug("Found %d new refcat datasets from catalog '%s'.", len(missing), dataset_type.name)
+        return missing
 
     def _find_templates(self, dataset_type, region, physical_filter):
         """Identify the templates to export from the central butler.
@@ -824,20 +828,24 @@ class MiddlewareInterface:
                    "skymap": self.skymap_name,
                    "physical_filter": physical_filter,
                    }
-        templates = set(_filter_datasets(
-            self.read_central_butler, self.butler,
-            _generic_query([dataset_type],
-                           collections=self._collection_template,
-                           data_id=data_id,
-                           where="patch.region OVERLAPS search_region",
-                           bind={"search_region": region},
-                           find_first=True,
-                           ),
-            # Don't cache templates
-        ))
-        if templates:
-            _log.debug("Found %d new template datasets of type %s.", len(templates), dataset_type.name)
-        return templates
+        query = _generic_query([dataset_type],
+                               collections=self._collection_template,
+                               data_id=data_id,
+                               where="patch.region OVERLAPS search_region",
+                               bind={"search_region": region},
+                               find_first=True,
+                               )
+        src_datasets = set(query(self.read_central_butler, "source datasets"))
+        if not src_datasets:
+            raise _MissingDatasetError("Source repo query found no matches.")
+        # Don't cache templates
+        known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
+        missing = src_datasets - known_datasets
+        _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
+                         len(src_datasets), len(known_datasets), len(missing))
+        if missing:
+            _log.debug("Found %d new template datasets of type %s.", len(missing), dataset_type.name)
+        return missing
 
     def _find_calibs(self, dataset_type, detector_id, physical_filter):
         """Identify the calibs to export from the central butler.
@@ -891,14 +899,17 @@ class MiddlewareInterface:
                 _log_trace3.debug("%s: %s", label, datasets)
                 return datasets
 
-        calibs = set(_filter_datasets(
-            self.read_central_butler, self.butler,
-            query_calibs_by_date,
-            all_callback=self._cache_datasets,
-        ))
-        if calibs:
-            _log.debug("Found %d new calib datasets of type '%s'.", len(calibs), dataset_type.name)
-        return calibs
+        src_datasets = set(query_calibs_by_date(self.read_central_butler, "source datasets"))
+        if not src_datasets:
+            raise _MissingDatasetError("Source repo query found no matches.")
+        self._cache_datasets(src_datasets)
+        known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
+        missing = src_datasets - known_datasets
+        _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
+                         len(src_datasets), len(known_datasets), len(missing))
+        if missing:
+            _log.debug("Found %d new calib datasets of type '%s'.", len(missing), dataset_type.name)
+        return missing
 
     def _find_generic_datasets(self, dataset_type, detector_id, physical_filter):
         """Identify datasets to export from the central butler.
@@ -924,18 +935,22 @@ class MiddlewareInterface:
                    }
         if physical_filter:
             data_id["physical_filter"] = physical_filter
-        datasets = set(_filter_datasets(
-            self.read_central_butler, self.butler,
-            _generic_query([dataset_type],
-                           collections=self.instrument.makeUmbrellaCollectionName(),
-                           data_id=data_id,
-                           find_first=True,
-                           ),
-            all_callback=self._cache_datasets,
-        ))
-        if datasets:
-            _log.debug("Found %d new datasets of type %s.", len(datasets), dataset_type.name)
-        return datasets
+        query = _generic_query([dataset_type],
+                               collections=self.instrument.makeUmbrellaCollectionName(),
+                               data_id=data_id,
+                               find_first=True,
+                               )
+        src_datasets = set(query(self.read_central_butler, "source datasets"))
+        if not src_datasets:
+            raise _MissingDatasetError("Source repo query found no matches.")
+        self._cache_datasets(src_datasets)
+        known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
+        missing = src_datasets - known_datasets
+        _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
+                         len(src_datasets), len(known_datasets), len(missing))
+        if missing:
+            _log.debug("Found %d new datasets of type %s.", len(missing), dataset_type.name)
+        return missing
 
     def _get_init_output_types(self, pipeline_file):
         """Identify the specific init-output types to query.
@@ -970,8 +985,6 @@ class MiddlewareInterface:
         for pipeline_file in self.get_combined_pipeline_files():
             run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
             types = self._get_init_output_types(pipeline_file)
-            # Output runs are always cleared after execution, so _filter_datasets would always warn.
-            # This also means the init-outputs don't need to be cached with _cache_datasets.
             query = _generic_query(types, collections=run)
             datasets.update(query(self.read_central_butler, "source datasets"))
         if not datasets:
@@ -1901,56 +1914,6 @@ class _MissingDatasetError(RuntimeError):
 
 _DatasetResults: typing.TypeAlias = collections.abc.Iterable[lsst.daf.butler.DatasetRef]
 """Type alias for dataset query results, to simplify annotations."""
-
-
-def _filter_datasets(src_repo: Butler,
-                     dest_repo: Butler,
-                     query: collections.abc.Callable[[Butler, str], _DatasetResults],
-                     all_callback: typing.Callable[[collections.abc.Iterable[lsst.daf.butler.DatasetRef]],
-                                                   typing.Any] | None = None,
-                     ) -> _DatasetResults:
-    """Identify datasets in a source repository, filtering out those already
-    present in a destination.
-
-    This function raises if nothing in the source repository matches the query criteria.
-
-    Parameters
-    ----------
-    src_repo : `lsst.daf.butler.Butler`
-        The repository in which a dataset must be present.
-    dest_repo : `lsst.daf.butler.Butler`
-        The repository in which a dataset must not be present.
-    query : callable
-        A callable that takes a `~lsst.daf.butler.Butler` and a logging label
-        and returns matching datasets. The query must be valid for both
-        ``src_repo`` and ``dest_repo``.
-    all_callback: callable, optional
-        If provided, a callable that is called with *all* datasets picked up by
-        the query, before filtering out those already present in ``dest_repo``.
-        This callable is not called if the query returns no results.
-
-    Returns
-    -------
-    datasets : iterable [`lsst.daf.butler.DatasetRef`]
-        The datasets that exist in ``src_repo`` but not ``dest_repo``.
-        datasetRefs are guaranteed to be fully expanded if and only if
-        ``query`` guarantees it.
-
-    Raises
-    ------
-    _MissingDatasetError
-        Raised if the query on ``src_repo`` failed to find any datasets.
-    """
-    src_datasets = set(query(src_repo, "source datasets"))
-    if not src_datasets:
-        raise _MissingDatasetError("Source repo query found no matches.")
-    if all_callback:
-        all_callback(src_datasets)
-    known_datasets = set(_find_datasets_in_repo(dest_repo, src_datasets))
-    missing = src_datasets - known_datasets
-    _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
-                     len(src_datasets), len(known_datasets), len(missing))
-    return missing
 
 
 def _find_datasets_in_repo(repo: Butler,

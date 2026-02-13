@@ -21,7 +21,6 @@
 
 import dataclasses
 import datetime
-import functools
 import itertools
 import tempfile
 import os.path
@@ -53,7 +52,7 @@ from activator.caching import DatasetCache
 from activator.exception import NonRetriableError, NoGoodPipelinesError, PipelineExecutionError
 from activator.middleware_interface import get_central_butler, make_local_repo, \
     _get_sasquatch_dispatcher, MiddlewareInterface, DirectButlerWriter, \
-    _filter_datasets, _find_datasets_in_repo, _generic_query, _MissingDatasetError
+    _find_datasets_in_repo, _generic_query
 from shared.config import PipelinesConfig
 from shared.run_utils import get_output_run
 from shared.visit import FannedOutVisit
@@ -1058,118 +1057,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                       {"SASQUATCH_URL": "https://localhost/dummy",
                                        }):
             self.assertIsNotNone(_get_sasquatch_dispatcher())
-
-    def test_filter_datasets(self):
-        """Test that _filter_datasets provides the correct values.
-        """
-        # Much easier to create DatasetRefs with a real repo.
-        data1 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 5},
-                                        "dummy")
-        data2 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 0},
-                                        "dummy")
-        data3 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 1},
-                                        "dummy")
-
-        combinations = [{data1, data2}, {data1, data2, data3}]
-        src_butler = unittest.mock.Mock()
-        existing_butler = unittest.mock.Mock()
-        # Case where src is empty now covered in test_filter_datasets_nosrc.
-        for src, existing in itertools.product(combinations, [set()] + combinations):
-            diff = src - existing
-
-            def query(butler, _label):
-                if butler is src_butler:
-                    return src
-                elif butler is existing_butler:
-                    return existing
-                else:
-                    raise ValueError("Unknown butler!")
-
-            with (self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
-                               existing=sorted(ref.dataId["detector"] for ref in existing)),
-                  unittest.mock.patch.object(existing_butler, "get_many_datasets", return_value=existing),
-                  ):
-                result = set(_filter_datasets(src_butler, existing_butler, query))
-                self.assertEqual(result, diff)
-
-    def test_filter_datasets_nosrc(self):
-        """Test that _filter_datasets reports if the datasets are missing from
-        the source repository, regardless of whether they are present in the
-        destination repository.
-        """
-        # Much easier to create DatasetRefs with a real repo.
-        data1 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 1},
-                                        "dummy")
-
-        src_butler = unittest.mock.Mock()
-        existing_butler = unittest.mock.Mock()
-        for existing in [set(), {data1}]:
-
-            def query(butler, _label):
-                if butler is src_butler:
-                    return set()
-                elif butler is existing_butler:
-                    return existing
-                else:
-                    raise ValueError("Unknown butler!")
-
-            with (self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)),
-                  unittest.mock.patch.object(existing_butler, "get_many_datasets", return_value=existing),
-                  ):
-                with self.assertRaises(_MissingDatasetError):
-                    _filter_datasets(src_butler, existing_butler, query)
-
-    def test_filter_datasets_all_callback(self):
-        """Test that _filter_datasets passes the correct values to its callback.
-        """
-        def test_function(expected, incoming):
-            self.assertEqual(expected, incoming)
-
-        # Much easier to create DatasetRefs with a real repo.
-        data1 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 5},
-                                        "dummy")
-        data2 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 0},
-                                        "dummy")
-        data3 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 1},
-                                        "dummy")
-
-        combinations = [{data1, data2}, {data1, data2, data3}]
-        src_butler = unittest.mock.Mock()
-        existing_butler = unittest.mock.Mock()
-        # Case where src is empty covered below.
-        for src, existing in itertools.product(combinations, [set()] + combinations):
-            def query(butler, _label):
-                if butler is src_butler:
-                    return src
-                elif butler is existing_butler:
-                    return existing
-                else:
-                    raise ValueError("Unknown butler!")
-
-            with (self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
-                               existing=sorted(ref.dataId["detector"] for ref in existing)),
-                  unittest.mock.patch.object(existing_butler, "get_many_datasets", return_value=existing),
-                  ):
-                _filter_datasets(src_butler, existing_butler, query,
-                                 all_callback=functools.partial(test_function, src))
-
-        # Should not call
-
-        def non_callable(_):
-            self.fail("Callback called during _MissingDatasetError.")
-
-        for existing in [set()] + combinations:
-            def query(butler, _label):
-                if butler is src_butler:
-                    return set()
-                elif butler is existing_butler:
-                    return existing
-                else:
-                    raise ValueError("Unknown butler!")
-
-            with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
-                with self.assertRaises(_MissingDatasetError):
-                    _filter_datasets(src_butler, existing_butler, query, all_callback=non_callable)
 
     def test_find_datasets_in_repo(self):
         # Much easier to create DatasetRefs with a real repo.
