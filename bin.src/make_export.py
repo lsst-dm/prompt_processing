@@ -38,8 +38,6 @@ import yaml
 import lsst.daf.butler as daf_butler
 from lsst.utils.timer import time_this
 
-from activator.middleware_interface import _filter_datasets
-
 
 def _make_parser():
     parser = argparse.ArgumentParser()
@@ -132,11 +130,14 @@ def _export_for_copy(butler, target_butler, wants):
                     dataset_types = butler.collections._filter_dataset_types(
                         all_types, collections_info
                     )
-                records = _filter_datasets(
-                    butler, target_butler,
-                    lambda b, _: _query_no_undefined(b, dataset_types, **selection)
-                )
-                contents.saveDatasets(records)
+                all_records = set(_query_no_undefined(butler, dataset_types, **selection))
+                if not all_records:
+                    raise RuntimeError("Query found no matches in source repo.")
+                target_records = set(_query_no_undefined(target_butler, dataset_types, **selection))
+                missing = all_records - target_records
+                logging.debug("Found %d matching datasets. %d present in target, %d to export.",
+                              len(all_records), len(all_records & target_records), len(missing))
+                contents.saveDatasets(missing)
 
         # Save selected collections and chains
         if "collections" in wants:
