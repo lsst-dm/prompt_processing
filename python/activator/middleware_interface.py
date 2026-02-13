@@ -1941,19 +1941,37 @@ def _filter_datasets(src_repo: Butler,
     _MissingDatasetError
         Raised if the query on ``src_repo`` failed to find any datasets.
     """
-    known_datasets = set(query(dest_repo, "known datasets"))
-
-    # Let exceptions from src_repo query raise: if it fails, that invalidates
-    # this operation.
     src_datasets = set(query(src_repo, "source datasets"))
     if not src_datasets:
         raise _MissingDatasetError("Source repo query found no matches.")
     if all_callback:
         all_callback(src_datasets)
+    known_datasets = set(_find_datasets_in_repo(dest_repo, src_datasets))
     missing = src_datasets - known_datasets
     _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
-                     len(src_datasets), len(src_datasets & known_datasets), len(missing))
+                     len(src_datasets), len(known_datasets), len(missing))
     return missing
+
+
+def _find_datasets_in_repo(repo: Butler,
+                           datasets: collections.abc.Collection[lsst.daf.butler.DatasetRef],
+                           ) -> _DatasetResults:
+    """Identify which of a collection of datasets is present in a repo.
+
+    Parameters
+    ----------
+    repo : `lsst.daf.butler.Butler`
+        The repository to search.
+    datasets : collection [`~lsst.daf.butler.DatasetRef`]
+        The datasets to search for. Any past dataset transfers must preserve
+        dataset ID.
+
+    Returns
+    -------
+    datasets : iterable [`lsst.daf.butler.DatasetRef`]
+        The subset of ``datasets`` that exists in ``repo``.
+    """
+    return repo.get_many_datasets(ref.id for ref in datasets)
 
 
 def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler.DatasetType],

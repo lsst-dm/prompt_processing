@@ -53,7 +53,7 @@ from activator.caching import DatasetCache
 from activator.exception import NonRetriableError, NoGoodPipelinesError, PipelineExecutionError
 from activator.middleware_interface import get_central_butler, make_local_repo, \
     _get_sasquatch_dispatcher, MiddlewareInterface, DirectButlerWriter, \
-    _filter_datasets, _generic_query, _MissingDatasetError
+    _filter_datasets, _find_datasets_in_repo, _generic_query, _MissingDatasetError
 from shared.config import PipelinesConfig
 from shared.run_utils import get_output_run
 from shared.visit import FannedOutVisit
@@ -1085,8 +1085,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 else:
                     raise ValueError("Unknown butler!")
 
-            with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
-                              existing=sorted(ref.dataId["detector"] for ref in existing)):
+            with (self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
+                               existing=sorted(ref.dataId["detector"] for ref in existing)),
+                  unittest.mock.patch.object(existing_butler, "get_many_datasets", return_value=existing),
+                  ):
                 result = set(_filter_datasets(src_butler, existing_butler, query))
                 self.assertEqual(result, diff)
 
@@ -1111,7 +1113,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 else:
                     raise ValueError("Unknown butler!")
 
-            with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
+            with (self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)),
+                  unittest.mock.patch.object(existing_butler, "get_many_datasets", return_value=existing),
+                  ):
                 with self.assertRaises(_MissingDatasetError):
                     _filter_datasets(src_butler, existing_butler, query)
 
@@ -1142,8 +1146,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 else:
                     raise ValueError("Unknown butler!")
 
-            with self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
-                              existing=sorted(ref.dataId["detector"] for ref in existing)):
+            with (self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
+                               existing=sorted(ref.dataId["detector"] for ref in existing)),
+                  unittest.mock.patch.object(existing_butler, "get_many_datasets", return_value=existing),
+                  ):
                 _filter_datasets(src_butler, existing_butler, query,
                                  all_callback=functools.partial(test_function, src))
 
@@ -1164,6 +1170,28 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             with self.subTest(existing=sorted(ref.dataId["detector"] for ref in existing)):
                 with self.assertRaises(_MissingDatasetError):
                     _filter_datasets(src_butler, existing_butler, query, all_callback=non_callable)
+
+    def test_find_datasets_in_repo(self):
+        # Much easier to create DatasetRefs with a real repo.
+        data1 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 5},
+                                        "dummy")
+        data2 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 0},
+                                        "dummy")
+        data3 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 1},
+                                        "dummy")
+
+        combinations = [set(), {data1, data2}, {data1, data2, data3}]
+        existing_butler = unittest.mock.Mock()
+        for src, existing in itertools.product(combinations, combinations):
+            with (self.subTest(src=sorted(ref.dataId["detector"] for ref in src),
+                               existing=sorted(ref.dataId["detector"] for ref in existing)),
+                  # TODO: find an efficient way to use real Butler, otherwise the test is trivial
+                  unittest.mock.patch.object(existing_butler, "get_many_datasets",
+                                             return_value=(existing & src)),
+                  ):
+                found = set(_find_datasets_in_repo(existing_butler, src))
+                self.assertLessEqual(found, src)
+                self.assertEqual(found, existing & src)
 
     def test_generic_query(self):
         # Much easier to create DatasetRefs with a real repo.
