@@ -45,7 +45,7 @@ from lsst.pipe.base.mp_graph_executor import MPGraphExecutor
 from lsst.pipe.base.separable_pipeline_executor import SeparablePipelineExecutor
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, DatasetRef, Timespan, \
-    DataIdValueError, DimensionRecord, MissingDatasetTypeError, MissingCollectionError
+    DimensionRecord, MissingDatasetTypeError
 from lsst.daf.butler import Config as dafButlerConfig
 import lsst.dax.apdb
 import lsst.geom
@@ -783,14 +783,17 @@ class MiddlewareInterface:
         refcats : iterable [`lsst.daf.butler.DatasetRef`]
             The refcats to be exported, after any filtering.
         """
-        # Get shards from all refcats that overlap this region.
-        query = _generic_query([dataset_type],
-                               collections=self.instrument.makeRefCatCollectionName(),
-                               where="htm7.region OVERLAPS search_region",
-                               bind={"search_region": region},
-                               find_first=True,
-                               )
-        src_datasets = set(query(self.read_central_butler, "source datasets"))
+        src_datasets = set(self.read_central_butler.query_datasets(
+            dataset_type,
+            collections=self.instrument.makeRefCatCollectionName(),
+            where="htm7.region OVERLAPS search_region",
+            bind={"search_region": region},
+            find_first=True,
+            explain=False,
+            with_dimension_records=True,
+        ))
+        # Trace3 because, in many contexts, src_datasets is too large to print.
+        _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
         if not src_datasets:
             raise _MissingDatasetError("Source repo query found no matches.")
         # Don't cache refcats
@@ -828,14 +831,18 @@ class MiddlewareInterface:
                    "skymap": self.skymap_name,
                    "physical_filter": physical_filter,
                    }
-        query = _generic_query([dataset_type],
-                               collections=self._collection_template,
-                               data_id=data_id,
-                               where="patch.region OVERLAPS search_region",
-                               bind={"search_region": region},
-                               find_first=True,
-                               )
-        src_datasets = set(query(self.read_central_butler, "source datasets"))
+        src_datasets = set(self.read_central_butler.query_datasets(
+            dataset_type,
+            collections=self._collection_template,
+            data_id=data_id,
+            where="patch.region OVERLAPS search_region",
+            bind={"search_region": region},
+            find_first=True,
+            explain=False,
+            with_dimension_records=True,
+        ))
+        # Trace3 because, in many contexts, src_datasets is too large to print.
+        _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
         if not src_datasets:
             raise _MissingDatasetError("Source repo query found no matches.")
         # Don't cache templates
@@ -875,31 +882,19 @@ class MiddlewareInterface:
                          "without a specific filter.")
             return set()
 
-        def query_calibs_by_date(butler, label):
-            with butler.query() as query:
-                expr = query.expression_factory
-                query = query.where(data_id)
-                try:
-                    datasets = set(
-                        query.datasets(dataset_type,
-                                       self.instrument.makeCalibrationCollectionName(),
-                                       find_first=True)
-                        # where needs to come after datasets to pick up the type
-                        .where(expr[dataset_type.name].timespan.overlaps(calib_date))
-                        .with_dimension_records()
-                    )
-                except (DataIdValueError, MissingDatasetTypeError, MissingCollectionError) as e:
-                    # Dimensions/dataset type often invalid for fresh local repo,
-                    # where there are no, and never have been, any matching datasets.
-                    # May have dimensions but no collections if a previous preload failed.
-                    # These *are* a problem for the central repo, but can be caught later.
-                    _log.debug("%s query failed with %s.", label, e)
-                    datasets = set()
-                # Trace3 because, in many contexts, datasets is too large to print.
-                _log_trace3.debug("%s: %s", label, datasets)
-                return datasets
-
-        src_datasets = set(query_calibs_by_date(self.read_central_butler, "source datasets"))
+        with self.read_central_butler.query() as query:
+            expr = query.expression_factory
+            query = query.where(data_id)
+            src_datasets = set(
+                query.datasets(dataset_type,
+                               self.instrument.makeCalibrationCollectionName(),
+                               find_first=True)
+                # where needs to come after datasets to pick up the type
+                .where(expr[dataset_type.name].timespan.overlaps(calib_date))
+                .with_dimension_records()
+            )
+        # Trace3 because, in many contexts, datasets is too large to print.
+        _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
         if not src_datasets:
             raise _MissingDatasetError("Source repo query found no matches.")
         self._cache_datasets(src_datasets)
@@ -935,12 +930,17 @@ class MiddlewareInterface:
                    }
         if physical_filter:
             data_id["physical_filter"] = physical_filter
-        query = _generic_query([dataset_type],
-                               collections=self.instrument.makeUmbrellaCollectionName(),
-                               data_id=data_id,
-                               find_first=True,
-                               )
-        src_datasets = set(query(self.read_central_butler, "source datasets"))
+
+        src_datasets = set(self.read_central_butler.query_datasets(
+            dataset_type,
+            collections=self.instrument.makeUmbrellaCollectionName(),
+            data_id=data_id,
+            find_first=True,
+            explain=False,
+            with_dimension_records=True,
+        ))
+        # Trace3 because, in many contexts, src_datasets is too large to print.
+        _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
         if not src_datasets:
             raise _MissingDatasetError("Source repo query found no matches.")
         self._cache_datasets(src_datasets)
@@ -984,9 +984,16 @@ class MiddlewareInterface:
         datasets = set()
         for pipeline_file in self.get_combined_pipeline_files():
             run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
-            types = self._get_init_output_types(pipeline_file)
-            query = _generic_query(types, collections=run)
-            datasets.update(query(self.read_central_butler, "source datasets"))
+            for dataset_type in self._get_init_output_types(pipeline_file):
+                new_datasets = set(self.read_central_butler.query_datasets(
+                    dataset_type,
+                    collections=run,
+                    explain=False,
+                    with_dimension_records=True,
+                ))
+                datasets.update(new_datasets)
+        # Trace3 because, in many contexts, datasets is too large to print.
+        _log_trace3.debug("Init datasets: %s", datasets)
         if not datasets:
             raise _MissingDatasetError("Source repo query found no matches.")
 
@@ -1935,48 +1942,6 @@ def _find_datasets_in_repo(repo: Butler,
         The subset of ``datasets`` that exists in ``repo``.
     """
     return repo.get_many_datasets(ref.id for ref in datasets)
-
-
-def _generic_query(dataset_types: collections.abc.Iterable[str | lsst.daf.butler.DatasetType],
-                   *args,
-                   **kwargs) -> collections.abc.Callable[[Butler, str], _DatasetResults]:
-    """Generate a parameterized Butler dataset query.
-
-    Parameters
-    ----------
-    dataset_types : iterable [`str` | `lsst.daf.butler.DatasetType`]
-        Iterable of dataset type object or name to search for.
-    *args, **kwargs
-        Parameters for describing the dataset query. They have the same
-        meanings as the parameters of `lsst.daf.butler.query_datasets`.
-
-    Returns
-    -------
-    query : callable
-        A callable that takes a `~lsst.daf.butler.Butler` and an optional
-        logging label and executes the dataset query, returning an iterable of
-        fully expanded `~lsst.daf.butler.DatasetRef`.
-    """
-    def query(butler: Butler, butler_name: str = ""):
-        label = butler_name or str(butler)
-        datasets = set()
-        for dataset_type in dataset_types:
-            try:
-                datasets |= set(butler.query_datasets(
-                    # explain=False because empty query result is ok here.
-                    dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
-                ))
-            except (DataIdValueError, MissingDatasetTypeError, MissingCollectionError) as e:
-                # Dimensions/dataset type often invalid for fresh local repo,
-                # where there are no, and never have been, any matching datasets.
-                # May have dimensions but no collections if a previous preload failed.
-                # These *are* a problem for the central repo, but can be caught later.
-                _log.debug("%s query failed with %s.", label, e)
-        # Trace3 because, in many contexts, datasets is too large to print.
-        _log_trace3.debug("%s: %s", label, datasets)
-        return datasets
-
-    return query
 
 
 def _remove_run_completely(butler, run):

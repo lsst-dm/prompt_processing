@@ -52,7 +52,7 @@ from activator.caching import DatasetCache
 from activator.exception import NonRetriableError, NoGoodPipelinesError, PipelineExecutionError
 from activator.middleware_interface import get_central_butler, make_local_repo, \
     _get_sasquatch_dispatcher, MiddlewareInterface, DirectButlerWriter, \
-    _find_datasets_in_repo, _generic_query
+    _find_datasets_in_repo
 from shared.config import PipelinesConfig
 from shared.run_utils import get_output_run
 from shared.visit import FannedOutVisit
@@ -1079,38 +1079,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 found = set(_find_datasets_in_repo(existing_butler, src))
                 self.assertLessEqual(found, src)
                 self.assertEqual(found, existing & src)
-
-    def test_generic_query(self):
-        # Much easier to create DatasetRefs with a real repo.
-        data1 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 5},
-                                        "dummy")
-        data2 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 0},
-                                        "dummy")
-        data3 = self._make_expanded_ref(self.read_butler, "bias", {"instrument": "LSSTCam", "detector": 1},
-                                        "dummy")
-        refs = [data1, data2, data3]
-
-        butler = unittest.mock.Mock(**{"query_datasets.return_value": refs})
-        result = _generic_query(["bias"], instrument="LSSTCam")(butler)
-
-        butler.query_datasets.assert_called_once()
-        self.assertEqual(butler.query_datasets.call_args.args, ("bias", ))
-        # Implementation may add other kwargs.
-        self.assertEqual(butler.query_datasets.call_args.kwargs["instrument"], "LSSTCam")
-        self.assertEqual(set(result), set(refs))
-
-    def test_generic_query_nodim(self):
-        """Test that _generic_query provides the correct values when
-        a repository is missing not only datasets, but the dimensions
-        to define them.
-        """
-        butler = unittest.mock.Mock(**{
-            "query_datasets.side_effect": lsst.daf.butler.registry.DataIdValueError(
-                f"Unknown values specified for governor dimension instrument: {TestRepo.instname}")
-        })
-        result = _generic_query(["bias"], instrument=TestRepo.instname)(butler)
-
-        self.assertEqual(result, set())
 
 
 class MiddlewareInterfaceWriteableTest(unittest.TestCase):
