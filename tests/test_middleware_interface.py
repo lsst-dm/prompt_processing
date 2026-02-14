@@ -1333,9 +1333,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # export/import instead.
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as export_file:
             with Butler(data_repo, writeable=False) as data_butler:
+                empty_types = []
                 with data_butler.export(filename=export_file.name) as export:
                     for dtype in data_butler.registry.queryDatasetTypes(...):
-                        empty_types = []
                         try:
                             refs = data_butler.query_datasets(dtype, collections=...,
                                                               find_first=False, explain=True)
