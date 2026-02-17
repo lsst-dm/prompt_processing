@@ -45,7 +45,7 @@ from lsst.pipe.base.mp_graph_executor import MPGraphExecutor
 from lsst.pipe.base.separable_pipeline_executor import SeparablePipelineExecutor
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, DatasetRef, Timespan, \
-    DimensionRecord, MissingDatasetTypeError
+    DimensionRecord, MissingDatasetTypeError, EmptyQueryResultError
 from lsst.daf.butler import Config as dafButlerConfig
 import lsst.dax.apdb
 import lsst.geom
@@ -650,7 +650,7 @@ class MiddlewareInterface:
                     else:
                         all_datasets.update(self._find_generic_datasets(
                             dstype, self.visit.detector, self.visit.filters))
-                except _MissingDatasetError:
+                except EmptyQueryResultError:
                     _log.warning("Found no source datasets of type %s.", type_name)
                     present_types.remove(type_name)
 
@@ -789,13 +789,11 @@ class MiddlewareInterface:
             where="htm7.region OVERLAPS search_region",
             bind={"search_region": region},
             find_first=True,
-            explain=False,
+            explain=True,
             with_dimension_records=True,
         ))
         # Trace3 because, in many contexts, src_datasets is too large to print.
         _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
-        if not src_datasets:
-            raise _MissingDatasetError("Source repo query found no matches.")
         # Don't cache refcats
         known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
         missing = src_datasets - known_datasets
@@ -838,13 +836,11 @@ class MiddlewareInterface:
             where="patch.region OVERLAPS search_region",
             bind={"search_region": region},
             find_first=True,
-            explain=False,
+            explain=True,
             with_dimension_records=True,
         ))
         # Trace3 because, in many contexts, src_datasets is too large to print.
         _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
-        if not src_datasets:
-            raise _MissingDatasetError("Source repo query found no matches.")
         # Don't cache templates
         known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
         missing = src_datasets - known_datasets
@@ -893,10 +889,10 @@ class MiddlewareInterface:
                 .where(expr[dataset_type.name].timespan.overlaps(calib_date))
                 .with_dimension_records()
             )
+            if not src_datasets:
+                raise EmptyQueryResultError(list(query.explain_no_results()))
         # Trace3 because, in many contexts, datasets is too large to print.
         _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
-        if not src_datasets:
-            raise _MissingDatasetError("Source repo query found no matches.")
         self._cache_datasets(src_datasets)
         known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
         missing = src_datasets - known_datasets
@@ -936,13 +932,11 @@ class MiddlewareInterface:
             collections=self.instrument.makeUmbrellaCollectionName(),
             data_id=data_id,
             find_first=True,
-            explain=False,
+            explain=True,
             with_dimension_records=True,
         ))
         # Trace3 because, in many contexts, src_datasets is too large to print.
         _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
-        if not src_datasets:
-            raise _MissingDatasetError("Source repo query found no matches.")
         self._cache_datasets(src_datasets)
         known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
         missing = src_datasets - known_datasets
@@ -988,14 +982,12 @@ class MiddlewareInterface:
                 new_datasets = set(self.read_central_butler.query_datasets(
                     dataset_type,
                     collections=run,
-                    explain=False,
+                    explain=True,
                     with_dimension_records=True,
                 ))
                 datasets.update(new_datasets)
         # Trace3 because, in many contexts, datasets is too large to print.
         _log_trace3.debug("Init datasets: %s", datasets)
-        if not datasets:
-            raise _MissingDatasetError("Source repo query found no matches.")
 
         for run, n_datasets in self._count_by_key(datasets, lambda ref: ref.run):
             _log.debug("Found %d new init-output datasets from %s.", n_datasets, run)
@@ -1910,13 +1902,6 @@ class MiddlewareInterface:
             if excess_datasets:
                 _log_trace.debug("Clearing out %s.", excess_datasets)
                 self.butler.pruneDatasets(excess_datasets, disassociate=True, unstore=True, purge=True)
-
-
-class _MissingDatasetError(RuntimeError):
-    """An exception flagging that required datasets were not found
-    where expected.
-    """
-    pass
 
 
 _DatasetResults: typing.TypeAlias = collections.abc.Iterable[lsst.daf.butler.DatasetRef]
