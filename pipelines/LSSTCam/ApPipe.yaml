@@ -20,6 +20,10 @@ tasks:
     class: lsst.ip.diffim.detectAndMeasure.DetectAndMeasureTask
     config:
       run_sattle: True
+  filterDiaSourcePostReliability:  # To be moved to ap_pipe
+    class: lsst.ap.association.FilterDiaSourceReliabilityTask
+    config:
+      minReliability: 0.5
   associateApdb:
     class: lsst.ap.association.DiaPipelineTask
     config:
