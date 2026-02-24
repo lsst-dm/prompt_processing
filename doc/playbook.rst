@@ -163,11 +163,11 @@ Please note that the tag does not include a ``v`` at the beginning.
 
 .. _Butler Writer Service: https://github.com/lsst-dm/prompt_processing_butler_writer/blob/main/CHANGELOG.md
 
-.. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/python/lsst/sdm/schemas/apdb.yaml#L4
+.. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/python/lsst/sdm/schemas/apdb.yaml#L3
 
-.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L87-L91
+.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L95-L99
 
-.. _ApdbCassandraReplica: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandraReplica.py#L52-L56
+.. _ApdbCassandraReplica: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandraReplica.py#L54-L58
 
 .. _raw microservice: https://github.com/lsst-dm/embargo-butler/tags
 
