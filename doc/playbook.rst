@@ -34,7 +34,7 @@ To build the base container:
 
   #. The branch whose container definition will be used
   #. The label of the Science Pipelines container.
-  #. If using a quick-stack build, the Science Pipelines Container should be set to `ghcr.io/lsst/quick-stack <https://ghcr.io/lsst/quick-stack>`_.
+  #. If using a quick-stack build, the Science Pipelines Container should be set to `ghcr.io/lsst/quick-stack <https://ghcr.io/lsst/quick-stack>`_ [private repo, requires login].
 
   New containers built from ``main`` are tagged with the corresponding Science Pipelines release (plus ``w_latest`` or ``d_latest`` if the release was requested by that name).
   For automatic ``main`` builds, or if the corresponding box in the manual build is checked, the new container also has the ``latest`` label.
@@ -75,7 +75,7 @@ This is the only situation in which a change to ``BASE_TAG_LIST`` should be comm
 It will sometimes be necessary to compile a container with the LSST Science Pipelines manually (called a Quick-Stack build).
 Generally, this only occurs if the intended daily or weekly stack does not compile.
 In these cases, the Science Pipelines themselves must be built ahead of the base container.
-Instructions for building the Science Pipelines are `here <https://github.com/lsst/gha_build/blob/main/README.md>`_.
+Instructions for building the Science Pipelines are `here <https://github.com/lsst/gha_build/blob/main/README.md>`_ [private repo, requires login].
 For Prompt Processing, we only need to build ``lsst_distrib``.
 
 Release Management
