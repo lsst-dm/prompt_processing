@@ -34,7 +34,7 @@ To build the base container:
 
   #. The branch whose container definition will be used
   #. The label of the Science Pipelines container.
-  #. If using a quick-stack build, the Science Pipelines Container should be set to `ghcr.io/lsst/quick-stack <https://ghcr.io/lsst/quick-stack>`_.
+  #. If using a quick-stack build, the Science Pipelines Container should be set to `ghcr.io/lsst/quick-stack <https://ghcr.io/lsst/quick-stack>`_ [private repo, requires login].
 
   New containers built from ``main`` are tagged with the corresponding Science Pipelines release (plus ``w_latest`` or ``d_latest`` if the release was requested by that name).
   For automatic ``main`` builds, or if the corresponding box in the manual build is checked, the new container also has the ``latest`` label.
@@ -75,7 +75,7 @@ This is the only situation in which a change to ``BASE_TAG_LIST`` should be comm
 It will sometimes be necessary to compile a container with the LSST Science Pipelines manually (called a Quick-Stack build).
 Generally, this only occurs if the intended daily or weekly stack does not compile.
 In these cases, the Science Pipelines themselves must be built ahead of the base container.
-Instructions for building the Science Pipelines are `here <https://github.com/lsst/gha_build/blob/main/README.md>`_.
+Instructions for building the Science Pipelines are `here <https://github.com/lsst/gha_build/blob/main/README.md>`_ [private repo, requires login].
 For Prompt Processing, we only need to build ``lsst_distrib``.
 
 Release Management
@@ -110,7 +110,7 @@ Please note that the tag does not include a ``v`` at the beginning.
    For the ``prompt_processing`` service:
 
    * Incompatibility with old fanned-out ``nextVisit`` messages (almost any change to ``Visit`` qualifies)
-   * Incompatibility with an old `APDB schema`_, `ApdbSql`_, `ApdbCassandra`_, or `ApdbCassandraReplica`_ version (see `DMTN-269`_ for the distinction)
+   * Incompatibility with an old `APDB schema`_, `ApdbCassandra`_, or `ApdbCassandraReplica`_ version (see `DMTN-269`_ for the distinction)
    * Incompatibility with an old `Butler dimensions-config`_ version
    * Incompatibility with an old `Butler Writer Service`_ version
    * Incompatibility with an old Sattle version
@@ -141,7 +141,7 @@ Please note that the tag does not include a ``v`` at the beginning.
 
    * Any specific motivation for the release (for example, including a specific feature, preparing for a specific observing run)
    * Science Pipelines version and rubin-env version
-   * Supported `APDB schema`_ and `ApdbSql`_/ `ApdbCassandra`_/ `ApdbCassandraReplica`_ versions (see `DMTN-269`_ for rationale).
+   * Supported `APDB schema`_ and `ApdbCassandra`_/ `ApdbCassandraReplica`_ versions (see `DMTN-269`_ for rationale).
      A stack quoting a given minor version is compatible with *older* APDBs of that major version but not necessarily newer ones; for example, a release whose baseline is APDB schema 1.4.0 can access a schema 1.0.0 or 1.4.1 database, but not schema 1.5.
    * Supported `Butler dimensions-config`_ versions
    * Supported `Butler Writer Service`_ versions
@@ -163,13 +163,11 @@ Please note that the tag does not include a ``v`` at the beginning.
 
 .. _Butler Writer Service: https://github.com/lsst-dm/prompt_processing_butler_writer/blob/main/CHANGELOG.md
 
-.. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/python/lsst/sdm/schemas/apdb.yaml#L4
+.. _APDB schema: https://github.com/lsst/sdm_schemas/blob/main/python/lsst/sdm/schemas/apdb.yaml#L3
 
-.. _ApdbSql: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/sql/apdbSql.py#L71-L75
+.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L95-L99
 
-.. _ApdbCassandra: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandra.py#L87-L91
-
-.. _ApdbCassandraReplica: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandraReplica.py#L52-L56
+.. _ApdbCassandraReplica: https://github.com/lsst/dax_apdb/blob/main/python/lsst/dax/apdb/cassandra/apdbCassandraReplica.py#L54-L58
 
 .. _raw microservice: https://github.com/lsst-dm/embargo-butler/tags
 
@@ -713,7 +711,7 @@ To restore the APDB to a clean state, add the ``--drop`` option to  ``apdb-cli c
 Checking the APDB Version
 -------------------------
 
-If you have credentials for `rubin-pp-dev-users` configured (see `Buckets`_), you can identify an APDB's schema and ApdbSql/ApdbCassandra versions with ``apdb-cli``.
+If you have credentials for `rubin-pp-dev-users` configured (see `Buckets`_), you can identify an APDB's schema and ApdbCassandra versions with ``apdb-cli``.
 For example:
 
 .. code-block:: sh
