@@ -25,6 +25,8 @@ import re
 import unittest
 import warnings
 
+from astropy.io import fits
+
 from lsst.resources import ResourcePath, s3utils
 
 from shared.raw import (
@@ -118,6 +120,25 @@ class LsstBase(RawBase):
             warnings.filterwarnings("ignore", "S3 does not support flushing objects", UserWarning)
             with json_path.open("w") as f:
                 json.dump(dict(GROUPID=self.group, CURINDEX=self.snap + 1), f)
+        self.assertTrue(is_path_consistent(path, self.visit))
+        self.assertEqual(get_group_id_from_oid(path), self.group)
+
+    def test_snap_matching_no_json(self):
+        """Test that a FITS file can be used to get group ID without
+        JSON sidecar.
+        """
+        path = get_raw_path(self.instrument, self.detector, self.group,
+                            self.snap, self.exposure, self.filter)
+        fits_path = ResourcePath(f"s3://{self.bucket}").join(path)
+
+        hdu = fits.PrimaryHDU()
+        hdu.header['GROUPID'] = self.group
+        hdu.header['CURINDEX'] = self.snap + 1
+        hdul = fits.HDUList([hdu])
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "S3 does not support flushing objects", UserWarning)
+            with fits_path.open("wb") as f:
+                hdul.writeto(f)
         self.assertTrue(is_path_consistent(path, self.visit))
         self.assertEqual(get_group_id_from_oid(path), self.group)
 
