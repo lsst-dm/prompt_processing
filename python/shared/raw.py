@@ -47,6 +47,7 @@ import botocore.exceptions
 import pydantic_core
 import requests
 
+from astro_metadata_translator.file_helpers import read_basic_metadata_from_file
 from lsst.obs.lsst import LsstCam, LsstCamImSim, LsstComCam, LsstComCamSim
 from lsst.obs.lsst.translators.lsst import LsstBaseTranslator
 from lsst.resources import ResourcePath
@@ -359,7 +360,7 @@ def get_group_id_from_oid(oid: str) -> str:
 
     This is more complex for LSST cameras because the information is not
     extractable from the oid.  Instead, we have to look at a "sidecar JSON"
-    file to retrieve the group id.
+    file to retrieve the group id, with a fallback of looking at the fits.
 
     Parameters
     ----------
@@ -384,33 +385,38 @@ def get_group_id_from_oid(oid: str) -> str:
         m = re.match(LSST_REGEXP, oid)
     if not m:
         raise ValueError(f"{oid} could not be parsed.")
-    sidecar = ResourcePath("s3://" + os.environ["IMAGE_BUCKET"]).join(
-        # Can't use updatedExtension because we may have something like .fits.fz
-        oid.removesuffix(m["extension"])
-        + ".json"
-    )
-    group_id = _get_group_id_from_sidecar(sidecar)
+
+    group_id = _get_group_id_from_file(oid, m["extension"])
     return group_id
 
 
 @retry(4, botocore.exceptions.ClientError, wait=5)
-def _get_group_id_from_sidecar(sidecar):
-    """Read the group id from a sidecar JSON file.
+def _get_group_id_from_file(oid: str, extension: str) -> str:
+    """Read the group id from the file.
 
-    The sidecar file normally show up before the image. If not present, wait a
+    Typically for LSST cameras the sidecar JSON file is read for the group id.
+    The sidecar file normally shows up before the image. If not present, wait a
     bit but not too long for the file. Sometimes, the object store gives other
     transient ClientErrors, which are retried in a longer timescale.
+    If it cannot be read, fall back to read the image fits file.
 
     Parameters
     ----------
-    sidecar : `lsst.resources.ResourcePath`
-        URI to a sidecar JSON file.
+    oid : `str`
+        A pathname to an image object.
+    extension : `str`
+        The file extension (e.g., ".fits", ".fits.fz").
 
     Returns
     -------
     group_id : `str`
         The group identifier as a string.
     """
+    sidecar = ResourcePath("s3://" + os.environ["IMAGE_BUCKET"]).join(
+        # Can't use updatedExtension because we may have something like .fits.fz
+        oid.removesuffix(extension)
+        + ".json"
+    )
     count = 0
     while count <= 20:
         try:
@@ -420,7 +426,11 @@ def _get_group_id_from_sidecar(sidecar):
         except FileNotFoundError:
             count += 1
             time.sleep(0.1)
-    raise RuntimeError(f"Unable to retrieve JSON sidecar: {sidecar}")
+
+    _log.debug(f"Unable to retrieve JSON sidecar: {sidecar}; falling back to read fits.")
+    image = ResourcePath("s3://" + os.environ["IMAGE_BUCKET"]).join(oid)
+    md = read_basic_metadata_from_file(image, 0)
+    return md.get("GROUPID", "")
 
 
 def get_raw_path(instrument, detector, group, snap, exposure_id, physical_filter):
