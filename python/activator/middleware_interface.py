@@ -572,10 +572,22 @@ class MiddlewareInterface:
                     region = None
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
-                    all_datasets, calib_datasets = self._find_data_to_preload(region)
+                    all_datasets, calib_datasets = self._find_pipeline_inputs(region)
+                    present = set(_find_datasets_in_repo(self.butler, all_datasets))
+                    missing = all_datasets - present
+                    missing_calibs = calib_datasets - present
+                    _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
+                                     len(all_datasets), len(present), len(missing))
+                    # Do this last, to avoid wasting evictions if any of the above code fails
+                    # Datasets in output collections are uncacheable because the runs will be deleted
+                    output_runs = {runs.get_output_run(self.instrument, self._deployment, f, self._day_obs)
+                                   for f in self.get_combined_pipeline_files()}
+                    cacheable = {d for d in all_datasets
+                                 if not d.datasetType.dimensions.spatial and d.run not in output_runs}
+                    self._cache_datasets(cacheable)
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
-                    self._transfer_data(all_datasets, calib_datasets)
+                    self._transfer_data(missing, missing_calibs)
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerPreprocessTime"):
                     try:
@@ -605,11 +617,10 @@ class MiddlewareInterface:
                         group=self.visit.groupId)
 
     @connect.retry(2, SQL_EXCEPTIONS, wait=repo_retry)
-    def _find_data_to_preload(self, region):
-        """Identify the datasets to export from the central repo.
+    def _find_pipeline_inputs(self, region):
+        """Identify the datasets needed for pipeline execution.
 
-        The returned datasets are a superset of those needed by any pipeline,
-        but exclude any datasets that are already present in the local repo.
+        The returned datasets are a superset of those needed by any pipeline.
 
         Parameters
         ----------
@@ -619,7 +630,7 @@ class MiddlewareInterface:
         Returns
         -------
         datasets : set [`~lsst.daf.butler.DatasetRef`]
-            The datasets to be exported, after any filtering.
+            The datasets needed by at least one pipeline.
         calibs : set [`~lsst.daf.butler.DatasetRef`]
             The subset of ``datasets`` representing calibs.
         """
@@ -769,7 +780,7 @@ class MiddlewareInterface:
                 for task in pipeline.tasks.values() for edge in task.iter_all_outputs()}
 
     def _find_refcats(self, dataset_type, region):
-        """Identify the refcats to export from the central butler.
+        """Identify the refcats needed for pipeline runs.
 
         Parameters
         ----------
@@ -781,7 +792,7 @@ class MiddlewareInterface:
         Returns
         -------
         refcats : iterable [`lsst.daf.butler.DatasetRef`]
-            The refcats to be exported, after any filtering.
+            The refcats needed to run pipelines on ``region``.
         """
         src_datasets = set(self.read_central_butler.query_datasets(
             dataset_type,
@@ -794,17 +805,11 @@ class MiddlewareInterface:
         ))
         # Trace3 because, in many contexts, src_datasets is too large to print.
         _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
-        # Don't cache refcats
-        known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
-        missing = src_datasets - known_datasets
-        _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
-                         len(src_datasets), len(known_datasets), len(missing))
-        if missing:
-            _log.debug("Found %d new refcat datasets from catalog '%s'.", len(missing), dataset_type.name)
-        return missing
+        _log.debug("Found %d refcat datasets from catalog '%s'.", len(src_datasets), dataset_type.name)
+        return src_datasets
 
     def _find_templates(self, dataset_type, region, physical_filter):
-        """Identify the templates to export from the central butler.
+        """Identify the templates needed for pipeline runs.
 
         Parameters
         ----------
@@ -819,7 +824,7 @@ class MiddlewareInterface:
         Returns
         -------
         templates : iterable [`lsst.daf.butler.DatasetRef`]
-            The datasets to be exported, after any filtering.
+            The templates needed to run pipelines on ``region``.
         """
         if not physical_filter:
             _log.warning("Preloading templates is not supported for visits without a specific filter.")
@@ -841,17 +846,11 @@ class MiddlewareInterface:
         ))
         # Trace3 because, in many contexts, src_datasets is too large to print.
         _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
-        # Don't cache templates
-        known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
-        missing = src_datasets - known_datasets
-        _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
-                         len(src_datasets), len(known_datasets), len(missing))
-        if missing:
-            _log.debug("Found %d new template datasets of type %s.", len(missing), dataset_type.name)
-        return missing
+        _log.debug("Found %d template datasets of type %s.", len(src_datasets), dataset_type.name)
+        return src_datasets
 
     def _find_calibs(self, dataset_type, detector_id, physical_filter):
-        """Identify the calibs to export from the central butler.
+        """Identify the calibs needed for pipeline runs.
 
         Parameters
         ----------
@@ -866,7 +865,7 @@ class MiddlewareInterface:
         Returns
         -------
         calibs : iterable [`lsst.daf.butler.DatasetRef`]
-            The calibs to be exported, after any filtering.
+            The calibs needed for running pipelines on the current visit.
         """
         # TAI observation start time should be used for calib validity range.
         calib_date = astropy.time.Time(self.visit.private_sndStamp, format="unix_tai")
@@ -893,17 +892,11 @@ class MiddlewareInterface:
                 raise EmptyQueryResultError(list(query.explain_no_results()))
         # Trace3 because, in many contexts, datasets is too large to print.
         _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
-        self._cache_datasets(src_datasets)
-        known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
-        missing = src_datasets - known_datasets
-        _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
-                         len(src_datasets), len(known_datasets), len(missing))
-        if missing:
-            _log.debug("Found %d new calib datasets of type '%s'.", len(missing), dataset_type.name)
-        return missing
+        _log.debug("Found %d calib datasets of type '%s'.", len(src_datasets), dataset_type.name)
+        return src_datasets
 
     def _find_generic_datasets(self, dataset_type, detector_id, physical_filter):
-        """Identify datasets to export from the central butler.
+        """Identify non-calib, non-spatial datasets needed for pipeline runs.
 
         Parameters
         ----------
@@ -918,7 +911,7 @@ class MiddlewareInterface:
         Returns
         -------
         datasets : iterable [`lsst.daf.butler.DatasetRef`]
-            The datasets to be exported, after any filtering.
+            The datasets needed for running pipelines on the current visit.
         """
         data_id = {"instrument": self.instrument.getName(),
                    "skymap": self.skymap_name,
@@ -937,14 +930,8 @@ class MiddlewareInterface:
         ))
         # Trace3 because, in many contexts, src_datasets is too large to print.
         _log_trace3.debug("%s: %s", dataset_type.name, src_datasets)
-        self._cache_datasets(src_datasets)
-        known_datasets = set(_find_datasets_in_repo(self.butler, src_datasets))
-        missing = src_datasets - known_datasets
-        _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
-                         len(src_datasets), len(known_datasets), len(missing))
-        if missing:
-            _log.debug("Found %d new datasets of type %s.", len(missing), dataset_type.name)
-        return missing
+        _log.debug("Found %d datasets of type %s.", len(src_datasets), dataset_type.name)
+        return src_datasets
 
     def _get_init_output_types(self, pipeline_file):
         """Identify the specific init-output types to query.
@@ -990,7 +977,7 @@ class MiddlewareInterface:
         _log_trace3.debug("Init datasets: %s", datasets)
 
         for run, n_datasets in self._count_by_key(datasets, lambda ref: ref.run):
-            _log.debug("Found %d new init-output datasets from %s.", n_datasets, run)
+            _log.debug("Found %d init-output datasets from %s.", n_datasets, run)
         return datasets
 
     @connect.retry(2, DATASTORE_EXCEPTIONS, wait=repo_retry)
