@@ -1098,7 +1098,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self._assert_in_collection(butler, "*", "bias", calib_data_id_2)
         self._assert_in_collection(butler, "*", "bias", calib_data_id_3)
 
-        self.interface.clean_local_repo({raw_data_id["exposure"]})
+        self.interface.clean_local_repo()
         self._assert_not_in_collection(butler, "*", "raw", raw_data_id)
         self._assert_not_in_collection(butler, "*", "src", processed_data_id)
         self._assert_not_in_collection(butler, "*", "calexp", processed_data_id)

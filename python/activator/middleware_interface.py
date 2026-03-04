@@ -1834,30 +1834,36 @@ class MiddlewareInterface:
                                   ) for t in matching_types
         )
 
-    def clean_local_repo(self, exposure_ids: set[int]) -> None:
+    def clean_local_repo(self) -> None:
         """Remove local repo content that is only needed for a single visit.
 
         This includes raws and pipeline outputs.
-
-        Parameter
-        ---------
-        exposure_ids : `set` [`int`]
-            Identifiers of the exposures to be removed.
         """
         with lsst.utils.timer.time_this(_log, msg="clean_local_repo", level=logging.DEBUG):
             self.butler.registry.refresh()
-            if exposure_ids:
-                raws = self.butler.query_datasets(
-                    'raw',
-                    collections=self.instrument.makeDefaultRawIngestRunName(),
-                    where=f"exposure in ({', '.join(str(x) for x in exposure_ids)})",
-                    find_first=False,
-                    explain=False,  # Raws might not have been ingested.
-                    instrument=self.visit.instrument,
-                    detector=self.visit.detector,
-                )
-                _log_trace.debug("Removing %d raws for exposures %s.", len(raws), exposure_ids)
-                self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
+
+            # Clean out raws
+            raws = self.butler.query_datasets(
+                "raw",
+                collections=self.instrument.makeDefaultRawIngestRunName(),
+                find_first=False,
+                explain=False,  # Raws might not have been ingested.
+                instrument=self.visit.instrument,
+                detector=self.visit.detector,
+            )
+            n_raws = len(raws)
+            if n_raws == 0:
+                _log_trace.debug("No raws to remove for detector %s.", self.visit.detector)
+            else:
+                _log_trace.debug("Removing %d raw(s) for detector %s.", n_raws, self.visit.detector)
+                try:
+                    self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
+                except Exception:
+                    _log_trace.exception("Raw removal failed for detector %s.", self.visit.detector)
+                    raise
+                _log_trace.debug(
+                    "Successfully removed %d raw(s) for detector %s.", n_raws, self.visit.detector)
+
             # Outputs are all in their own runs, so just drop them.
             preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
             _remove_run_completely(self.butler, preload_run)

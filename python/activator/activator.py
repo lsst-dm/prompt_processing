@@ -614,7 +614,7 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
                 if not mwi.get_main_pipeline_files():
                     raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
                 # TODO: pipeline execution requires a clean run until DM-38041.
-                cleanups.callback(mwi.clean_local_repo, expid_set)
+                cleanups.callback(mwi.clean_local_repo)
                 # Copy calibrations for this detector/visit
                 mwi.prep_butler()
 
