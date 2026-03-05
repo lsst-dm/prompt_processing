@@ -231,9 +231,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.read_butler = Butler(self.central_repo,
                                   writeable=False,
                                   inferDefaults=False)
+        self.addCleanup(self.read_butler.close)
         self.write_butler = Butler(self.central_repo,
                                    writeable=False,  # A safety in case the tests try to overwrite testdir
                                    inferDefaults=False)
+        self.addCleanup(self.write_butler.close)
         self.input_data = os.path.join(self.data_dir, "input_data")
         self.local_repo = make_local_repo(tempfile.gettempdir(), self.read_butler, instname)
         self.local_cache = DatasetCache(3)
@@ -296,28 +298,35 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstCam", writeable=True),
                        get_central_butler(self.central_repo, instname, writeable=True),
                        ]:
-            # TODO: better way to test repo location?
-            self.assertTrue(
-                butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
-                .startswith(self.central_repo))
-            self.assertTrue(butler.isWriteable())
+            try:
+                # TODO: better way to test repo location?
+                self.assertTrue(
+                    butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
+                    .startswith(self.central_repo))
+                self.assertTrue(butler.isWriteable())
+            finally:
+                butler.close()
         for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstCam", writeable=False),
                        get_central_butler(self.central_repo, instname, writeable=False),
                        ]:
-            self.assertTrue(
-                butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
-                .startswith(self.central_repo))
-            self.assertFalse(butler.isWriteable())
+            try:
+                self.assertTrue(
+                    butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
+                    .startswith(self.central_repo))
+                self.assertFalse(butler.isWriteable())
+            finally:
+                butler.close()
 
     def test_make_local_repo(self):
         for inst in [instname, "lsst.obs.lsst.LsstCam"]:
-            with make_local_repo(tempfile.gettempdir(), Butler(self.central_repo), inst) as repo_dir:
+            with (Butler(self.central_repo) as central_butler,
+                  make_local_repo(tempfile.gettempdir(), central_butler, inst) as repo_dir):
                 self.assertTrue(os.path.exists(repo_dir))
-                butler = Butler(repo_dir)
-                self.assertEqual([x.dataId for x in butler.query_dimension_records("instrument")],
-                                 [DataCoordinate.standardize({"instrument": instname},
-                                                             universe=butler.dimensions)])
-                self.assertIn(f"{instname}/defaults", butler.collections.query("*"))
+                with Butler(repo_dir) as butler:
+                    self.assertEqual([x.dataId for x in butler.query_dimension_records("instrument")],
+                                     [DataCoordinate.standardize({"instrument": instname},
+                                                                 universe=butler.dimensions)])
+                    self.assertIn(f"{instname}/defaults", butler.collections.query("*"))
             self.assertFalse(os.path.exists(repo_dir))
 
     def test_init(self):
@@ -1308,7 +1317,6 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # Copy test data to fresh Butler to allow write tests.
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         data_repo = os.path.join(data_dir, "central_repo")
-        data_butler = Butler(data_repo, writeable=False)
         self.central_repo = tempfile.TemporaryDirectory()
         # TemporaryDirectory warns on leaks
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, self.central_repo)
@@ -1316,26 +1324,27 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # Butler.transfer_from can't easily copy collections, so use
         # export/import instead.
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as export_file:
-            with data_butler.export(filename=export_file.name) as export:
-                for dtype in data_butler.registry.queryDatasetTypes(...):
-                    empty_types = []
-                    try:
-                        refs = data_butler.query_datasets(dtype, collections=...,
-                                                          find_first=False, explain=True)
-                    except EmptyQueryResultError:
-                        empty_types.append(dtype)
-                    export.saveDatasets(refs)
-                for collection in data_butler.collections.query("*"):
-                    export.saveCollection(collection)
-            dimension_config = data_butler.dimensions.dimensionConfig
-            central_butler = Butler(Butler.makeRepo(self.central_repo.name, dimensionConfig=dimension_config),
-                                    writeable=True,
-                                    )
-            central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
+            with Butler(data_repo, writeable=False) as data_butler:
+                with data_butler.export(filename=export_file.name) as export:
+                    for dtype in data_butler.registry.queryDatasetTypes(...):
+                        empty_types = []
+                        try:
+                            refs = data_butler.query_datasets(dtype, collections=...,
+                                                              find_first=False, explain=True)
+                        except EmptyQueryResultError:
+                            empty_types.append(dtype)
+                        export.saveDatasets(refs)
+                    for collection in data_butler.collections.query("*"):
+                        export.saveCollection(collection)
+                dimension_config = data_butler.dimensions.dimensionConfig
+            with Butler(Butler.makeRepo(self.central_repo.name, dimensionConfig=dimension_config),
+                        writeable=True,
+                        ) as central_butler:
+                central_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
 
-            # Register dataset types that do not have datasets
-            for dtype in empty_types:
-                central_butler.registry.registerDatasetType(dtype)
+                # Register dataset types that do not have datasets
+                for dtype in empty_types:
+                    central_butler.registry.registerDatasetType(dtype)
 
     def setUp(self):
         self._create_copied_repo()
@@ -1343,10 +1352,14 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                              instrument=instname,
                              skymap=skymap_name,
                              writeable=False)
+        # read_butler is never referenced explicitly, but MiddlewareInterface
+        # refs keep it alive for the duration of the test.
+        self.addCleanup(read_butler.close)
         self.write_butler = Butler(self.central_repo.name,
                                    instrument=instname,
                                    skymap=skymap_name,
                                    writeable=True)
+        self.addCleanup(self.write_butler.close)
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.input_data = os.path.join(data_dir, "input_data")
 
@@ -1516,71 +1529,75 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         """Test that extra collections in the chain will not lead to MissingCollectionError
         even if they do not carry useful data.
         """
-        write_butler = Butler(self.central_repo.name, writeable=True)
-        write_butler.collections.register("emptyrun", CollectionType.RUN)
-        write_butler.collections.prepend_chain("refcats", ["emptyrun"])
-        read_butler = Butler(self.central_repo.name, writeable=False)
+        with (Butler(self.central_repo.name, writeable=True) as write_butler,
+              Butler(self.central_repo.name, writeable=False) as read_butler):
+            write_butler.collections.register("emptyrun", CollectionType.RUN)
+            write_butler.collections.prepend_chain("refcats", ["emptyrun"])
 
-        # Avoid collisions with other calls to prep_butler
-        with make_local_repo(tempfile.gettempdir(), read_butler, instname) as local_repo:
-            butler_writer = DirectButlerWriter(write_butler)
-            interface = MiddlewareInterface(
-                read_butler,
-                butler_writer,
-                self.input_data,
-                dataclasses.replace(self.next_visit, groupId="42"),
-                pre_pipelines_empty,
-                pipelines,
-                skymap_name,
-                local_repo,
-                DatasetCache(3, {"the_monster_20250219": 10, "template_coadd": 30}),
-                prefix="file://",
-            )
-            with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
-                interface.prep_butler()
+            # Avoid collisions with other calls to prep_butler
+            with make_local_repo(tempfile.gettempdir(), read_butler, instname) as local_repo:
+                butler_writer = DirectButlerWriter(write_butler)
+                interface = MiddlewareInterface(
+                    read_butler,
+                    butler_writer,
+                    self.input_data,
+                    dataclasses.replace(self.next_visit, groupId="42"),
+                    pre_pipelines_empty,
+                    pipelines,
+                    skymap_name,
+                    local_repo,
+                    DatasetCache(3, {"the_monster_20250219": 10, "template_coadd": 30}),
+                    prefix="file://",
+                )
+                with unittest.mock.patch("activator.middleware_interface."
+                                         "MiddlewareInterface._run_preprocessing"):
+                    interface.prep_butler()
 
-            self.assertEqual(
-                self._count_datasets(interface.butler, ["the_monster_20250219"], f"{instname}/defaults"),
-                2)
-            self.assertIn(
-                "emptyrun",
-                interface.butler.collections.query("refcats", flatten_chains=True))
+                self.assertEqual(
+                    self._count_datasets(interface.butler, ["the_monster_20250219"], f"{instname}/defaults"),
+                    2)
+                self.assertIn(
+                    "emptyrun",
+                    interface.butler.collections.query("refcats", flatten_chains=True))
 
     def test_export_outputs(self):
         self.interface.export_outputs({self.raw_data_id["exposure"]})
         self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
-        central_butler = Butler(self.central_repo.name, writeable=False)
-        self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.preprocessing_run),
-                         2)
-        self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.output_run), 0)
-        self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.preprocessing_run), 0)
-        self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_run), 2)
-        # Should be able to look up datasets by both visit and exposure
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),
-            1)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.second_data_id),
-            1)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.processed_data_id),
-            1)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, ["calexp"], self.output_run,
-                                         self.second_processed_data_id),
-            1)
-        # Did not export calibs or other inputs.
-        self.assertEqual(
-            self._count_datasets(central_butler,
-                                 ["bias", "the_monster_20250219", "skyMap"]
-                                 + list(central_butler.registry.queryDatasetTypes("*Coadd")),
-                                 self.output_run),
-            0)
-        # Nothing placed in "input" collections.
-        self.assertEqual(
-            self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
-            0)
+        with Butler(self.central_repo.name, writeable=False) as central_butler:
+            self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"],
+                                                  self.preprocessing_run),
+                             2)
+            self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.output_run), 0)
+            self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.preprocessing_run), 0)
+            self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_run), 2)
+            # Should be able to look up datasets by both visit and exposure
+            self.assertEqual(
+                self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),
+                1)
+            self.assertEqual(
+                self._count_datasets_with_id(central_butler, ["calexp"], self.output_run,
+                                             self.second_data_id),
+                1)
+            self.assertEqual(
+                self._count_datasets_with_id(central_butler, ["calexp"], self.output_run,
+                                             self.processed_data_id),
+                1)
+            self.assertEqual(
+                self._count_datasets_with_id(central_butler, ["calexp"], self.output_run,
+                                             self.second_processed_data_id),
+                1)
+            # Did not export calibs or other inputs.
+            self.assertEqual(
+                self._count_datasets(central_butler,
+                                     ["bias", "the_monster_20250219", "skyMap"]
+                                     + list(central_butler.registry.queryDatasetTypes("*Coadd")),
+                                     self.output_run),
+                0)
+            # Nothing placed in "input" collections.
+            self.assertEqual(
+                self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
+                0)
 
     def test_export_selected_outputs(self):
         # Export nothing
@@ -1590,18 +1607,20 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         with unittest.mock.patch.dict(os.environ, {"EXPORT_TYPE_REGEXP": "- calexp"}):
             self.second_interface.export_outputs({self.second_data_id["exposure"]})
 
-        central_butler = Butler(self.central_repo.name, writeable=False)
-        self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.preprocessing_run),
-                         0)
-        self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.output_run), 0)
-        self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.preprocessing_run), 0)
-        self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_run), 1)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),
-            0)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.second_data_id),
-            1)
+        with Butler(self.central_repo.name, writeable=False) as central_butler:
+            self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"],
+                                                  self.preprocessing_run),
+                             0)
+            self.assertEqual(self._count_datasets(central_butler, ["history_diaSource"], self.output_run), 0)
+            self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.preprocessing_run), 0)
+            self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_run), 1)
+            self.assertEqual(
+                self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),
+                0)
+            self.assertEqual(
+                self._count_datasets_with_id(central_butler, ["calexp"], self.output_run,
+                                             self.second_data_id),
+                1)
 
     def test_export_selected_outputs_invalid_config(self):
         # Bad config: export all
@@ -1609,8 +1628,8 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             with self.assertLogs(self.logger_name, level="ERROR") as logs:
                 self.interface.export_outputs({self.raw_data_id["exposure"]})
                 self.assertIn("Invalid EXPORT_TYPE_REGEXP", logs.output[0])
-        central_butler = Butler(self.central_repo.name, writeable=False)
-        self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_run), 1)
-        self.assertEqual(
-            self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),
-            1)
+        with Butler(self.central_repo.name, writeable=False) as central_butler:
+            self.assertEqual(self._count_datasets(central_butler, ["calexp"], self.output_run), 1)
+            self.assertEqual(
+                self._count_datasets_with_id(central_butler, ["calexp"], self.output_run, self.raw_data_id),
+                1)

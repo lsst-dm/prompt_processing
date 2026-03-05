@@ -60,8 +60,8 @@ class PipelinesConfigTest(unittest.TestCase):
         )
 
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        test_butler = lsst.daf.butler.Butler(os.path.join(data_dir, "central_repo"))
-        self.camera = test_butler.get("camera", instrument=instname, collections="LSSTCam/calib/unbounded")
+        with lsst.daf.butler.Butler(os.path.join(data_dir, "central_repo")) as butler:
+            self.camera = butler.get("camera", instrument=instname, collections="LSSTCam/calib/unbounded")
 
     def test_main_survey(self):
         config = PipelinesConfig([{"survey": "TestSurvey",

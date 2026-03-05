@@ -49,6 +49,7 @@ class DatasetCacheTest(unittest.TestCase):
         """
         # Don't use butler_tests.makeTestRepo; in-memory repos can't handle export or transfer_from
         butler = Butler(Butler.makeRepo(location), run="testRun")
+        cls.addClassCleanup(butler.close)
 
         butler_tests.addDataIdValue(butler, "instrument", "NotACam")
         butler_tests.addDataIdValue(butler, "physical_filter", "k2024", band="k")

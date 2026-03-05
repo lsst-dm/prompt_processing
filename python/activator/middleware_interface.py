@@ -97,6 +97,9 @@ def get_central_butler(central_repo: str, instrument_class: str, writeable: bool
     """Provide a Butler that can access the given repository and read and write
     data for the given instrument.
 
+    This function is guaranteed to return a new object on every call, and the
+    caller is responsible for managing and cleaning it up.
+
     Parameters
     ----------
     central_repo : `str`
@@ -110,7 +113,7 @@ def get_central_butler(central_repo: str, instrument_class: str, writeable: bool
     Returns
     -------
     butler : `lsst.daf.butler.Butler`
-        A Butler for ``central_repo`` pre-configured to load and store
+        A new Butler for ``central_repo`` pre-configured to load and store
         ``instrument_name`` data.
     """
     return Butler(central_repo,

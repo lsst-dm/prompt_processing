@@ -37,6 +37,7 @@ class KafkaButlerWriterTest(unittest.TestCase):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         repository_dir = os.path.join(data_dir, "central_repo")
         self.butler = Butler(repository_dir, writeable=False)
+        self.addCleanup(self.butler.close)
 
     def test_transfer_outputs(self):
         butler = self.butler
