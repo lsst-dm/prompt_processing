@@ -607,6 +607,8 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
                                       skymap,
                                       _get_local_repo().name,
                                       _get_local_cache())
+            # TODO: remove on DM-47743
+            cleanups.callback(mwi.close)
             if not mwi.get_main_pipeline_files():
                 raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
             # TODO: pipeline execution requires a clean run until DM-38041.

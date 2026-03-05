@@ -328,6 +328,7 @@ class MiddlewareInterface:
     #   guaranteed to contain concrete data, or even the dimensions
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
+    # self.butler is usable if and only if self._closed is False
 
     def __init__(self, read_butler: Butler, butler_writer: ButlerWriter, image_bucket: str,
                  visit: FannedOutVisit,
@@ -335,6 +336,7 @@ class MiddlewareInterface:
                  # TODO: encapsulate relationship between local_repo and local_cache
                  skymap: str, local_repo: str, local_cache: DatasetCache,
                  prefix: str = "s3://"):
+        self._closed = False
         self.visit = visit
 
         self._apdb_config = os.environ["CONFIG_APDB"]
@@ -368,6 +370,23 @@ class MiddlewareInterface:
 
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
+
+    def __del__(self):
+        """Safety-net finalizer for MiddlewareInterface.
+        """
+        if not self._closed:
+            _log.warning("%r has not been properly closed, attempting to close it.", self)
+        self.close()
+
+    # TODO: remove on DM-47743
+    def close(self):
+        """Clean up this object.
+
+        This method is idempotent.
+        """
+        if self.butler:
+            self.butler.close()
+        self._closed = True
 
     def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
         """Prepare the local butler to ingest into and process from.

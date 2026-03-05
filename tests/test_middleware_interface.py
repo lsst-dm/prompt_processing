@@ -293,6 +293,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                              pre_pipelines_empty, pipelines, skymap_name,
                                              self.local_repo.name, self.local_cache,
                                              prefix="file://")
+        self.addCleanup(self.interface.close)
 
     def test_get_butler(self):
         for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstCam", writeable=True),
@@ -332,11 +333,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_init(self):
         """Basic tests of the initialized interface object.
         """
-        # Ideas for things to test:
-        # * On init, does the right kind of butler get created, with the right
-        #   collections, etc?
-        # * On init, is the local butler repo purely in memory?
-
         # Check that the butler instance is properly configured.
         instruments = self.interface.butler.query_dimension_records("instrument")
         self.assertEqual(instname, instruments[0].name)
@@ -345,6 +341,13 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
         self.assertEqual(self.interface.rawIngestTask.config.transfer, "copy")
+
+    def test_close(self):
+        self.interface.close()
+        self.assertTrue(self.interface._closed)
+        # Should be idempotent
+        self.interface.close()
+        self.assertTrue(self.interface._closed)
 
     def _check_imports(self, butler, group, detector, expected_shards, have_filter=True, have_spatial=True):
         """Test that the butler has the expected supporting data.
@@ -563,14 +566,16 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                pre_pipelines_empty, pipelines, skymap_name,
                                                self.local_repo.name, self.local_cache,
                                                prefix="file://")
-
-        with unittest.mock.patch(
-            "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
-        ) as mock_pre:
-            second_interface.prep_butler()
-        expected_shards = {180002, 180177}
-        self._check_imports(second_interface.butler, group="2", detector=90,
-                            expected_shards=expected_shards)
+        try:
+            with unittest.mock.patch(
+                "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+            ) as mock_pre:
+                second_interface.prep_butler()
+            expected_shards = {180002, 180177}
+            self._check_imports(second_interface.butler, group="2", detector=90,
+                                expected_shards=expected_shards)
+        finally:
+            second_interface.close()
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
 
@@ -588,13 +593,16 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                               pre_pipelines_empty, pipelines, skymap_name,
                                               self.local_repo.name, self.local_cache,
                                               prefix="file://")
-        with unittest.mock.patch(
-            "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
-        ) as mock_pre:
-            third_interface.prep_butler()
-        expected_shards.update({180002, 180177})
-        self._check_imports(third_interface.butler, group="3", detector=91,
-                            expected_shards=expected_shards)
+        try:
+            with unittest.mock.patch(
+                "activator.middleware_interface.MiddlewareInterface._run_preprocessing"
+            ) as mock_pre:
+                third_interface.prep_butler()
+            expected_shards.update({180002, 180177})
+            self._check_imports(third_interface.butler, group="3", detector=91,
+                                expected_shards=expected_shards)
+        finally:
+            third_interface.close()
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
 
@@ -1423,6 +1431,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                              pre_pipelines_full, pipelines, skymap_name, local_repo.name,
                                              self.local_cache,
                                              prefix="file://")
+        self.addCleanup(self.interface.close)
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.interface.prep_butler()
         filename = "fakeRawImage.fits"
@@ -1444,6 +1453,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         self.second_interface = MiddlewareInterface(
             read_butler, butler_writer, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
             skymap_name, second_local_repo.name, self.second_local_cache, prefix="file://")
+        self.addCleanup(self.second_interface.close)
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.second_interface.prep_butler()
         date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
@@ -1549,16 +1559,20 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                     DatasetCache(3, {"the_monster_20250219": 10, "template_coadd": 30}),
                     prefix="file://",
                 )
-                with unittest.mock.patch("activator.middleware_interface."
-                                         "MiddlewareInterface._run_preprocessing"):
-                    interface.prep_butler()
+                try:
+                    with unittest.mock.patch("activator.middleware_interface."
+                                             "MiddlewareInterface._run_preprocessing"):
+                        interface.prep_butler()
 
-                self.assertEqual(
-                    self._count_datasets(interface.butler, ["the_monster_20250219"], f"{instname}/defaults"),
-                    2)
-                self.assertIn(
-                    "emptyrun",
-                    interface.butler.collections.query("refcats", flatten_chains=True))
+                    self.assertEqual(
+                        self._count_datasets(interface.butler, ["the_monster_20250219"],
+                                             f"{instname}/defaults"),
+                        2)
+                    self.assertIn(
+                        "emptyrun",
+                        interface.butler.collections.query("refcats", flatten_chains=True))
+                finally:
+                    interface.close()
 
     def test_export_outputs(self):
         self.interface.export_outputs({self.raw_data_id["exposure"]})
