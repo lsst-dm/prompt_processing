@@ -119,43 +119,43 @@ def main():
     group = get_last_group(dest_bucket, instrument, date)
     _log.debug(f"Last group {group}")
 
-    butler = Butler(configs["repo"])
-    visit_list = get_visit_list(
-        butler,
-        args.n_groups,
-        ordered=args.ordered,
-        instrument=instrument,
-        **configs["query"],
-    )
+    with Butler(configs["repo"]) as butler:
+        visit_list = get_visit_list(
+            butler,
+            args.n_groups,
+            ordered=args.ordered,
+            instrument=instrument,
+            **configs["query"],
+        )
 
-    # fork pools don't work well with connection pools, such as those used
-    # for Butler registry or S3.
-    context = multiprocessing.get_context("spawn")
-    max_processes = _get_max_processes()
-    # Use a shared pool to minimize initialization overhead. This has the
-    # benefit of letting the pool be initialized in parallel with the first
-    # exposure.
-    _log.debug("Uploading with %d processes...", max_processes)
-    with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool, \
-            tempfile.TemporaryDirectory() as temp_dir:
-        for visit in visit_list:
-            group = increment_group(instrument, group, 1)
-            refs = prepare_one_visit(kafka_url, group, butler, instrument, visit)
-            ref_dict = butler.get_many_uris(refs)
-            result = load_raw_to_temp(temp_dir, ref_dict, pool=pool)
-            _log.info(f"Slewing to group {group}, with {instrument} visit {visit}")
-            time.sleep(SLEW_INTERVAL)
-            _log.info(f"Taking exposure for group {group}")
-            time.sleep(EXPOSURE_INTERVAL)
-            _log.info(f"Finishing exposure for group {group}")
-            # Wait for the temp_dir loading to finish
-            if result["async_result"]:
-                result["async_result"].wait()
-            _log.info(f"Uploading detector images for group {group}")
-            upload_images(pool, temp_dir, group, ref_dict)
-        pool.close()
-        _log.info("Waiting for uploads to finish...")
-        pool.join()
+        # fork pools don't work well with connection pools, such as those used
+        # for Butler registry or S3.
+        context = multiprocessing.get_context("spawn")
+        max_processes = _get_max_processes()
+        # Use a shared pool to minimize initialization overhead. This has the
+        # benefit of letting the pool be initialized in parallel with the first
+        # exposure.
+        _log.debug("Uploading with %d processes...", max_processes)
+        with context.Pool(processes=max_processes, initializer=_set_s3_bucket) as pool, \
+                tempfile.TemporaryDirectory() as temp_dir:
+            for visit in visit_list:
+                group = increment_group(instrument, group, 1)
+                refs = prepare_one_visit(kafka_url, group, butler, instrument, visit)
+                ref_dict = butler.get_many_uris(refs)
+                result = load_raw_to_temp(temp_dir, ref_dict, pool=pool)
+                _log.info(f"Slewing to group {group}, with {instrument} visit {visit}")
+                time.sleep(SLEW_INTERVAL)
+                _log.info(f"Taking exposure for group {group}")
+                time.sleep(EXPOSURE_INTERVAL)
+                _log.info(f"Finishing exposure for group {group}")
+                # Wait for the temp_dir loading to finish
+                if result["async_result"]:
+                    result["async_result"].wait()
+                _log.info(f"Uploading detector images for group {group}")
+                upload_images(pool, temp_dir, group, ref_dict)
+            pool.close()
+            _log.info("Waiting for uploads to finish...")
+            pool.join()
 
 
 def get_visit_list(butler, n_sample, instrument, ordered=False, **kwargs):
