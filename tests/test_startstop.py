@@ -23,45 +23,45 @@
 import unittest
 import unittest.mock
 
-from activator.setup import ServiceSetup
+from activator.startstop import ServiceManager
 
 
-class ServiceSetupTest(unittest.TestCase):
+class ServiceManagerTest(unittest.TestCase):
     def setUp(self):
         super().setUp()
-        ServiceSetup.reset()
-        self.addCleanup(ServiceSetup.reset)
+        ServiceManager.reset()
+        self.addCleanup(ServiceManager.reset)
 
     def test_empty(self):
         # Correct behavior is a no-op, but impossible to prove a negative
-        ServiceSetup.run_init_checks()
+        ServiceManager.run_init_checks()
 
     def test_one_func(self):
         func1 = unittest.mock.Mock()
 
-        ServiceSetup.check_on_init(func1)
+        ServiceManager.check_on_init(func1)
         func1.assert_not_called()
-        ServiceSetup.run_init_checks()
+        ServiceManager.run_init_checks()
         func1.assert_called_once_with()
 
         func1.reset_mock()
-        ServiceSetup.reset()
-        ServiceSetup.run_init_checks()
+        ServiceManager.reset()
+        ServiceManager.run_init_checks()
         func1.assert_not_called()
 
     def test_two_func(self):
         func1 = unittest.mock.Mock()
         func2 = unittest.mock.Mock()
 
-        ServiceSetup.check_on_init(func1)
-        ServiceSetup.check_on_init(func2)
-        ServiceSetup.run_init_checks()
+        ServiceManager.check_on_init(func1)
+        ServiceManager.check_on_init(func2)
+        ServiceManager.run_init_checks()
         func1.assert_called_once_with()
         func2.assert_called_once_with()
 
         func1.reset_mock()
         func2.reset_mock()
-        ServiceSetup.reset()
-        ServiceSetup.run_init_checks()
+        ServiceManager.reset()
+        ServiceManager.run_init_checks()
         func1.assert_not_called()
         func2.assert_not_called()

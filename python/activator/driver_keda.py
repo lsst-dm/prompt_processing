@@ -42,7 +42,7 @@ from .activator import time_since, is_processable, process_visit
 from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, IgnorableVisit, \
     NonRetriableError, RetriableError
 from .repo_tracker import LocalRepoTracker
-from .setup import ServiceSetup
+from .startstop import ServiceManager
 
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
@@ -285,7 +285,7 @@ def keda_start():
 
         # Check initialization and abort early
         import_iers_cache()
-        ServiceSetup.run_init_checks()
+        ServiceManager.run_init_checks()
 
         redis_session = RedisStreamSession(
             fanout_redis_stream_host,

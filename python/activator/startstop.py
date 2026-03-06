@@ -20,7 +20,7 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 
-__all__ = ["ServiceSetup"]
+__all__ = ["ServiceManager"]
 
 
 import logging
@@ -30,11 +30,11 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
-class ServiceSetup:
+class ServiceManager:
     """An interface that abstracts away any code that should be run on service
-    start.
+    start or stop.
 
-    ServiceSetup is designed as a static class rather than a singleton to
+    ServiceManager is designed as a static class rather than a singleton to
     simplify the notation, especially for decorators.
     """
 
@@ -54,7 +54,7 @@ class ServiceSetup:
             It is recommended that it be idempotent.
         """
         # There doesn't seem to be a reliable way to check if `func` is nullary
-        ServiceSetup._registered.append(func)  # For a decorator, don't need to guard vs. duplicates
+        ServiceManager._registered.append(func)  # For a decorator, don't need to guard vs. duplicates
         return func
 
     @staticmethod
@@ -64,11 +64,11 @@ class ServiceSetup:
         The registered functions are called without arguments in an undefined
         order.
         """
-        for func in ServiceSetup._registered:
+        for func in ServiceManager._registered:
             func()
 
     @staticmethod
     def reset():
         """Unregister all functions registered with `check_on_init`.
         """
-        ServiceSetup._registered.clear()
+        ServiceManager._registered.clear()
