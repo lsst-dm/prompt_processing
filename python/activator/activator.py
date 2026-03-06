@@ -593,95 +593,91 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
         assert expected_visit.instrument == instrument_name, \
             f"Expected {instrument_name}, received {expected_visit.instrument}."
 
-        with logging_context(group=expected_visit.groupId,
-                             survey=expected_visit.survey,
-                             detector=expected_visit.detector,
-                             ):
-            try:
-                expid_set = set()
+        try:
+            expid_set = set()
 
-                # Create a fresh MiddlewareInterface object to avoid accidental
-                # "cross-talk" between different visits.
-                mwi = MiddlewareInterface(_get_read_butler(),
-                                          _get_butler_writer(),
-                                          raw_image_bucket,
-                                          expected_visit,
-                                          pre_pipelines,
-                                          main_pipelines,
-                                          skymap,
-                                          _get_local_repo().name,
-                                          _get_local_cache())
-                if not mwi.get_main_pipeline_files():
-                    raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
-                # TODO: pipeline execution requires a clean run until DM-38041.
-                cleanups.callback(mwi.clean_local_repo, expid_set)
-                # Copy calibrations for this detector/visit
-                mwi.prep_butler()
+            # Create a fresh MiddlewareInterface object to avoid accidental
+            # "cross-talk" between different visits.
+            mwi = MiddlewareInterface(_get_read_butler(),
+                                      _get_butler_writer(),
+                                      raw_image_bucket,
+                                      expected_visit,
+                                      pre_pipelines,
+                                      main_pipelines,
+                                      skymap,
+                                      _get_local_repo().name,
+                                      _get_local_cache())
+            if not mwi.get_main_pipeline_files():
+                raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
+            # TODO: pipeline execution requires a clean run until DM-38041.
+            cleanups.callback(mwi.clean_local_repo, expid_set)
+            # Copy calibrations for this detector/visit
+            mwi.prep_butler()
 
-                # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
-                expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
-                # Heuristic: take the upcoming script's duration and multiply by 2 to
-                # include the currently executing script, then add time to transfer
-                # the last image.
-                timeout = expected_visit.duration * 2 + image_timeout
-                _ingest_existing_raws(expected_visit, expected_snaps, mwi.ingest_image, expid_set)
+            # expected_visit.nimages == 0 means "not known in advance"; keep listening until timeout
+            expected_snaps = expected_visit.nimages if expected_visit.nimages else 100
+            # Heuristic: take the upcoming script's duration and multiply by 2 to
+            # include the currently executing script, then add time to transfer
+            # the last image.
+            timeout = expected_visit.duration * 2 + image_timeout
+            _ingest_existing_raws(expected_visit, expected_snaps, mwi.ingest_image, expid_set)
 
-                _log.debug("Waiting for snaps...")
-                start = time.time()
-                while len(expid_set) < expected_snaps and time_since(start) < timeout:
-                    if startup_response:
-                        response = startup_response
-                    else:
-                        time_remaining = max(0.0, timeout - time_since(start))
-                        response = consumer.consume(num_messages=1,
-                                                    # Avoid blocking for long intervals
-                                                    timeout=min(time_remaining + 1.0, 15.0),
-                                                    )
-                    end = time.time()
-                    messages = _filter_messages(response)
-                    response = []
-                    if len(messages) == 0 and end - start < timeout and not startup_response:
-                        _log.debug(f"Empty consume after {end - start}s.")
-                        continue
-                    startup_response = []
-
-                    _consume_messages(messages, consumer, expected_visit, mwi.ingest_image, expid_set)
-                if len(expid_set) < expected_snaps:
-                    _log.debug("Received %d out of %d expected snaps. Check again.",
-                               len(expid_set), expected_snaps)
-                    # Retry in case of race condition with microservice.
-                    _ingest_existing_raws(expected_visit, expected_snaps, mwi.ingest_image, expid_set)
-                if len(expid_set) < expected_snaps:
-                    _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
-            except GracefulShutdownInterrupt as e:
-                raise RetriableError("Processing interrupted before pipeline execution") from e
-
-            if not expid_set:
-                raise RuntimeError("Timed out waiting for images.")
-            # If nimages == 0, any positive number of snaps is OK.
-            if len(expid_set) < expected_visit.nimages:
-                _log.warning(f"Found {len(expid_set)} snaps, expected {expected_visit.nimages}.")
-
-            expid_set = _filter_exposures(expid_set, expected_visit, mwi.get_observed_skyangle)
-            if not expid_set:
-                raise RuntimeError("All images rejected as unprocessable.")
-
-            with logging_context(exposures=expid_set):
-                # Got at least some snaps; run the pipeline.
-                # If this is only a partial set, the processed results may still be
-                # useful for quality purposes.
-                _log.info("Running main pipeline...")
-                try:
-                    mwi.run_pipeline(expid_set)
-                except RetriableError:
-                    # Do not export, to leave room for the next attempt
-                    raise
-                except Exception:
-                    _try_export(mwi, expid_set, _log)
-                    raise
+            _log.debug("Waiting for snaps...")
+            start = time.time()
+            while len(expid_set) < expected_snaps and time_since(start) < timeout:
+                if startup_response:
+                    response = startup_response
                 else:
-                    try:
-                        mwi.export_outputs(expid_set)
-                    except Exception as e:
-                        raise NonRetriableError("APDB and possibly alerts or central repo modified") \
-                            from e
+                    time_remaining = max(0.0, timeout - time_since(start))
+                    response = consumer.consume(num_messages=1,
+                                                # Avoid blocking for long intervals
+                                                timeout=min(time_remaining + 1.0, 15.0),
+                                                )
+                end = time.time()
+                messages = _filter_messages(response)
+                response = []
+                if len(messages) == 0 and end - start < timeout and not startup_response:
+                    _log.debug(f"Empty consume after {end - start}s.")
+                    continue
+                startup_response = []
+
+                _consume_messages(messages, consumer, expected_visit, mwi.ingest_image, expid_set)
+            if len(expid_set) < expected_snaps:
+                _log.debug("Received %d out of %d expected snaps. Check again.",
+                           len(expid_set), expected_snaps)
+                # Retry in case of race condition with microservice.
+                _ingest_existing_raws(expected_visit, expected_snaps, mwi.ingest_image, expid_set)
+            if len(expid_set) < expected_snaps:
+                _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
+        except GracefulShutdownInterrupt as e:
+            raise RetriableError("Processing interrupted before pipeline execution") from e
+
+        if not expid_set:
+            raise RuntimeError("Timed out waiting for images.")
+        # If nimages == 0, any positive number of snaps is OK.
+        if len(expid_set) < expected_visit.nimages:
+            _log.warning(f"Found {len(expid_set)} snaps, expected {expected_visit.nimages}.")
+
+        expid_set = _filter_exposures(expid_set, expected_visit, mwi.get_observed_skyangle)
+        if not expid_set:
+            raise RuntimeError("All images rejected as unprocessable.")
+
+        with logging_context(exposures=expid_set):
+            # Got at least some snaps; run the pipeline.
+            # If this is only a partial set, the processed results may still be
+            # useful for quality purposes.
+            _log.info("Running main pipeline...")
+            try:
+                mwi.run_pipeline(expid_set)
+            except RetriableError:
+                # Do not export, to leave room for the next attempt
+                raise
+            except Exception:
+                _try_export(mwi, expid_set, _log)
+                raise
+            else:
+                try:
+                    mwi.export_outputs(expid_set)
+                except Exception as e:
+                    raise NonRetriableError("APDB and possibly alerts or central repo modified") \
+                        from e

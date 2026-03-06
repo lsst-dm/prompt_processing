@@ -351,7 +351,11 @@ def keda_start():
                                 "Seconds since last redis streams message received %r for consumer poll %r",
                                 fan_out_listen_time, consumer_polls_with_message)
 
-                        handle_keda_visit(expected_visit)
+                        with logging_context(group=expected_visit.groupId,
+                                             survey=expected_visit.survey,
+                                             detector=expected_visit.detector,
+                                             ):
+                            handle_keda_visit(expected_visit)
 
                     # Reset timer for fan out message polling
                     _log.info("Starting next visit fan out event consumer poll")
