@@ -23,6 +23,7 @@
 __all__ = ["ServiceManager"]
 
 
+import functools
 import logging
 
 
@@ -38,8 +39,12 @@ class ServiceManager:
     simplify the notation, especially for decorators.
     """
 
-    _registered = []
+    _registered_start = []
     """The callables to call on start (mutable collection [callable]).
+    """
+    _registered_close = []
+    """The callables to close on shutdown (mutable sequence [callable]). They
+    are listed in the order in which they should be called.
     """
 
     @staticmethod
@@ -54,8 +59,38 @@ class ServiceManager:
             It is recommended that it be idempotent.
         """
         # There doesn't seem to be a reliable way to check if `func` is nullary
-        ServiceManager._registered.append(func)  # For a decorator, don't need to guard vs. duplicates
+        ServiceManager._registered_start.append(func)  # For a decorator, don't need to guard vs. duplicates
         return func
+
+    @staticmethod
+    def clean_on_exit(closer):
+        """A function decorator that registers a function's return value(s) for
+        calls to `run_cleanups`.
+
+        If the decorated function returns `None`, nothing is registered.
+        Otherwise, objects are cleaned up in LIFO order.
+
+        ``clean_on_exit`` may be combined with other decorators, but must be
+        the innermost to ensure that other decorators don't bypass
+        registration. If it's combined with `check_on_init`, the order of
+        object creation and registration may be undefined.
+
+        Parameters
+        ----------
+        closer : callable
+            The callable to call on the return value of the decorated function.
+        """
+        # Design note -- don't try to default to obj.close; it's impossible to
+        # implement a default without risking resource leaks.
+        def decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                obj = func(*args, **kwargs)
+                if obj is not None:
+                    ServiceManager._registered_close.insert(0, functools.partial(closer, obj))
+                return obj
+            return wrapper
+        return decorator
 
     @staticmethod
     def run_init_checks():
@@ -64,11 +99,22 @@ class ServiceManager:
         The registered functions are called without arguments in an undefined
         order.
         """
-        for func in ServiceManager._registered:
+        for func in ServiceManager._registered_start:
             func()
 
     @staticmethod
-    def reset():
-        """Unregister all functions registered with `check_on_init`.
+    def run_cleanups():
+        """Run all cleanup methods registered with `clean_on_exit`.
+
+        The registered methods are called without arguments in LIFO order.
         """
-        ServiceManager._registered.clear()
+        for closer in ServiceManager._registered_close:
+            closer()
+
+    @staticmethod
+    def reset():
+        """Unregister all functions registered with `check_on_init` or
+        `clean_on_exit`.
+        """
+        ServiceManager._registered_start.clear()
+        ServiceManager._registered_close.clear()

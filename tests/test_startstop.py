@@ -32,11 +32,11 @@ class ServiceManagerTest(unittest.TestCase):
         ServiceManager.reset()
         self.addCleanup(ServiceManager.reset)
 
-    def test_empty(self):
+    def test_init_empty(self):
         # Correct behavior is a no-op, but impossible to prove a negative
         ServiceManager.run_init_checks()
 
-    def test_one_func(self):
+    def test_init_one_func(self):
         func1 = unittest.mock.Mock()
 
         ServiceManager.check_on_init(func1)
@@ -49,7 +49,7 @@ class ServiceManagerTest(unittest.TestCase):
         ServiceManager.run_init_checks()
         func1.assert_not_called()
 
-    def test_two_func(self):
+    def test_init_two_func(self):
         func1 = unittest.mock.Mock()
         func2 = unittest.mock.Mock()
 
@@ -65,3 +65,68 @@ class ServiceManagerTest(unittest.TestCase):
         ServiceManager.run_init_checks()
         func1.assert_not_called()
         func2.assert_not_called()
+
+    def test_cleanup_empty(self):
+        # Correct behavior is a no-op, but impossible to prove a negative
+        ServiceManager.run_cleanups()
+
+    def test_cleanup_one_func(self):
+        closer1 = unittest.mock.Mock(name="closer1")
+        rv1 = unittest.mock.Mock(finalize=closer1, name="obj1")
+        factory1 = unittest.mock.Mock(return_value=rv1, name="factory1")
+
+        wrapped1 = ServiceManager.clean_on_exit(closer=rv1.finalize)(factory1)
+        closer1.assert_not_called()
+        ServiceManager.run_cleanups()
+        closer1.assert_not_called()  # wrapped1 has not been called, no object to register
+        obj1 = wrapped1()
+        ServiceManager.run_cleanups()
+        closer1.assert_called_once_with(obj1)
+
+        closer1.reset_mock()
+        ServiceManager.reset()
+        ServiceManager.run_cleanups()
+        closer1.assert_not_called()
+
+    def test_cleanup_two_funcs(self):
+        closer1 = unittest.mock.Mock()
+        rv1 = unittest.mock.Mock(finalize=closer1, name="obj1")
+        factory1 = unittest.mock.Mock(return_value=rv1, name="factory1")
+        closer2 = unittest.mock.Mock()
+        rv2 = unittest.mock.Mock(finalize=closer2, name="obj2")
+        factory2 = unittest.mock.Mock(return_value=rv2, name="factory2")
+        # To make it easier to test relative order
+        parent = unittest.mock.Mock()
+        parent.attach_mock(closer1, "closer1")
+        parent.attach_mock(closer2, "closer2")
+
+        wrapped1 = ServiceManager.clean_on_exit(closer=rv1.finalize)(factory1)
+        wrapped2 = ServiceManager.clean_on_exit(closer=rv2.finalize)(factory2)
+
+        # Should clean up obj2, then obj1
+        obj1 = wrapped1()
+        obj2 = wrapped2()
+        ServiceManager.run_cleanups()
+        closer1.assert_called_once_with(obj1)
+        closer2.assert_called_once_with(obj2)
+        self.assertEqual(parent.method_calls, [unittest.mock.call.closer2(obj2),
+                                               unittest.mock.call.closer1(obj1),
+                                               ])
+
+        # Should clean up obj1, then obj2
+        parent.reset_mock()
+        ServiceManager.reset()
+        obj2 = wrapped2()
+        obj1 = wrapped1()
+        ServiceManager.run_cleanups()
+        closer1.assert_called_once_with(obj1)
+        closer2.assert_called_once_with(obj2)
+        self.assertEqual(parent.method_calls, [unittest.mock.call.closer1(obj1),
+                                               unittest.mock.call.closer2(obj2),
+                                               ])
+
+        parent.reset_mock()
+        ServiceManager.reset()
+        ServiceManager.run_cleanups()
+        closer1.assert_not_called()
+        closer2.assert_not_called()
