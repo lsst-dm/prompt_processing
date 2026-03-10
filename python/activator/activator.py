@@ -29,6 +29,7 @@ import logging
 import math
 import os
 import signal
+import tempfile
 import time
 import uuid
 import yaml
@@ -157,6 +158,7 @@ def _get_storage_client():
 
 
 @functools.cache
+@ServiceManager.clean_on_exit(lambda b: b.close())  # ensure correct close implementation called
 def _get_write_butler():
     """Lazy initialization of central Butler for writes.
     """
@@ -165,6 +167,7 @@ def _get_write_butler():
 
 @ServiceManager.check_on_init
 @functools.cache
+@ServiceManager.clean_on_exit(lambda b: b.close())  # ensure correct close implementation called
 def _get_read_butler():
     """Lazy initialization of central Butler for reads.
     """
@@ -191,6 +194,7 @@ def _get_butler_writer() -> ButlerWriter:
 
 @ServiceManager.check_on_init
 @functools.cache
+@ServiceManager.clean_on_exit(tempfile.TemporaryDirectory.cleanup)
 def _get_local_repo():
     """Lazy initialization of a new local repo.
 

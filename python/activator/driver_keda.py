@@ -429,8 +429,14 @@ def handle_keda_visit(visit):
 
 
 def main():
-    _log.info("starting keda instance")
-    keda_start()
+    try:
+        _log.info("starting keda instance")
+        keda_start()
+    finally:
+        LocalRepoTracker.get().pop(os.getpid())  # run_cleanups will delete the repo itself
+        # Catch all exit points, but not unit tests of keda_start
+        # TODO: SIGTERM may bypass this code until DM-54399
+        ServiceManager.run_cleanups()
 
 
 if __name__ == "__main__":

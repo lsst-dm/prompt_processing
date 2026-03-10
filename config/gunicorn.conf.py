@@ -2,6 +2,7 @@ import os
 import shutil
 
 import activator.repo_tracker
+import activator.startstop
 
 
 # Config options
@@ -15,6 +16,15 @@ workers = int(os.environ.get("WORKER_COUNT", 1))
 graceful_timeout = int(os.environ.get("WORKER_GRACE_PERIOD", 30))
 timeout = int(os.environ.get("WORKER_TIMEOUT", 0))
 max_requests = int(os.environ.get("WORKER_RESTART_FREQ", 0))
+
+
+# Hooks run on the worker process
+# -------------------------------
+
+def worker_exit(server, worker):
+    # ServiceManager object is worker-specific. It's responsible (among other things)
+    # for deleting repo directories.
+    activator.startstop.ServiceManager.run_cleanups()
 
 
 # Hooks run on the master process
@@ -43,10 +53,4 @@ def child_exit(server, worker):
 
 def on_exit(server):
     tracker = activator.repo_tracker.LocalRepoTracker.get()
-    dangling_repos = tracker.cleanup_tracker()
-    for repo in dangling_repos:
-        try:
-            shutil.rmtree(repo)
-        except FileNotFoundError:
-            pass
-        # Propagate all other exceptions; it means the repo is still around!
+    tracker.cleanup_tracker()
