@@ -114,7 +114,7 @@ class InitOutputsTest(unittest.TestCase):
             configs = self.base_butler.query_datasets(t, expected_run)
             self.assertEqual(len(configs), 1)
 
-    def test_make_init_ouputs_filled_run(self):
+    def test_make_init_outputs_filled_run(self):
         pipe_file = "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml"
         instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
         expected_run = get_output_run(instrument, self.deploy_id, pipe_file, "2024-09-24")
