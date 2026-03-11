@@ -653,7 +653,7 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
                     _ingest_existing_raws(expected_visit, expected_snaps, mwi.ingest_image, expid_set)
                 if len(expid_set) < expected_snaps:
                     _log.warning(f"Timed out waiting for image after receiving exposures {expid_set}.")
-            except GracefulShutdownInterrupt as e:
+            except (GracefulShutdownInterrupt, TimeoutInterrupt) as e:
                 raise RetriableError("Processing interrupted before pipeline execution") from e
 
             if not expid_set:
