@@ -31,7 +31,7 @@ import cloudevents.http
 import flask
 
 from shared.astropy import import_iers_cache
-from shared.logger import setup_usdf_logger
+from shared.logger import setup_usdf_logger, logging_context
 from shared.visit import FannedOutVisit
 from .activator import is_processable, process_visit
 from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
@@ -126,11 +126,16 @@ def next_visit_handler() -> tuple[str, int]:
         except ValueError as e:
             _log.exception("Bad Request")
             return f"Bad Request: {e}", 400
-        if is_processable(expected_visit, visit_expire):
-            process_visit(expected_visit)
-            return "Pipeline executed", 200
-        else:
-            return "Stale request, ignoring", 403
+        with logging_context(
+            group=expected_visit.groupId,
+            survey=expected_visit.survey,
+            detector=expected_visit.detector,
+        ):
+            if is_processable(expected_visit, visit_expire):
+                process_visit(expected_visit)
+                return "Pipeline executed", 200
+            else:
+                return "Stale request, ignoring", 403
     except GracefulShutdownInterrupt:
         # Safety net to minimize chance of interrupt propagating out of the worker.
         # Ideally, this would be a Flask.errorhandler, but Flask ignores BaseExceptions.

@@ -322,17 +322,22 @@ def keda_start():
                         redis_session.acknowledge(redis_streams_message_id)
 
                         expected_visit = FannedOutVisit.from_dict(fan_out_visit_decoded)
-                        _log.debug("Unpacked message as %r.", expected_visit)
-                        if is_processable(expected_visit, visit_expire):
-                            # Processing can take a long time, and long-lived connections are ill-behaved
-                            redis_session.close()
-                        else:
-                            continue
+                        with logging_context(
+                            group=expected_visit.groupId,
+                            survey=expected_visit.survey,
+                            detector=expected_visit.detector,
+                        ):
+                            _log.debug("Unpacked message as %r.", expected_visit)
+                            if is_processable(expected_visit, visit_expire):
+                                # Processing can take a long time, and long-lived connections are ill-behaved
+                                redis_session.close()
+                            else:
+                                continue
 
-                        # Calculate time to receive message based on timestamp in Redis Stream message
-                        fan_out_to_prompt_time = _calculate_time_since_fan_out_message_delivered(
-                            redis_streams_message_id)
-                        _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
+                            # Calculate time to receive message based on timestamp in Redis Stream message
+                            fan_out_to_prompt_time = _calculate_time_since_fan_out_message_delivered(
+                                redis_streams_message_id)
+                            _log.debug("Seconds since fan out message delivered %r", fan_out_to_prompt_time)
 
                     # TODO Review Redis Errors and determine what should be retriable.
                     except redis.exceptions.RedisError:
@@ -343,7 +348,14 @@ def keda_start():
                         fan_out_listen_start_time = time.time()
                         continue
 
-                    with instances_processing_gauge.track_inprogress():
+                    with (
+                        instances_processing_gauge.track_inprogress(),
+                        logging_context(
+                            group=expected_visit.groupId,
+                            survey=expected_visit.survey,
+                            detector=expected_visit.detector,
+                        ),
+                    ):
                         consumer_polls_with_message += 1
                         if consumer_polls_with_message >= 1:
                             fan_out_listen_time = time_since(fan_out_listen_start_time)
