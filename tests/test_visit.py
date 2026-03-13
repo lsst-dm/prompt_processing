@@ -84,8 +84,9 @@ class FannedOutVisitTest(unittest.TestCase):
 
     def test_predict_wcs(self):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        test_butler = lsst.daf.butler.Butler(os.path.join(data_dir, "central_repo"))
-        camera = test_butler.get("camera", instrument=self.instname, collections="LSSTCam/calib/unbounded")
+        with lsst.daf.butler.Butler(os.path.join(data_dir, "central_repo")) as test_butler:
+            camera = test_butler.get("camera", instrument=self.instname,
+                                     collections="LSSTCam/calib/unbounded")
 
         wcs = self.testbed.predict_wcs(camera)
         self.assertIsNotNone(wcs)
@@ -93,8 +94,9 @@ class FannedOutVisitTest(unittest.TestCase):
 
     def test_get_detector_icrs_region(self):
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        test_butler = lsst.daf.butler.Butler(os.path.join(data_dir, "central_repo"))
-        camera = test_butler.get("camera", instrument=self.instname, collections="LSSTCam/calib/unbounded")
+        with lsst.daf.butler.Butler(os.path.join(data_dir, "central_repo")) as test_butler:
+            camera = test_butler.get("camera", instrument=self.instname,
+                                     collections="LSSTCam/calib/unbounded")
 
         region = self.testbed.get_detector_icrs_region(camera)
         self.assertIsInstance(region, lsst.sphgeom.Region)

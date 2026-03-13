@@ -50,7 +50,6 @@ class InitOutputsTest(unittest.TestCase):
         # Copy test data to fresh Butler to allow write tests.
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         data_repo = os.path.join(data_dir, "central_repo")
-        data_butler = Butler(data_repo, writeable=False)
         self.repo = tempfile.TemporaryDirectory()
         # TemporaryDirectory warns on leaks
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, self.repo)
@@ -58,21 +57,23 @@ class InitOutputsTest(unittest.TestCase):
         # Butler.transfer_from can't easily copy collections, so use
         # export/import instead.
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as export_file:
-            with data_butler.export(filename=export_file.name) as export:
-                for dt in data_butler.registry.queryDatasetTypes():
-                    export.saveDatasets(data_butler.query_datasets(
-                        dt, collections="*", find_first=False, explain=False))
-                for collection in data_butler.collections.query("*"):
-                    export.saveCollection(collection)
-            dimension_config = data_butler.dimensions.dimensionConfig
-            output_butler = Butler(Butler.makeRepo(self.repo.name, dimensionConfig=dimension_config),
-                                   writeable=True,
-                                   )
-            output_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
+            with Butler(data_repo, writeable=False) as data_butler:
+                with data_butler.export(filename=export_file.name) as export:
+                    for dt in data_butler.registry.queryDatasetTypes():
+                        export.saveDatasets(data_butler.query_datasets(
+                            dt, collections="*", find_first=False, explain=False))
+                    for collection in data_butler.collections.query("*"):
+                        export.saveCollection(collection)
+                dimension_config = data_butler.dimensions.dimensionConfig
+            with Butler(Butler.makeRepo(self.repo.name, dimensionConfig=dimension_config),
+                        writeable=True,
+                        ) as output_butler:
+                output_butler.import_(directory=data_repo, filename=export_file.name, transfer="auto")
 
     def setUp(self):
         self._create_copied_repo()
         self.base_butler = lsst.daf.butler.Butler(self.repo.name, writeable=True)
+        self.addCleanup(self.base_butler.close)
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.input_data = os.path.join(data_dir, "input_data")
 
@@ -114,7 +115,7 @@ class InitOutputsTest(unittest.TestCase):
             configs = self.base_butler.query_datasets(t, expected_run)
             self.assertEqual(len(configs), 1)
 
-    def test_make_init_ouputs_filled_run(self):
+    def test_make_init_outputs_filled_run(self):
         pipe_file = "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml"
         instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
         expected_run = get_output_run(instrument, self.deploy_id, pipe_file, "2024-09-24")
@@ -201,7 +202,8 @@ class InitOutputsTest(unittest.TestCase):
 
         # The preload collection is not associated with a pipeline
         preload_run = get_preload_run(lsst.obs.lsst.LsstCam(), self.deploy_id, "")
-        self.assertTrue(Butler(self.repo.name).collections.query(preload_run, CollectionType.RUN))
+        with Butler(self.repo.name) as butler:
+            self.assertTrue(butler.collections.query(preload_run, CollectionType.RUN))
 
         calls = mock_make.call_args_list
         self.assertEqual(len(calls), 4)

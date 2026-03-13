@@ -97,6 +97,9 @@ def get_central_butler(central_repo: str, instrument_class: str, writeable: bool
     """Provide a Butler that can access the given repository and read and write
     data for the given instrument.
 
+    This function is guaranteed to return a new object on every call, and the
+    caller is responsible for managing and cleaning it up.
+
     Parameters
     ----------
     central_repo : `str`
@@ -110,7 +113,7 @@ def get_central_butler(central_repo: str, instrument_class: str, writeable: bool
     Returns
     -------
     butler : `lsst.daf.butler.Butler`
-        A Butler for ``central_repo`` pre-configured to load and store
+        A new Butler for ``central_repo`` pre-configured to load and store
         ``instrument_name`` data.
     """
     return Butler(central_repo,
@@ -146,20 +149,17 @@ def make_local_repo(local_storage: str, central_butler: Butler, instrument: str)
     dimension_config = central_butler.dimensions.dimensionConfig
     repo_dir = tempfile.TemporaryDirectory(dir=local_storage, prefix="butler-")
     config = dafButlerConfig(local_repo_config)
-    butler = Butler(
-        Butler.makeRepo(repo_dir.name, config=config, dimensionConfig=dimension_config),
-        writeable=True,
-    )
+    new_config = Butler.makeRepo(repo_dir.name, config=config, dimensionConfig=dimension_config)
     _log.info("Created local Butler repo at %s with dimensions-config %s %d.",
               repo_dir.name, dimension_config["namespace"], dimension_config["version"])
 
     # Run-once repository initialization
+    with Butler(new_config, writeable=True) as butler:
+        instrument = lsst.obs.base.Instrument.from_string(instrument, central_butler.registry)
+        instrument.register(butler.registry)
 
-    instrument = lsst.obs.base.Instrument.from_string(instrument, central_butler.registry)
-    instrument.register(butler.registry)
-
-    butler.collections.register(instrument.makeUmbrellaCollectionName(), CollectionType.CHAINED)
-    butler.collections.register(instrument.makeDefaultRawIngestRunName(), CollectionType.RUN)
+        butler.collections.register(instrument.makeUmbrellaCollectionName(), CollectionType.CHAINED)
+        butler.collections.register(instrument.makeDefaultRawIngestRunName(), CollectionType.RUN)
 
     return repo_dir
 
@@ -328,6 +328,7 @@ class MiddlewareInterface:
     #   guaranteed to contain concrete data, or even the dimensions
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
+    # self.butler is usable if and only if self._closed is False
 
     def __init__(self, read_butler: Butler, butler_writer: ButlerWriter, image_bucket: str,
                  visit: FannedOutVisit,
@@ -335,6 +336,7 @@ class MiddlewareInterface:
                  # TODO: encapsulate relationship between local_repo and local_cache
                  skymap: str, local_repo: str, local_cache: DatasetCache,
                  prefix: str = "s3://"):
+        self._closed = False
         self.visit = visit
 
         self._apdb_config = os.environ["CONFIG_APDB"]
@@ -368,6 +370,23 @@ class MiddlewareInterface:
 
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
+
+    def __del__(self):
+        """Safety-net finalizer for MiddlewareInterface.
+        """
+        if not self._closed:
+            _log.warning("%r has not been properly closed, attempting to close it.", self)
+        self.close()
+
+    # TODO: remove on DM-47743
+    def close(self):
+        """Clean up this object.
+
+        This method is idempotent.
+        """
+        if self.butler:
+            self.butler.close()
+        self._closed = True
 
     def _init_local_butler(self, repo_uri: str, output_collections: list[str], output_run: str):
         """Prepare the local butler to ingest into and process from.
@@ -1358,61 +1377,59 @@ class MiddlewareInterface:
             except FileNotFoundError as e:
                 raise InvalidPipelineError(f"Could not load {pipeline_file}.") from e
             output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
-            exec_butler = Butler(butler=self.butler,
-                                 collections=[output_run]
-                                 + in_collections
-                                 + list(self.butler.collections.defaults),
-                                 run=output_run)
             factory = lsst.pipe.base.TaskFactory()
-            executor = SeparablePipelineExecutor(
-                exec_butler,
-                clobber_output=False,
-                skip_existing_in=[output_run],
-                task_factory=factory,
-            )
-            try:
-                with lsst.utils.timer.time_this(
-                        _log, msg=f"executor.make_quantum_graph ({label})", level=logging.DEBUG):
-                    qgraph = executor.build_quantum_graph(pipeline, where=data_ids)
-                    # If this is a fresh (local) repo, then types like calexp,
-                    # *Diff_diaSrcTable, etc. have not been registered.
-                    qgraph.pipeline_graph.register_dataset_types(exec_butler)
-            except (QuantumGraphBuilderError, FileNotFoundError, MissingDatasetTypeError):
-                _log.exception(f"Building quantum graph for {pipeline_file} failed.")
-                continue
-            if len(qgraph) == 0:
-                # Diagnostic logs are the responsibility of GraphBuilder.
-                _log.error(f"Empty quantum graph for {pipeline_file}; see previous logs for details.")
-                continue
-            try:
-                provenance_ref = self._make_provenance_ref(data_ids, output_run)
-            except ProvenanceDimensionsError:
-                _log.exception(f"Failed to determine data ID for provenance for {pipeline_file}.")
-                continue
-            # Past this point, partial execution creates datasets.
-            # Don't retry -- either fail (raise) or break.
+            with Butler(butler=self.butler,
+                        collections=[output_run] + in_collections + list(self.butler.collections.defaults),
+                        run=output_run) as exec_butler:
+                executor = SeparablePipelineExecutor(
+                    exec_butler,
+                    clobber_output=False,
+                    skip_existing_in=[output_run],
+                    task_factory=factory,
+                )
+                try:
+                    with lsst.utils.timer.time_this(
+                            _log, msg=f"executor.make_quantum_graph ({label})", level=logging.DEBUG):
+                        qgraph = executor.build_quantum_graph(pipeline, where=data_ids)
+                        # If this is a fresh (local) repo, then types like calexp,
+                        # *Diff_diaSrcTable, etc. have not been registered.
+                        qgraph.pipeline_graph.register_dataset_types(exec_butler)
+                except (QuantumGraphBuilderError, FileNotFoundError, MissingDatasetTypeError):
+                    _log.exception(f"Building quantum graph for {pipeline_file} failed.")
+                    continue
+                if len(qgraph) == 0:
+                    # Diagnostic logs are the responsibility of GraphBuilder.
+                    _log.error(f"Empty quantum graph for {pipeline_file}; see previous logs for details.")
+                    continue
+                try:
+                    provenance_ref = self._make_provenance_ref(data_ids, output_run)
+                except ProvenanceDimensionsError:
+                    _log.exception(f"Failed to determine data ID for provenance for {pipeline_file}.")
+                    continue
+                # Past this point, partial execution creates datasets.
+                # Don't retry -- either fail (raise) or break.
 
-            _log.info(f"Running '{pipeline_file}' on {data_ids}")
-            input_dataset_info = {
-                dataset_type_name: list(qgraph.datasets_by_type[dataset_type_name].keys())
-                for dataset_type_name, _ in qgraph.pipeline_graph.iter_overall_inputs()
-            }
-            _log.debug(f"Running with input datasets {input_dataset_info}.")
-            try:
-                with lsst.utils.timer.time_this(
-                        _log, msg=f"executor.run_pipeline ({label})", level=logging.DEBUG):
-                    executor.run_pipeline(
-                        qgraph,
-                        graph_executor=self._get_graph_executor(exec_butler, factory),
-                        provenance_dataset_ref=provenance_ref,
-                    )
-                    _log.info(f"{label.capitalize()} pipeline successfully run.")
-                    return output_run
-            except Exception as e:
-                raise PipelineExecutionError(f"Execution failed for {pipeline_file}.") from e
-            finally:
-                # Refresh so that registry queries know the processed products.
-                self.butler.registry.refresh()
+                _log.info(f"Running '{pipeline_file}' on {data_ids}")
+                input_dataset_info = {
+                    dataset_type_name: list(qgraph.datasets_by_type[dataset_type_name].keys())
+                    for dataset_type_name, _ in qgraph.pipeline_graph.iter_overall_inputs()
+                }
+                _log.debug(f"Running with input datasets {input_dataset_info}.")
+                try:
+                    with lsst.utils.timer.time_this(
+                            _log, msg=f"executor.run_pipeline ({label})", level=logging.DEBUG):
+                        executor.run_pipeline(
+                            qgraph,
+                            graph_executor=self._get_graph_executor(exec_butler, factory),
+                            provenance_dataset_ref=provenance_ref,
+                        )
+                        _log.info(f"{label.capitalize()} pipeline successfully run.")
+                        return output_run
+                except Exception as e:
+                    raise PipelineExecutionError(f"Execution failed for {pipeline_file}.") from e
+                finally:
+                    # Refresh so that registry queries know the processed products.
+                    self.butler.registry.refresh()
             break
         else:
             raise NoGoodPipelinesError(f"No {label} pipeline graph could be built.")

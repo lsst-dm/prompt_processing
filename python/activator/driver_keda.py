@@ -42,7 +42,7 @@ from .activator import time_since, is_processable, process_visit
 from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, IgnorableVisit, \
     NonRetriableError, RetriableError
 from .repo_tracker import LocalRepoTracker
-from .setup import ServiceSetup
+from .startstop import ServiceManager
 
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
@@ -285,7 +285,7 @@ def keda_start():
 
         # Check initialization and abort early
         import_iers_cache()
-        ServiceSetup.run_init_checks()
+        ServiceManager.run_init_checks()
 
         redis_session = RedisStreamSession(
             fanout_redis_stream_host,
@@ -429,8 +429,14 @@ def handle_keda_visit(visit):
 
 
 def main():
-    _log.info("starting keda instance")
-    keda_start()
+    try:
+        _log.info("starting keda instance")
+        keda_start()
+    finally:
+        LocalRepoTracker.get().pop(os.getpid())  # run_cleanups will delete the repo itself
+        # Catch all exit points, but not unit tests of keda_start
+        # TODO: SIGTERM may bypass this code until DM-54399
+        ServiceManager.run_cleanups()
 
 
 if __name__ == "__main__":

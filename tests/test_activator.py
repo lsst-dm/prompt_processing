@@ -31,7 +31,7 @@ import astropy.units as u
 
 import shared.raw
 from shared.visit import FannedOutVisit
-import activator.setup
+import activator.startstop
 
 # Mandatory envvars are loaded at import time
 os.environ["RUBIN_INSTRUMENT"] = "LSSTCam"
@@ -48,9 +48,9 @@ from activator.activator import _filter_exposures, _ingest_existing_raws, is_pro
     time_since, with_signal  # noqa: E402, no code before imports
 
 
-# Use of @ServiceSetup.check_on_init in activator interferes with unit tests of ServiceSetup itself
+# Use of @ServiceManager.check_on_init in activator interferes with unit tests of ServiceManager itself
 # TODO: find a cleaner way to isolate the tests
-activator.setup.ServiceSetup.reset()
+activator.startstop.ServiceManager.reset()
 
 
 # TODO: find a way to test functions that take `confluent_kafka.Message` inputs or mock Kafka consumers

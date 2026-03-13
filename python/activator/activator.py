@@ -29,6 +29,7 @@ import logging
 import math
 import os
 import signal
+import tempfile
 import time
 import uuid
 import yaml
@@ -53,7 +54,7 @@ from .middleware_interface import get_central_butler, \
     make_local_repo, make_local_cache, MiddlewareInterface, ButlerWriter, DirectButlerWriter
 from .kafka_butler_writer import KafkaButlerWriter
 from .repo_tracker import LocalRepoTracker
-from .setup import ServiceSetup
+from .startstop import ServiceManager
 
 # The short name for the instrument.
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
@@ -124,7 +125,7 @@ pre_pipelines = _config_from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
 main_pipelines = _config_from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
 
 
-@ServiceSetup.check_on_init
+@ServiceManager.check_on_init
 @functools.cache
 def _get_notification_consumer():
     """Lazy initialization of Kafka Consumer for raw bucket notifications."""
@@ -147,7 +148,7 @@ def _get_butler_writer_producer():
     })
 
 
-@ServiceSetup.check_on_init
+@ServiceManager.check_on_init
 @functools.cache
 def _get_storage_client():
     """Lazy initialization of cloud storage reader."""
@@ -157,14 +158,16 @@ def _get_storage_client():
 
 
 @functools.cache
+@ServiceManager.clean_on_exit(lambda b: b.close())  # ensure correct close implementation called
 def _get_write_butler():
     """Lazy initialization of central Butler for writes.
     """
     return get_central_butler(write_repo, instrument_name, writeable=True)
 
 
-@ServiceSetup.check_on_init
+@ServiceManager.check_on_init
 @functools.cache
+@ServiceManager.clean_on_exit(lambda b: b.close())  # ensure correct close implementation called
 def _get_read_butler():
     """Lazy initialization of central Butler for reads.
     """
@@ -175,7 +178,7 @@ def _get_read_butler():
         return _get_write_butler()
 
 
-@ServiceSetup.check_on_init
+@ServiceManager.check_on_init
 @functools.cache
 def _get_butler_writer() -> ButlerWriter:
     """Lazy initialization of Butler writer."""
@@ -189,8 +192,9 @@ def _get_butler_writer() -> ButlerWriter:
         return DirectButlerWriter(_get_write_butler())
 
 
-@ServiceSetup.check_on_init
+@ServiceManager.check_on_init
 @functools.cache
+@ServiceManager.clean_on_exit(tempfile.TemporaryDirectory.cleanup)
 def _get_local_repo():
     """Lazy initialization of a new local repo.
 
@@ -607,6 +611,8 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
                                       skymap,
                                       _get_local_repo().name,
                                       _get_local_cache())
+            # TODO: remove on DM-47743
+            cleanups.callback(mwi.close)
             if not mwi.get_main_pipeline_files():
                 raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
             # TODO: pipeline execution requires a clean run until DM-38041.

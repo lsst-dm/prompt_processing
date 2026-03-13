@@ -112,8 +112,6 @@ def main(args=None):
         _log.info("Preparing init-outputs for %s in %s.", instrument_name, repo)
 
         parsed = make_parser().parse_args(args)
-        # URI to the repository that should contain init-outputs.
-        butler = _connect_butler(repo)
         # The preprocessing pipelines to execute and the conditions in which to choose them.
         pre_pipelines = _config_from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
         # The main pipelines to execute and the conditions in which to choose them.
@@ -122,19 +120,21 @@ def main(args=None):
         apdb = os.environ["CONFIG_APDB"]
         deploy_id = parsed.deploy_id or run_utils.get_deployment(apdb)
 
-        instrument = lsst.obs.base.Instrument.from_string(instrument_name, butler.registry)
+        # URI to the repository that should contain init-outputs.
+        with _connect_butler(repo) as butler:
+            instrument = lsst.obs.base.Instrument.from_string(instrument_name, butler.registry)
 
-        preload_run = run_utils.get_preload_run(instrument, deploy_id, _get_current_day_obs())
-        butler.collections.register(preload_run, lsst.daf.butler.CollectionType.RUN)
-        runs = [preload_run]
-        for pipeline in pre_pipelines.get_all_pipeline_files():
-            runs.append(_make_init_outputs(butler, instrument, apdb, deploy_id, pipeline))
-        for pipeline in main_pipelines.get_all_pipeline_files():
-            runs.append(_make_init_outputs(butler, instrument, apdb, deploy_id, pipeline))
-        _log.info("Registered init-outputs in %s.", repo)
+            preload_run = run_utils.get_preload_run(instrument, deploy_id, _get_current_day_obs())
+            butler.collections.register(preload_run, lsst.daf.butler.CollectionType.RUN)
+            runs = [preload_run]
+            for pipeline in pre_pipelines.get_all_pipeline_files():
+                runs.append(_make_init_outputs(butler, instrument, apdb, deploy_id, pipeline))
+            for pipeline in main_pipelines.get_all_pipeline_files():
+                runs.append(_make_init_outputs(butler, instrument, apdb, deploy_id, pipeline))
+            _log.info("Registered init-outputs in %s.", repo)
 
-        butler.registry.refresh()  # Ensure Butler reflects new collections
-        _make_output_chain(butler, instrument, runs)
+            butler.registry.refresh()  # Ensure Butler reflects new collections
+            _make_output_chain(butler, instrument, runs)
         _log.info("Initialization complete, ready to restart Prompt Processing.")
         return 0
     except Exception:

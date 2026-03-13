@@ -38,7 +38,7 @@ from shared.visit import FannedOutVisit
 from .activator import is_processable, process_visit
 from .exception import GracefulShutdownInterrupt, IgnorableVisit, InvalidVisitError, \
     NonRetriableError, RetriableError
-from .setup import ServiceSetup
+from .startstop import ServiceManager
 
 
 # The short name for the instrument.
@@ -90,7 +90,9 @@ def create_app():
 
         # Check initialization and abort early
         import_iers_cache()
-        ServiceSetup.run_init_checks()
+        ServiceManager.run_init_checks()
+        # ServiceManager.run_cleanups must be called from a Gunicorn hook? Flask doesn't
+        # support resources with application lifetime.
 
         app = flask.Flask(__name__)
         app.add_url_rule("/next-visit", view_func=next_visit_handler, methods=["POST"])
