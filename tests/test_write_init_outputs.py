@@ -98,7 +98,7 @@ class InitOutputsTest(unittest.TestCase):
     def test_make_init_outputs_empty_run(self):
         pipe_file = "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml"
         instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
-        expected_run = get_output_run(instrument, self.deploy_id, pipe_file, "2024-09-24")
+        expected_run = get_output_run(instrument, self.deploy_id, pipe_file, 20240924)
 
         self._register_dataset_types(pipe_file)
 
@@ -118,7 +118,7 @@ class InitOutputsTest(unittest.TestCase):
     def test_make_init_outputs_filled_run(self):
         pipe_file = "${PROMPT_PROCESSING_DIR}/tests/data/SingleFrame.yaml"
         instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
-        expected_run = get_output_run(instrument, self.deploy_id, pipe_file, "2024-09-24")
+        expected_run = get_output_run(instrument, self.deploy_id, pipe_file, 20240924)
 
         self._register_dataset_types(pipe_file)
 
@@ -139,7 +139,7 @@ class InitOutputsTest(unittest.TestCase):
 
     def test_make_output_chain_new(self):
         instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
-        expected_chain = get_output_chain(instrument, "2024-09-24")
+        expected_chain = get_output_chain(instrument, 20240924)
 
         self.base_butler.collections.register("run1", CollectionType.RUN)
         self.base_butler.collections.register("run2", CollectionType.RUN)
@@ -153,7 +153,7 @@ class InitOutputsTest(unittest.TestCase):
 
     def test_make_output_chain_existing(self):
         instrument = lsst.obs.base.Instrument.from_string("lsst.obs.lsst.LsstCam")
-        expected_chain = get_output_chain(instrument, "2024-09-24")
+        expected_chain = get_output_chain(instrument, 20240924)
 
         self.base_butler.collections.register("run1", CollectionType.RUN)
         self.base_butler.collections.register("run2", CollectionType.RUN)
@@ -196,12 +196,12 @@ class InitOutputsTest(unittest.TestCase):
                 unittest.mock.patch("initializer.write_init_outputs._make_init_outputs",
                                     side_effect=_make_init_outputs) as mock_make, \
                 unittest.mock.patch("initializer.write_init_outputs._get_current_day_obs",
-                                    return_value=""), \
+                                    return_value=0), \
                 unittest.mock.patch("initializer.write_init_outputs.import_iers_cache"):
             main(["--deploy-id", self.deploy_id])
 
         # The preload collection is not associated with a pipeline
-        preload_run = get_preload_run(lsst.obs.lsst.LsstCam(), self.deploy_id, "")
+        preload_run = get_preload_run(lsst.obs.lsst.LsstCam(), self.deploy_id, 0)
         with Butler(self.repo.name) as butler:
             self.assertTrue(butler.collections.query(preload_run, CollectionType.RUN))
 

@@ -312,7 +312,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Check that preloaded datasets have been generated
         date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         preload_collection = f"{TestRepo.instname}/prompt/" \
-                             f"output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
+                             f"output-{date.year:04d}{date.month:02d}{date.day:02d}/" \
                              f"NoPipeline/{self.deploy_id}"
         self.assertTrue(
             butler.exists('promptPreload_metrics',
@@ -1347,10 +1347,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             self.second_interface.prep_butler()
         date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
         self.preprocessing_run = f"{TestRepo.instname}/prompt/" \
-                                 f"output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
+                                 f"output-{date.year:04d}{date.month:02d}{date.day:02d}" \
                                  f"/Preprocess/{self.deploy_id}"
         self.output_run = f"{TestRepo.instname}/prompt/" \
-                          f"output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
+                          f"output-{date.year:04d}{date.month:02d}{date.day:02d}" \
                           f"/ApPipe/{self.deploy_id}"
 
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:

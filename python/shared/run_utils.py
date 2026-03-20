@@ -38,7 +38,7 @@ _log_trace3 = logging.getLogger("TRACE3.lsst." + __name__)
 _log_trace3.setLevel(logging.CRITICAL)  # Turn off by default.
 
 
-def get_output_chain(instrument: lsst.obs.base.Instrument, date: str) -> str:
+def get_output_chain(instrument: lsst.obs.base.Instrument, date: int) -> str:
     """Generate a deterministic output chain name that avoids
     configuration conflicts.
 
@@ -46,8 +46,8 @@ def get_output_chain(instrument: lsst.obs.base.Instrument, date: str) -> str:
     ----------
     instrument : `lsst.obs.base.Instrument`
         The instrument for which to generate a collection.
-    date : `str`
-        Date of the processing run (not observation!).
+    date : `int`
+        Date of the processing run (not observation!) in YYYYMMDD format.
 
     Returns
     -------
@@ -55,10 +55,10 @@ def get_output_chain(instrument: lsst.obs.base.Instrument, date: str) -> str:
         The chain in which to place all output collections.
     """
     # Order optimized for S3 bucket -- filter out as many files as soon as possible.
-    return instrument.makeCollectionName("prompt", f"output-{date}")
+    return instrument.makeCollectionName("prompt", f"output-{date:08d}")
 
 
-def get_preload_run(instrument: lsst.obs.base.Instrument, deployment_id: str, date: str) -> str:
+def get_preload_run(instrument: lsst.obs.base.Instrument, deployment_id: str, date: int) -> str:
     """Generate a deterministic preload collection name that avoids
     configuration conflicts.
 
@@ -68,8 +68,8 @@ def get_preload_run(instrument: lsst.obs.base.Instrument, deployment_id: str, da
         The instrument for which to generate a collection.
     deployment_id : `str`
         A unique version ID of the active stack and pipeline configuration(s).
-    date : `str`
-        Date of the processing run (not observation!).
+    date : `int`
+        Date of the processing run (not observation!) in YYYYMMDD format.
 
     Returns
     -------
@@ -82,7 +82,7 @@ def get_preload_run(instrument: lsst.obs.base.Instrument, deployment_id: str, da
 def get_output_run(instrument: lsst.obs.base.Instrument,
                    deployment_id: str,
                    pipeline_file: str,
-                   date: str,
+                   date: int,
                    ) -> str:
     """Generate a deterministic collection name that avoids version or
     provenance conflicts.
@@ -95,8 +95,8 @@ def get_output_run(instrument: lsst.obs.base.Instrument,
         A unique version ID of the active stack and pipeline configuration(s).
     pipeline_file : `str`
         The pipeline name that the run will be used for.
-    date : `str`
-        Date of the processing run (not observation!).
+    date : `int`
+        Date of the processing run (not observation!) in YYYYMMDD format.
 
     Returns
     -------
@@ -108,7 +108,7 @@ def get_output_run(instrument: lsst.obs.base.Instrument,
     return "/".join([get_output_chain(instrument, date), pipeline_name, deployment_id])
 
 
-def get_day_obs(time: astropy.time.Time) -> str:
+def get_day_obs(time: astropy.time.Time) -> int:
     """Convert a timestamp into a day-obs string.
 
     The day-obs is defined as the TAI date of an instant 12 hours before
@@ -121,11 +121,12 @@ def get_day_obs(time: astropy.time.Time) -> str:
 
     Returns
     -------
-    day_obs : `str`
-        The day-obs corresponding to ``time``, in YYYY-MM-DD format.
+    day_obs : `int`
+        The day_obs corresponding to ``time``, in YYYYMMDD format.
     """
     day_obs_delta = astropy.time.TimeDelta(-12.0 * astropy.units.hour, scale="tai")
-    return (time + day_obs_delta).tai.to_value("iso", "date")
+    iso_date = (time + day_obs_delta).tai.to_value("iso", "date")
+    return int(iso_date.replace("-", ""))
 
 
 def _get_pp_hash():

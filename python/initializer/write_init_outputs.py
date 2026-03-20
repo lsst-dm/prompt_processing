@@ -142,13 +142,13 @@ def main(args=None):
         return 1
 
 
-def _get_current_day_obs() -> str:
+def _get_current_day_obs() -> int:
     """Generate the current day_obs value.
 
     Returns
     -------
-    day_obs : `str`
-        The day_obs value in YYYY-MM-DD format.
+    day_obs : `int`
+        The day_obs value in YYYYMMDD format.
     """
     return run_utils.get_day_obs(astropy.time.Time.now())
 
