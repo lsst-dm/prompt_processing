@@ -578,10 +578,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         cameraAngle=0.0,
                                         dome=FannedOutVisit.Dome.CLOSED,
                                         )
-        _, eng_data = TestRepo.fake_eng_data(filepath,
-                                             self.interface.butler.dimensions,
-                                             self.interface.instrument,
-                                             eng_visit)
+        _, eng_data = TestRepo.fake_file_data(filepath,
+                                              self.interface.butler.dimensions,
+                                              self.interface.instrument,
+                                              eng_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = eng_data
             self.interface.ingest_image(filename)

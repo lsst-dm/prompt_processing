@@ -40,6 +40,8 @@ import lsst.daf.butler as daf_butler
 from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter  # Can't use unqualified name
 from lsst.obs.base import ingest
 
+import shared.visit
+
 
 class TestRepo:
     """Entirely passive "class" whose main purpose is to get these definitions
@@ -63,6 +65,9 @@ class TestRepo:
     def fake_file_data(cls, filename, dimensions, instrument, visit):
         """Return file data for a mock file to be ingested.
 
+        This method supports both science and engineering data, and
+        distinguishes them based on the contents of the ``visit`` argument.
+
         Parameters
         ----------
         filename : `str`
@@ -71,7 +76,7 @@ class TestRepo:
             The full set of dimensions for this butler.
         instrument : `lsst.obs.base.Instrument`
             The instrument the file is supposed to be from.
-        visit : `FannedOutVisit`
+        visit : `shared.visit.FannedOutVisit`
             Group of snaps from one detector to be processed.
 
         Returns
@@ -87,76 +92,34 @@ class TestRepo:
 
         start_time = astropy.time.Time("2025-05-22T05:20:46", scale="tai")
         day_obs = 20250521
+
+        # Simulate either science or engineering data
+        if visit.coordinateSystem != shared.visit.FannedOutVisit.CoordSys.NONE:
+            visit_id = exposure_id
+            native_rotation_angle = astropy.coordinates.Angle(visit.cameraAngle*u.degree)
+            rotation_system = visit.rotationSystem.name.lower()
+            obs_type = "science"
+        else:
+            visit_id = None
+            native_rotation_angle = None
+            rotation_system = None
+            obs_type = "goofing off"
+
         obs_info = astro_metadata_translator.makeObservationInfo(
             instrument=instrument.getName(),
             datetime_begin=start_time,
             datetime_end=start_time + 30*u.second,
             exposure_id=exposure_id,
             exposure_group=visit.groupId,
-            visit_id=exposure_id,
-            boresight_rotation_angle=astropy.coordinates.Angle(visit.cameraAngle*u.degree),
-            boresight_rotation_coord=visit.rotationSystem.name.lower(),
-            tracking_radec=astropy.coordinates.SkyCoord(*visit.position, frame="icrs", unit="deg"),
+            visit_id=visit_id,
+            boresight_rotation_angle=native_rotation_angle,
+            boresight_rotation_coord=rotation_system,
+            tracking_radec=visit.get_boresight_icrs(),  # Supports NONE coordinates
             observation_id=visit.groupId,
             physical_filter=cls.filter,
             exposure_time=30.0*u.second,
             exposure_time_requested=30.0*u.second,
-            observation_type="science",
-            observing_day=day_obs,
-            group_counter_start=exposure_id,
-            group_counter_end=exposure_id,
-        )
-        dataset_info = ingest.RawFileDatasetInfo(data_id, obs_info)
-        file_data = ingest.RawFileData([dataset_info],
-                                       lsst.resources.ResourcePath(filename),
-                                       FitsImageFormatter,
-                                       instrument)
-        return data_id, file_data
-
-    @classmethod
-    # TODO: merge this into fake_file_data after DM-46152
-    def fake_eng_data(cls, filename, dimensions, instrument, visit):
-        """Return file data for a mock non-science file to be ingested.
-
-        Parameters
-        ----------
-        filename : `str`
-            Full path to the file to mock. Can be a non-existant file.
-        dimensions : `lsst.daf.butler.DimensionsUniverse`
-            The full set of dimensions for this butler.
-        instrument : `lsst.obs.base.Instrument`
-            The instrument the file is supposed to be from.
-        visit : `FannedOutVisit`
-            Group of snaps from one detector to be processed.
-
-        Returns
-        -------
-        data_id, file_data, : `DataCoordinate`, `RawFileData`
-            The id and descriptor for the mock file.
-        """
-        exposure_id = int(visit.groupId)
-        data_id = daf_butler.DataCoordinate.standardize({"exposure": exposure_id,
-                                                         "detector": visit.detector,
-                                                         "instrument": instrument.getName()},
-                                                        universe=dimensions)
-
-        start_time = astropy.time.Time("2025-05-22T05:20:46", scale="tai")
-        day_obs = 20250521
-        obs_info = astro_metadata_translator.makeObservationInfo(
-            instrument=instrument.getName(),
-            datetime_begin=start_time,
-            datetime_end=start_time + 30*u.second,
-            exposure_id=exposure_id,
-            exposure_group=visit.groupId,
-            visit_id=None,
-            boresight_rotation_angle=None,
-            boresight_rotation_coord=None,
-            tracking_radec=None,
-            observation_id=visit.groupId,
-            physical_filter=cls.filter,
-            exposure_time=30.0*u.second,
-            exposure_time_requested=30.0*u.second,
-            observation_type="goofing off",
+            observation_type=obs_type,
             observing_day=day_obs,
             group_counter_start=exposure_id,
             group_counter_end=exposure_id,
