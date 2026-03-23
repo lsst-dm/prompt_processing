@@ -91,4 +91,4 @@ for x in `find "$REPO/LSSTCam/calib/curated/" -name "*.fits"`; do : > $x; done
 for x in `find "$REPO/LSSTCam/templates/" -name "*.fits"`; do : > $x; done
 for x in `find "$REPO/pretrained_models/" -name "*.zip"`; do : > $x; done
 for x in `find "$REPO/refcats/DM-49042/" -name "*.fits"`; do : > $x; done
-for x in `find "$REPO/LSSTCam/prompt/" -type f`; do : > $x; done
+for x in `find "$REPO/LSSTCam/runs/prompt/" -type f`; do : > $x; done

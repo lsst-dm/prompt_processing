@@ -55,7 +55,7 @@ def get_output_chain(instrument: lsst.obs.base.Instrument, date: int) -> str:
         The chain in which to place all output collections.
     """
     # Order optimized for S3 bucket -- filter out as many files as soon as possible.
-    return instrument.makeCollectionName("prompt", f"output-{date:08d}")
+    return instrument.makeCollectionName("runs", f"prompt-{date:08d}")
 
 
 def get_preload_run(instrument: lsst.obs.base.Instrument, deployment_id: str, date: int) -> str:
@@ -105,7 +105,8 @@ def get_output_run(instrument: lsst.obs.base.Instrument,
     """
     pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
     # Order optimized for S3 bucket -- filter out as many files as soon as possible.
-    return "/".join([get_output_chain(instrument, date), pipeline_name, deployment_id])
+    output_run = instrument.makeCollectionName("runs", "prompt", f"{date:08d}")
+    return "/".join([output_run, pipeline_name, deployment_id])
 
 
 def get_day_obs(time: astropy.time.Time) -> int:
