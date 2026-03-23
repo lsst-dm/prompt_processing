@@ -28,7 +28,7 @@ butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-t
 butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type pretrainedModelPackage --collections pretrained_models/dummy
 butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type skyMap --where "skymap='lsst_cells_v1'" --collections skymaps
 # The tract constraint is not strictly necessary but just to filter out templates from another overlapping tract.
-butler transfer-datasets embargo "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type template_coadd --collections LSSTCam/templates/DM-51716/SV_225/run --where "instrument='LSSTCam' and detector=90 and visit=2025052100138 and skymap='lsst_cells_v1' and tract=3534"
+butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type template_coadd --collections LSSTCam/templates/DM-51716/SV_225/run --where "instrument='LSSTCam' and detector=90 and visit=2025052100138 and skymap='lsst_cells_v1' and tract=3534"
 butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type the_monster_20250219 --collections refcats --where "instrument='LSSTCam' and detector=90 and visit=2025052100138"
 
 # Certify non-curated calibs
@@ -67,9 +67,12 @@ export MAIN_PIPELINES_CONFIG="- survey: SURVEY
   - ${PROMPT_PROCESSING_DIR}/tests/data/ISR.yaml
 "
 apdb-cli create-sql "sqlite:///${TEMP_APDB}" "${CONFIG_APDB}"
-butler ingest-raws "$REPO" s3://embargo@rubin-summit/LSSTCam/20250521/MC_O_20250521_000138/MC_O_20250521_000138_R22_S00.fits -t copy
+temp_dir=$(mktemp -d)
+unzip /sdf/data/rubin/lsstdata/offline/instrument/LSSTCam/20250521/MC_O_20250521_000138.zip -d "$temp_dir"
+butler ingest-raws "$REPO" "$temp_dir/MC_O_20250521_000138_R22_S00.fits" -t copy
+rm -rf "$temp_dir"
 butler define-visits "$REPO" lsst.obs.lsst.LsstCam
-pipetask run -b "$REPO" -i LSSTCam/raw/all,LSSTCam/defaults,LSSTCam/templates -o u/add-dataset-type -d "instrument='LSSTCam' and exposure=2025052100138 and detector=90" -p $AP_PIPE_DIR/pipelines/LSSTCam/ApPipe.yaml -c parameters:apdb_config=${CONFIG_APDB}  -c associateApdb:doPackageAlerts=False --register-dataset-types --init-only
+pipetask run -b "$REPO" -i LSSTCam/raw/all,LSSTCam/defaults,LSSTCam/templates/DM-51716/SV_225/run -o u/add-dataset-type -d "instrument='LSSTCam' and exposure=2025052100138 and detector=90" -p $AP_PIPE_DIR/pipelines/LSSTCam/ApPipe.yaml -c parameters:apdb_config=${CONFIG_APDB}  -c associateApdb:doPackageAlerts=False --register-dataset-types --init-only
 # Clean up data that are no longer needed.
 butler remove-runs "$REPO" LSSTCam/raw/all --no-confirm --force
 rm -rf "$REPO"/raw
