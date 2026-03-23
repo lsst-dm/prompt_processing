@@ -2,6 +2,8 @@
 # Create a central repo that contains calibs, refcats, templates for use in
 # tests, making all the files be empty and adjusting the sqlite registry to
 # match.
+# Any updates to or regeneration of the repo require synchronized changes in
+# tests/mock_central_repo.py.
 
 REPO="${PROMPT_PROCESSING_DIR:?Can\'t find prompt_processing repo; is it set up?}/tests/data/central_repo"
 

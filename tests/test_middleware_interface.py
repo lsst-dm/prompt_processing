@@ -36,7 +36,6 @@ import astropy.units as u
 import erfa
 import psycopg2
 
-import astro_metadata_translator
 import lsst.pex.config
 import lsst.afw.image
 import lsst.afw.table
@@ -45,8 +44,6 @@ from lsst.daf.butler import (
     Butler, CollectionType, DataCoordinate, DatasetType, DimensionUniverse, EmptyQueryResultError
 )
 import lsst.daf.butler.tests as butler_tests
-from lsst.obs.base.formatters.fitsExposure import FitsImageFormatter
-from lsst.obs.base.ingest import RawFileDatasetInfo, RawFileData
 from lsst.pipe.base.quantum_graph import PredictedQuantumGraph
 from lsst.pipe.base.tests.simpleQGraph import makeSimpleQGraph
 import lsst.resources
@@ -61,12 +58,9 @@ from shared.config import PipelinesConfig
 from shared.run_utils import get_output_run
 from shared.visit import FannedOutVisit
 
-# The short name of the instrument used in the test repo.
-instname = "LSSTCam"
-# Full name of the physical filter for the test file.
-filter = "g_6"
-# The skymap name used in the test repo.
-skymap_name = "lsst_cells_v1"
+from mock_central_repo import TestRepo
+
+
 # A pipelines config that returns the test pipelines.
 # Unless a test imposes otherwise, the first pipeline should run, and
 # the second should not be attempted.
@@ -86,119 +80,6 @@ pre_pipelines_full = PipelinesConfig([{"survey": "SURVEY",
                                                      "${PROMPT_PROCESSING_DIR}/tests/data/MinPrep.yaml",
                                                      ],
                                        }])
-# The day_obs used for the init-output runs in the test repo.
-sim_date = astropy.time.Time("2025-09-13T00:00:00Z")
-# The deployment ID used in the test repo.
-sim_deployment = "pipelines-cf62e06-config-8acfde6"
-
-
-def fake_file_data(filename, dimensions, instrument, visit):
-    """Return file data for a mock file to be ingested.
-
-    Parameters
-    ----------
-    filename : `str`
-        Full path to the file to mock. Can be a non-existant file.
-    dimensions : `lsst.daf.butler.DimensionsUniverse`
-        The full set of dimensions for this butler.
-    instrument : `lsst.obs.base.Instrument`
-        The instrument the file is supposed to be from.
-    visit : `FannedOutVisit`
-        Group of snaps from one detector to be processed.
-
-    Returns
-    -------
-    data_id, file_data, : `DataCoordinate`, `RawFileData`
-        The id and descriptor for the mock file.
-    """
-    exposure_id = int(visit.groupId)
-    data_id = DataCoordinate.standardize({"exposure": exposure_id,
-                                          "detector": visit.detector,
-                                          "instrument": instrument.getName()},
-                                         universe=dimensions)
-
-    start_time = astropy.time.Time("2025-05-22T05:20:46", scale="tai")
-    day_obs = 20250521
-    obs_info = astro_metadata_translator.makeObservationInfo(
-        instrument=instrument.getName(),
-        datetime_begin=start_time,
-        datetime_end=start_time + 30*u.second,
-        exposure_id=exposure_id,
-        exposure_group=visit.groupId,
-        visit_id=exposure_id,
-        boresight_rotation_angle=astropy.coordinates.Angle(visit.cameraAngle*u.degree),
-        boresight_rotation_coord=visit.rotationSystem.name.lower(),
-        tracking_radec=astropy.coordinates.SkyCoord(*visit.position, frame="icrs", unit="deg"),
-        observation_id=visit.groupId,
-        physical_filter=filter,
-        exposure_time=30.0*u.second,
-        exposure_time_requested=30.0*u.second,
-        observation_type="science",
-        observing_day=day_obs,
-        group_counter_start=exposure_id,
-        group_counter_end=exposure_id,
-    )
-    dataset_info = RawFileDatasetInfo(data_id, obs_info)
-    file_data = RawFileData([dataset_info],
-                            lsst.resources.ResourcePath(filename),
-                            FitsImageFormatter,
-                            instrument)
-    return data_id, file_data
-
-
-# TODO: merge this into fake_file_data after DM-46152
-def fake_eng_data(filename, dimensions, instrument, visit):
-    """Return file data for a mock non-science file to be ingested.
-
-    Parameters
-    ----------
-    filename : `str`
-        Full path to the file to mock. Can be a non-existant file.
-    dimensions : `lsst.daf.butler.DimensionsUniverse`
-        The full set of dimensions for this butler.
-    instrument : `lsst.obs.base.Instrument`
-        The instrument the file is supposed to be from.
-    visit : `FannedOutVisit`
-        Group of snaps from one detector to be processed.
-
-    Returns
-    -------
-    data_id, file_data, : `DataCoordinate`, `RawFileData`
-        The id and descriptor for the mock file.
-    """
-    exposure_id = int(visit.groupId)
-    data_id = DataCoordinate.standardize({"exposure": exposure_id,
-                                          "detector": visit.detector,
-                                          "instrument": instrument.getName()},
-                                         universe=dimensions)
-
-    start_time = astropy.time.Time("2025-05-22T05:20:46", scale="tai")
-    day_obs = 20250521
-    obs_info = astro_metadata_translator.makeObservationInfo(
-        instrument=instrument.getName(),
-        datetime_begin=start_time,
-        datetime_end=start_time + 30*u.second,
-        exposure_id=exposure_id,
-        exposure_group=visit.groupId,
-        visit_id=None,
-        boresight_rotation_angle=None,
-        boresight_rotation_coord=None,
-        tracking_radec=None,
-        observation_id=visit.groupId,
-        physical_filter=filter,
-        exposure_time=30.0*u.second,
-        exposure_time_requested=30.0*u.second,
-        observation_type="goofing off",
-        observing_day=day_obs,
-        group_counter_start=exposure_id,
-        group_counter_end=exposure_id,
-    )
-    dataset_info = RawFileDatasetInfo(data_id, obs_info)
-    file_data = RawFileData([dataset_info],
-                            lsst.resources.ResourcePath(filename),
-                            FitsImageFormatter,
-                            instrument)
-    return data_id, file_data
 
 
 # Can't find a way to do this with unittest.mock directly -- the mocks never take self as an argument
@@ -227,7 +108,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def setUp(self):
         self.data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.central_repo = os.path.join(self.data_dir, "central_repo")
-        self.umbrella = f"{instname}/defaults"
+        self.umbrella = f"{TestRepo.instname}/defaults"
         self.read_butler = Butler(self.central_repo,
                                   writeable=False,
                                   inferDefaults=False)
@@ -237,7 +118,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                    inferDefaults=False)
         self.addCleanup(self.write_butler.close)
         self.input_data = os.path.join(self.data_dir, "input_data")
-        self.local_repo = make_local_repo(tempfile.gettempdir(), self.read_butler, instname)
+        self.local_repo = make_local_repo(tempfile.gettempdir(), self.read_butler, TestRepo.instname)
         self.local_cache = DatasetCache(3)
         self.addCleanup(self.local_repo.cleanup)  # TemporaryDirectory warns on leaks
 
@@ -251,10 +132,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                                     # Disable external queries
                                                     "MP_SKY_URL": ""
                                                     }))
-        self.enterContext(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
+        self.enterContext(unittest.mock.patch("astropy.time.Time.now", return_value=TestRepo.sim_date))
         self.enterContext(unittest.mock.patch("shared.run_utils.get_deployment",
-                                              return_value=sim_deployment))
-        self.deploy_id = sim_deployment
+                                              return_value=TestRepo.sim_deployment))
+        self.deploy_id = TestRepo.sim_deployment
         # Use new_callable instead of side_effect to make sure the right thing is patched
         self.enterContext(unittest.mock.patch.object(MiddlewareInterface, "_get_pipeline_input_types",
                                                      new_callable=_filter_dataset_types,
@@ -266,11 +147,11 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         ra = 225.85827927603876
         dec = -38.6275010948895
         rot = 357.9606420320256
-        self.next_visit = FannedOutVisit(instrument=instname,
+        self.next_visit = FannedOutVisit(instrument=TestRepo.instname,
                                          detector=90,
                                          groupId="1",
                                          nimages=1,
-                                         filters=filter,
+                                         filters=TestRepo.filter,
                                          coordinateSystem=FannedOutVisit.CoordSys.ICRS,
                                          position=[ra, dec],
                                          startTime=1747891209.9,
@@ -290,44 +171,48 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                              self.input_data, self.next_visit,
                                              # Use empty preprocessing to avoid slowing down tests
                                              # with real pipelines (adds 20s)
-                                             pre_pipelines_empty, pipelines, skymap_name,
+                                             pre_pipelines_empty, pipelines, TestRepo.skymap_name,
                                              self.local_repo.name, self.local_cache,
                                              prefix="file://")
         self.addCleanup(self.interface.close)
 
     def test_get_butler(self):
         for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstCam", writeable=True),
-                       get_central_butler(self.central_repo, instname, writeable=True),
+                       get_central_butler(self.central_repo, TestRepo.instname, writeable=True),
                        ]:
             try:
                 # TODO: better way to test repo location?
                 self.assertTrue(
-                    butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
+                    butler.getURI("skyMap",
+                                  skymap=TestRepo.skymap_name,
+                                  collections=f"{TestRepo.instname}/defaults").ospath
                     .startswith(self.central_repo))
                 self.assertTrue(butler.isWriteable())
             finally:
                 butler.close()
         for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstCam", writeable=False),
-                       get_central_butler(self.central_repo, instname, writeable=False),
+                       get_central_butler(self.central_repo, TestRepo.instname, writeable=False),
                        ]:
             try:
                 self.assertTrue(
-                    butler.getURI("skyMap", skymap=skymap_name, collections=f"{instname}/defaults").ospath
+                    butler.getURI("skyMap",
+                                  skymap=TestRepo.skymap_name,
+                                  collections=f"{TestRepo.instname}/defaults").ospath
                     .startswith(self.central_repo))
                 self.assertFalse(butler.isWriteable())
             finally:
                 butler.close()
 
     def test_make_local_repo(self):
-        for inst in [instname, "lsst.obs.lsst.LsstCam"]:
+        for inst in [TestRepo.instname, "lsst.obs.lsst.LsstCam"]:
             with (Butler(self.central_repo) as central_butler,
                   make_local_repo(tempfile.gettempdir(), central_butler, inst) as repo_dir):
                 self.assertTrue(os.path.exists(repo_dir))
                 with Butler(repo_dir) as butler:
                     self.assertEqual([x.dataId for x in butler.query_dimension_records("instrument")],
-                                     [DataCoordinate.standardize({"instrument": instname},
+                                     [DataCoordinate.standardize({"instrument": TestRepo.instname},
                                                                  universe=butler.dimensions)])
-                    self.assertIn(f"{instname}/defaults", butler.collections.query("*"))
+                    self.assertIn(f"{TestRepo.instname}/defaults", butler.collections.query("*"))
             self.assertFalse(os.path.exists(repo_dir))
 
     def test_init(self):
@@ -335,7 +220,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         # Check that the butler instance is properly configured.
         instruments = self.interface.butler.query_dimension_records("instrument")
-        self.assertEqual(instname, instruments[0].name)
+        self.assertEqual(TestRepo.instname, instruments[0].name)
         self.assertEqual(set(self.interface.butler.collections.defaults), {self.umbrella})
 
         # Check that the ingester is properly configured.
@@ -353,14 +238,15 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """Test that the butler has the expected supporting data.
         """
         self.assertEqual(butler.get('camera',
-                                    instrument=instname,
-                                    collections=[f"{instname}/calib/unbounded"]).getName(), instname)
+                                    instrument=TestRepo.instname,
+                                    collections=[f"{TestRepo.instname}/calib/unbounded"]).getName(),
+                         TestRepo.instname)
 
         if have_spatial:
             # Check that the right skymap is in the chained output collection.
             self.assertTrue(
                 butler.exists("skyMap",
-                              skymap=skymap_name,
+                              skymap=TestRepo.skymap_name,
                               full_check=True,
                               collections=self.umbrella)
             )
@@ -383,7 +269,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         )
         self.assertEqual(
             bool(butler.exists('flat', detector=detector, instrument='LSSTCam',
-                               physical_filter=filter,
+                               physical_filter=TestRepo.filter,
                                full_check=True,
                                # TODO DM-46178: add query by validity range.
                                collections=self.umbrella)),
@@ -404,37 +290,39 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 with self.subTest(tract=3534, patch=patch):
                     self.assertTrue(
                         butler.exists('template_coadd', tract=3534, patch=patch, band="g",
-                                      skymap=skymap_name,
+                                      skymap=TestRepo.skymap_name,
                                       full_check=True,
                                       collections=self.umbrella)
                     )
             with self.subTest(tract=3534, patch=0):
                 self.assertFalse(
                     butler.exists('template_coadd', tract=3534, patch=0, band="g",
-                                  skymap=skymap_name,
+                                  skymap=TestRepo.skymap_name,
                                   full_check=True,
                                   collections=self.umbrella)
                 )
         else:
             self.assertFalse(
                 butler.exists('template_coadd', tract=3534, patch=87, band="g",
-                              skymap=skymap_name,
+                              skymap=TestRepo.skymap_name,
                               full_check=True,
                               collections=self.umbrella)
             )
 
         # Check that preloaded datasets have been generated
         date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
-        preload_collection = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
+        preload_collection = f"{TestRepo.instname}/prompt/" \
+                             f"output-{date.year:04d}-{date.month:02d}-{date.day:02d}/" \
                              f"NoPipeline/{self.deploy_id}"
         self.assertTrue(
-            butler.exists('promptPreload_metrics', instrument=instname, group=group, detector=detector,
+            butler.exists('promptPreload_metrics',
+                          instrument=TestRepo.instname, group=group, detector=detector,
                           full_check=True,
                           collections=preload_collection)
         )
         if have_spatial:
             self.assertTrue(
-                butler.exists('regionTimeInfo', instrument=instname, group=group, detector=detector,
+                butler.exists('regionTimeInfo', instrument=TestRepo.instname, group=group, detector=detector,
                               full_check=True,
                               collections=preload_collection)
             )
@@ -563,7 +451,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         butler_writer = DirectButlerWriter(self.write_butler)
         second_interface = MiddlewareInterface(self.read_butler, butler_writer,
                                                self.input_data, second_visit,
-                                               pre_pipelines_empty, pipelines, skymap_name,
+                                               pre_pipelines_empty, pipelines, TestRepo.skymap_name,
                                                self.local_repo.name, self.local_cache,
                                                prefix="file://")
         try:
@@ -590,7 +478,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                           )
         third_interface = MiddlewareInterface(self.read_butler, butler_writer,
                                               self.input_data, third_visit,
-                                              pre_pipelines_empty, pipelines, skymap_name,
+                                              pre_pipelines_empty, pipelines, TestRepo.skymap_name,
                                               self.local_repo.name, self.local_cache,
                                               prefix="file://")
         try:
@@ -610,16 +498,17 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface.prep_butler()  # Ensure raw collections exist.
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
-        data_id, file_data = fake_file_data(filepath,
-                                            self.interface.butler.dimensions,
-                                            self.interface.instrument,
-                                            self.next_visit)
+        data_id, file_data = TestRepo.fake_file_data(filepath,
+                                                     self.interface.butler.dimensions,
+                                                     self.interface.instrument,
+                                                     self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             exp_id = self.interface.ingest_image(filename)
             self.assertEqual(exp_id, int(self.next_visit.groupId))
 
-            datasets = list(self.interface.butler.query_datasets('raw', collections=[f'{instname}/raw/all']))
+            datasets = self.interface.butler.query_datasets('raw',
+                                                            collections=[f'{TestRepo.instname}/raw/all'])
             self.assertEqual(datasets[0].dataId, data_id)
             # TODO: After raw ingest, we can define exposure dimension records
             # and check that the visits are defined
@@ -638,10 +527,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface.prep_butler()  # Ensure raw collections exist.
         filename = "nonexistentImage.fits"
         filepath = os.path.join(self.input_data, filename)
-        _, file_data = fake_file_data(filepath,
-                                      self.interface.butler.dimensions,
-                                      self.interface.instrument,
-                                      self.next_visit)
+        _, file_data = TestRepo.fake_file_data(filepath,
+                                               self.interface.butler.dimensions,
+                                               self.interface.instrument,
+                                               self.next_visit)
         with (
             unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock,
             self.assertRaisesRegex(FileNotFoundError, "Resource at .* does not exist"),
@@ -649,8 +538,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             mock.return_value = file_data
             self.interface.ingest_image(filename)
         # There should not be any raw files in the registry.
-        datasets = list(self.interface.butler.query_datasets('raw', collections=[f'{instname}/raw/all'],
-                                                             explain=False))
+        datasets = self.interface.butler.query_datasets('raw', collections=[f'{TestRepo.instname}/raw/all'],
+                                                        explain=False)
         self.assertEqual(datasets, [])
 
     def test_get_observed_skyangle(self):
@@ -673,10 +562,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
 
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
-        _, file_data = fake_file_data(filepath,
-                                      self.interface.butler.dimensions,
-                                      self.interface.instrument,
-                                      self.next_visit)
+        _, file_data = TestRepo.fake_file_data(filepath,
+                                               self.interface.butler.dimensions,
+                                               self.interface.instrument,
+                                               self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
@@ -689,10 +578,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         cameraAngle=0.0,
                                         dome=FannedOutVisit.Dome.CLOSED,
                                         )
-        _, eng_data = fake_eng_data(filepath,
-                                    self.interface.butler.dimensions,
-                                    self.interface.instrument,
-                                    eng_visit)
+        _, eng_data = TestRepo.fake_file_data(filepath,
+                                              self.interface.butler.dimensions,
+                                              self.interface.instrument,
+                                              eng_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = eng_data
             self.interface.ingest_image(filename)
@@ -864,10 +753,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         self.interface.prep_butler()
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
-        _, file_data = fake_file_data(filepath,
-                                      self.interface.butler.dimensions,
-                                      self.interface.instrument,
-                                      self.next_visit)
+        _, file_data = TestRepo.fake_file_data(filepath,
+                                               self.interface.butler.dimensions,
+                                               self.interface.instrument,
+                                               self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
             mock.return_value = file_data
             self.interface.ingest_image(filename)
@@ -1069,10 +958,10 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         # Safe to define custom dataset types and IDs, because the repository
         # is regenerated for each test.
         butler = self.interface.butler
-        raw_data_id, _ = fake_file_data("foo.bar",
-                                        butler.dimensions,
-                                        self.interface.instrument,
-                                        self.next_visit)
+        raw_data_id, _ = TestRepo.fake_file_data("foo.bar",
+                                                 butler.dimensions,
+                                                 self.interface.instrument,
+                                                 self.next_visit)
         calib_data_id_1 = {k: v for k, v in raw_data_id.required.items() if k in {"instrument", "detector"}}
         calib_data_id_2 = {"instrument": self.interface.instrument.getName(), "detector": 1}
         calib_data_id_3 = {"instrument": self.interface.instrument.getName(), "detector": 2}
@@ -1302,9 +1191,9 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         """
         butler = unittest.mock.Mock(**{
             "query_datasets.side_effect": lsst.daf.butler.registry.DataIdValueError(
-                f"Unknown values specified for governor dimension instrument: {instname}")
+                f"Unknown values specified for governor dimension instrument: {TestRepo.instname}")
         })
-        result = _generic_query(["bias"], instrument=instname)(butler)
+        result = _generic_query(["bias"], instrument=TestRepo.instname)(butler)
 
         self.assertEqual(result, set())
 
@@ -1333,9 +1222,9 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # export/import instead.
         with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml") as export_file:
             with Butler(data_repo, writeable=False) as data_butler:
+                empty_types = []
                 with data_butler.export(filename=export_file.name) as export:
                     for dtype in data_butler.registry.queryDatasetTypes(...):
-                        empty_types = []
                         try:
                             refs = data_butler.query_datasets(dtype, collections=...,
                                                               find_first=False, explain=True)
@@ -1357,23 +1246,23 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
     def setUp(self):
         self._create_copied_repo()
         read_butler = Butler(self.central_repo.name,
-                             instrument=instname,
-                             skymap=skymap_name,
+                             instrument=TestRepo.instname,
+                             skymap=TestRepo.skymap_name,
                              writeable=False)
         # read_butler is never referenced explicitly, but MiddlewareInterface
         # refs keep it alive for the duration of the test.
         self.addCleanup(read_butler.close)
         self.write_butler = Butler(self.central_repo.name,
-                                   instrument=instname,
-                                   skymap=skymap_name,
+                                   instrument=TestRepo.instname,
+                                   skymap=TestRepo.skymap_name,
                                    writeable=True)
         self.addCleanup(self.write_butler.close)
         data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
         self.input_data = os.path.join(data_dir, "input_data")
 
-        local_repo = make_local_repo(tempfile.gettempdir(), read_butler, instname)
+        local_repo = make_local_repo(tempfile.gettempdir(), read_butler, TestRepo.instname)
         self.local_cache = DatasetCache(2)
-        second_local_repo = make_local_repo(tempfile.gettempdir(), read_butler, instname)
+        second_local_repo = make_local_repo(tempfile.gettempdir(), read_butler, TestRepo.instname)
         self.second_local_cache = DatasetCache(2)
         # TemporaryDirectory warns on leaks; addCleanup also keeps the TD from
         # getting garbage-collected.
@@ -1390,10 +1279,10 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                                     # Disable external queries
                                                     "MP_SKY_URL": ""
                                                     }))
-        self.enterContext(unittest.mock.patch("astropy.time.Time.now", return_value=sim_date))
+        self.enterContext(unittest.mock.patch("astropy.time.Time.now", return_value=TestRepo.sim_date))
         self.enterContext(unittest.mock.patch("shared.run_utils.get_deployment",
-                                              return_value=sim_deployment))
-        self.deploy_id = sim_deployment
+                                              return_value=TestRepo.sim_deployment))
+        self.deploy_id = TestRepo.sim_deployment
         # Use new_callable instead of side_effect to make sure the right thing is patched
         self.enterContext(unittest.mock.patch.object(MiddlewareInterface, "_get_pipeline_input_types",
                                                      new_callable=_filter_dataset_types,
@@ -1405,11 +1294,11 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         ra = 225.85827927603876
         dec = -38.6275010948895
         rot = 357.9606420320256
-        self.next_visit = FannedOutVisit(instrument=instname,
+        self.next_visit = FannedOutVisit(instrument=TestRepo.instname,
                                          detector=90,
                                          groupId="1",
                                          nimages=1,
-                                         filters=filter,
+                                         filters=TestRepo.filter,
                                          coordinateSystem=FannedOutVisit.CoordSys.ICRS,
                                          position=[ra, dec],
                                          startTime=1747891209.9,
@@ -1428,38 +1317,40 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         # Populate repository.
         butler_writer = DirectButlerWriter(self.write_butler)
         self.interface = MiddlewareInterface(read_butler, butler_writer, self.input_data, self.next_visit,
-                                             pre_pipelines_full, pipelines, skymap_name, local_repo.name,
-                                             self.local_cache,
+                                             pre_pipelines_full, pipelines, TestRepo.skymap_name,
+                                             local_repo.name, self.local_cache,
                                              prefix="file://")
         self.addCleanup(self.interface.close)
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.interface.prep_butler()
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
-        self.raw_data_id, file_data = fake_file_data(filepath,
-                                                     self.interface.butler.dimensions,
-                                                     self.interface.instrument,
-                                                     self.next_visit)
+        self.raw_data_id, file_data = TestRepo.fake_file_data(filepath,
+                                                              self.interface.butler.dimensions,
+                                                              self.interface.instrument,
+                                                              self.next_visit)
         self.group_data_id = {(k if k != "exposure" else "group"): (v if k != "exposure" else str(v))
                               for k, v in self.raw_data_id.required.items()}
 
         self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
-        self.second_data_id, second_file_data = fake_file_data(filepath,
-                                                               self.interface.butler.dimensions,
-                                                               self.interface.instrument,
-                                                               self.second_visit)
+        self.second_data_id, second_file_data = TestRepo.fake_file_data(filepath,
+                                                                        self.interface.butler.dimensions,
+                                                                        self.interface.instrument,
+                                                                        self.second_visit)
         self.second_group_data_id = {(k if k != "exposure" else "group"): (v if k != "exposure" else str(v))
                                      for k, v in self.second_data_id.required.items()}
         self.second_interface = MiddlewareInterface(
             read_butler, butler_writer, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
-            skymap_name, second_local_repo.name, self.second_local_cache, prefix="file://")
+            TestRepo.skymap_name, second_local_repo.name, self.second_local_cache, prefix="file://")
         self.addCleanup(self.second_interface.close)
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.second_interface.prep_butler()
         date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
-        self.preprocessing_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
+        self.preprocessing_run = f"{TestRepo.instname}/prompt/" \
+                                 f"output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                                  f"/Preprocess/{self.deploy_id}"
-        self.output_run = f"{instname}/prompt/output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
+        self.output_run = f"{TestRepo.instname}/prompt/" \
+                          f"output-{date.year:04d}-{date.month:02d}-{date.day:02d}" \
                           f"/ApPipe/{self.deploy_id}"
 
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
@@ -1545,7 +1436,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
             write_butler.collections.prepend_chain("refcats", ["emptyrun"])
 
             # Avoid collisions with other calls to prep_butler
-            with make_local_repo(tempfile.gettempdir(), read_butler, instname) as local_repo:
+            with make_local_repo(tempfile.gettempdir(), read_butler, TestRepo.instname) as local_repo:
                 butler_writer = DirectButlerWriter(write_butler)
                 interface = MiddlewareInterface(
                     read_butler,
@@ -1554,7 +1445,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                     dataclasses.replace(self.next_visit, groupId="42"),
                     pre_pipelines_empty,
                     pipelines,
-                    skymap_name,
+                    TestRepo.skymap_name,
                     local_repo,
                     DatasetCache(3, {"the_monster_20250219": 10, "template_coadd": 30}),
                     prefix="file://",
@@ -1566,7 +1457,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
                     self.assertEqual(
                         self._count_datasets(interface.butler, ["the_monster_20250219"],
-                                             f"{instname}/defaults"),
+                                             f"{TestRepo.instname}/defaults"),
                         2)
                     self.assertIn(
                         "emptyrun",
@@ -1610,7 +1501,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                 0)
             # Nothing placed in "input" collections.
             self.assertEqual(
-                self._count_datasets(central_butler, ["raw", "calexp"], f"{instname}/defaults"),
+                self._count_datasets(central_butler, ["raw", "calexp"], f"{TestRepo.instname}/defaults"),
                 0)
 
     def test_export_selected_outputs(self):
