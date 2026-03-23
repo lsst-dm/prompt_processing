@@ -105,8 +105,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     """Test the MiddlewareInterface class with faked data.
     """
     def setUp(self):
-        self.data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        self.central_repo = os.path.join(self.data_dir, "central_repo")
+        self.data_dir = TestRepo.data_dir
+        self.central_repo = TestRepo.repo_dir
         self.umbrella = f"{TestRepo.instname}/defaults"
         self.read_butler = Butler(self.central_repo,
                                   writeable=False,
@@ -1095,8 +1095,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         be awkward if this method returned a Butler instead.
         """
         # Copy test data to fresh Butler to allow write tests.
-        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        data_repo = os.path.join(data_dir, "central_repo")
+        data_repo = TestRepo.repo_dir
         self.central_repo = tempfile.TemporaryDirectory()
         # TemporaryDirectory warns on leaks
         self.addCleanup(tempfile.TemporaryDirectory.cleanup, self.central_repo)
@@ -1140,8 +1139,7 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                                    skymap=TestRepo.skymap_name,
                                    writeable=True)
         self.addCleanup(self.write_butler.close)
-        data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
-        self.input_data = os.path.join(data_dir, "input_data")
+        self.input_data = os.path.join(TestRepo.data_dir, "input_data")
 
         local_repo = make_local_repo(tempfile.gettempdir(), read_butler, TestRepo.instname)
         self.local_cache = DatasetCache(2)

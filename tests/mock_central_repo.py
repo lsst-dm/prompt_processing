@@ -30,6 +30,8 @@ that depend on it will fail.
 __all__ = ["TestRepo"]
 
 
+import os.path
+
 import astropy.coordinates
 import astropy.time
 import astropy.units as u
@@ -49,6 +51,11 @@ class TestRepo:
 
     Should never need to be instantiated.
     """
+    # The directory containing all test data.
+    data_dir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "data")
+    # The location of the test repo itself.
+    repo_dir = os.path.join(data_dir, "central_repo")
+
     # The short name of the instrument used in the test repo.
     instname = "LSSTCam"
     # Full name of the physical filter for the test file.
