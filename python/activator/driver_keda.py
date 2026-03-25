@@ -33,6 +33,7 @@ import uuid
 import astropy.time
 import prometheus_client as prometheus
 import redis
+import torch
 
 from shared.astropy import import_iers_cache
 from shared.logger import setup_usdf_logger, logging_context
@@ -286,6 +287,8 @@ def keda_start():
         # Check initialization and abort early
         import_iers_cache()
         ServiceManager.run_init_checks()
+        torch.set_num_threads(1)
+        torch.set_num_interop_threads(1)
 
         redis_session = RedisStreamSession(
             fanout_redis_stream_host,
