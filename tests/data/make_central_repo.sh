@@ -10,7 +10,6 @@ REPO="${PROMPT_PROCESSING_DIR:?Can\'t find prompt_processing repo; is it set up?
 # For compatibility testing, use the lowest version we offer support for
 butler create "$REPO" --dimension-config "$DAF_BUTLER_DIR/python/lsst/daf/butler/configs/old_dimensions/daf_butler_universe7.yaml"
 butler register-instrument "$REPO" lsst.obs.lsst.LsstCam
-butler register-dataset-type "$REPO" gain_correction IsrCalib instrument detector --is-calibration
 
 # Import datasets
 butler write-curated-calibrations "$REPO" LSSTCam --collection LSSTCam/calib/DM-50520
@@ -23,6 +22,7 @@ butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-t
 # write-curated-calibrations produces manual_defects but not defects
 butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type defects --collections LSSTCam/calib/DM-49175 --where "instrument='LSSTCam' and detector in (90, 91)"
 butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type flat --collections LSSTCam/calib/DM-52163 --where "instrument='LSSTCam' and detector in (90, 91) and physical_filter='g_6'"
+butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type gain_correction --collections LSSTCam/calib/DM-53620 --where "instrument='LSSTCam' and detector in (90, 91) and physical_filter='g_6'"
 butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type linearizer --collections LSSTCam/calib/DM-49175 --where "instrument='LSSTCam' and detector in (90, 91)"
 butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type ptc --collections LSSTCam/calib/DM-50336 --where "instrument='LSSTCam' and detector in (90, 91)"
 butler transfer-datasets /repo/main "$REPO" --transfer copy --register-dataset-types --transfer-dimensions --dataset-type pretrainedModelPackage --collections pretrained_models/dummy
@@ -38,6 +38,7 @@ butler certify-calibrations "$REPO" LSSTCam/calib/DM-49175/run7/ctiGen.20250320a
 butler certify-calibrations "$REPO" LSSTCam/calib/DM-49175/run7/darkGen.20250320a/20250326T000943Z LSSTCam/calib/DM-50520 dark --begin-date "2025-05-15T12:00:00" --end-date "2025-06-25T12:00:00"
 butler certify-calibrations "$REPO" LSSTCam/calib/DM-49175/run7/defectGen.20250401a/20250401T232630Z LSSTCam/calib/DM-50520 defects --begin-date "2025-05-15T12:00:00" --end-date "2025-06-25T12:00:00"
 butler certify-calibrations "$REPO" LSSTCam/calib/DM-52163/flats-2s-v30-nograd-ugrizy/flatTwoLedGen-g.20250812a/20250812T182450Z LSSTCam/calib/DM-50520 flat --begin-date "2025-05-15T12:00:00" --end-date "2025-06-25T12:00:00"
+butler certify-calibrations "$REPO" LSSTCam/calib/DM-53620/3s_v1_dp2_v2_gain_correction_20250920/gainCorrectionGen.20251215a/20251218T193528Z LSSTCam/calib/DM-50520 gain_correction --begin-date "2025-05-15T12:00:00" --end-date "2025-06-25T12:00:00"
 butler certify-calibrations "$REPO" LSSTCam/calib/DM-49175/run7/linearizerGen.20250320a/20250321T052032Z LSSTCam/calib/DM-50520 linearizer --begin-date "2025-05-15T12:00:00" --end-date "2025-06-25T12:00:00"
 butler certify-calibrations "$REPO" LSSTCam/calib/DM-50336/run7/ptcGen.20250422a/20250422T162135Z LSSTCam/calib/DM-50520 ptc --begin-date "2025-05-15T12:00:00" --end-date "2025-06-25T12:00:00"
 
