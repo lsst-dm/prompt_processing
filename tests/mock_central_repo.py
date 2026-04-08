@@ -57,9 +57,9 @@ class TestRepo:
     skymap_name = "lsst_cells_v1"
     # The day_obs used for the init-output runs in the test repo.
     # Does not need to be synchronized with simulated metadata.
-    sim_date = astropy.time.Time("2025-09-13T00:00:00Z")
+    sim_date = astropy.time.Time("2026-04-02T00:00:00Z")
     # The deployment ID used in the test repo.
-    sim_deployment = "pipelines-cf62e06-config-8acfde6"
+    sim_deployment = "pipelines-e8bc8a9-config-8acfde6"
 
     @classmethod
     def fake_file_data(cls, filename, dimensions, instrument, visit):

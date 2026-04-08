@@ -39,10 +39,10 @@ class RunUtilsFunctionTest(unittest.TestCase):
         instrument = Instrument.from_string(instclass)
         deploy_id = "test-9660137"
         filename = "ApPipe.yaml"
-        date = "2023-01-22"
+        date = 20230122
         out_chain = get_output_chain(instrument, date)
-        self.assertEqual(out_chain, f"{instname}/prompt/output-2023-01-22")
+        self.assertEqual(out_chain, f"{instname}/runs/prompt-20230122")
         preload_run = get_preload_run(instrument, deploy_id, date)
-        self.assertEqual(preload_run, f"{instname}/prompt/output-2023-01-22/NoPipeline/{deploy_id}")
+        self.assertEqual(preload_run, f"{instname}/runs/prompt/20230122/NoPipeline/{deploy_id}")
         out_run = get_output_run(instrument, deploy_id, filename, date)
-        self.assertEqual(out_run, f"{instname}/prompt/output-2023-01-22/ApPipe/{deploy_id}")
+        self.assertEqual(out_run, f"{instname}/runs/prompt/20230122/ApPipe/{deploy_id}")
