@@ -35,7 +35,6 @@ import yaml
 
 import astropy
 import botocore.exceptions
-import sqlalchemy.exc
 
 import lsst.utils.timer
 from lsst.resources import ResourcePath
@@ -64,6 +63,7 @@ from .caching import DatasetCache
 from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, NonRetriableError, RetriableError, \
     InvalidPipelineError, NoGoodPipelinesError, PipelinePreExecutionError, PipelineExecutionError, \
     ProvenanceDimensionsError
+from .mw_retries import repo_retry, SQL_EXCEPTIONS, DATASTORE_EXCEPTIONS
 from .timer import enforce_schema, time_this_to_bundle
 
 _log = logging.getLogger("lsst." + __name__)
@@ -80,16 +80,8 @@ base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))
 do_export = bool(int(os.environ.get("DEBUG_EXPORT_OUTPUTS", '1')))
 # The number of arcseconds to pad the region in preloading spatial datasets.
 padding = float(os.environ.get("PRELOAD_PADDING", 30))
-# The (jittered) number of seconds to delay retrying connections to the central Butler.
-repo_retry = float(os.environ.get("REPO_RETRY_DELAY", 30))
 # An optional file with local butler repo config overrides.
 local_repo_config = os.environ.get("LOCAL_REPO_CONFIG", None)
-
-
-# TODO: revisit which cases should be retried after DM-50934
-# TODO: catch ButlerConnectionError once it's available
-SQL_EXCEPTIONS = (sqlalchemy.exc.OperationalError, sqlalchemy.exc.InterfaceError)
-DATASTORE_EXCEPTIONS = SQL_EXCEPTIONS + (botocore.exceptions.ClientError, )
 
 
 @connect.retry(2, SQL_EXCEPTIONS, wait=repo_retry)
