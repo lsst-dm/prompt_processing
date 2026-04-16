@@ -357,3 +357,8 @@ class LocalRepo:
                                                          association.timespan)
                         except sqlalchemy.exc.IntegrityError as e:
                             raise ValueError(f"Dataset {dataset} does not exist in the local repo.") from e
+                        except daf_butler.registry.ConflictingDefinitionError:
+                            # A bit risky, but I've only seen this exception after starting to call
+                            # export_calib_associations with previously-loaded calibs.
+                            _log_trace.debug("Skipped certifying %s over %s; association already exists.",
+                                             dataset, association.timespan)

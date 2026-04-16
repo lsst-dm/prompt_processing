@@ -19,8 +19,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["get_central_butler", "make_local_repo", "make_local_cache",
-           "MiddlewareInterface"]
+__all__ = ["get_central_butler", "MiddlewareInterface"]
 
 import collections.abc
 import functools
@@ -45,7 +44,6 @@ from lsst.pipe.base.separable_pipeline_executor import SeparablePipelineExecutor
 from lsst.pipe.base.single_quantum_executor import SingleQuantumExecutor
 from lsst.daf.butler import Butler, CollectionType, DatasetType, DatasetRef, Timespan, \
     DimensionRecord, MissingDatasetTypeError, EmptyQueryResultError
-from lsst.daf.butler import Config as dafButlerConfig
 import lsst.dax.apdb
 import lsst.geom
 import lsst.obs.base
@@ -59,10 +57,10 @@ from shared.config import PipelinesConfig
 import shared.connect_utils as connect
 import shared.run_utils as runs
 from shared.visit import FannedOutVisit
-from .caching import DatasetCache
 from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, NonRetriableError, RetriableError, \
     InvalidPipelineError, NoGoodPipelinesError, PipelinePreExecutionError, PipelineExecutionError, \
     ProvenanceDimensionsError
+from .local_repo import LocalRepo
 from .mw_retries import repo_retry, SQL_EXCEPTIONS, DATASTORE_EXCEPTIONS
 from .timer import enforce_schema, time_this_to_bundle
 
@@ -74,14 +72,10 @@ _log_trace.setLevel(logging.CRITICAL)  # Turn off by default.
 _log_trace3 = logging.getLogger("TRACE3.lsst." + __name__)
 _log_trace3.setLevel(logging.CRITICAL)  # Turn off by default.
 
-# The number of calib datasets to keep, including the current run.
-base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))
 # Whether or not to export to the central repo.
 do_export = bool(int(os.environ.get("DEBUG_EXPORT_OUTPUTS", '1')))
 # The number of arcseconds to pad the region in preloading spatial datasets.
 padding = float(os.environ.get("PRELOAD_PADDING", 30))
-# An optional file with local butler repo config overrides.
-local_repo_config = os.environ.get("LOCAL_REPO_CONFIG", None)
 
 
 @connect.retry(2, SQL_EXCEPTIONS, wait=repo_retry)
@@ -112,59 +106,6 @@ def get_central_butler(central_repo: str, instrument_class: str, writeable: bool
                   writeable=writeable,
                   inferDefaults=False,
                   )
-
-
-def make_local_repo(local_storage: str, central_butler: Butler, instrument: str):
-    """Create and configure a new local repository.
-
-    The repository is represented by a temporary directory object, which can be
-    used to manage its lifetime.
-
-    Parameters
-    ----------
-    local_storage : `str`
-        An absolute path to a space where this function can create a local
-        Butler repo.
-    central_butler : `lsst.daf.butler.Butler`
-        Butler repo containing instrument and skymap definitions.
-    instrument : `str`
-        Name of the instrument taking the data, for populating
-        butler collections and dataIds. May be either the fully qualified class
-        name or the short name. Examples: "LsstCam", "lsst.obs.lsst.LsstCam".
-
-    Returns
-    -------
-    repo_dir
-        An object of the same type as returned by `tempfile.TemporaryDirectory`,
-        pointing to the local repo location.
-    """
-    dimension_config = central_butler.dimensions.dimensionConfig
-    repo_dir = tempfile.TemporaryDirectory(dir=local_storage, prefix="butler-")
-    config = dafButlerConfig(local_repo_config)
-    new_config = Butler.makeRepo(repo_dir.name, config=config, dimensionConfig=dimension_config)
-    _log.info("Created local Butler repo at %s with dimensions-config %s %d.",
-              repo_dir.name, dimension_config["namespace"], dimension_config["version"])
-
-    # Run-once repository initialization
-    with Butler(new_config, writeable=True) as butler:
-        instrument = lsst.obs.base.Instrument.from_string(instrument, central_butler.registry)
-        instrument.register(butler.registry)
-
-        butler.collections.register(instrument.makeUmbrellaCollectionName(), CollectionType.CHAINED)
-        butler.collections.register(instrument.makeDefaultRawIngestRunName(), CollectionType.RUN)
-
-    return repo_dir
-
-
-def make_local_cache():
-    """Set up a cache for preloaded datasets.
-
-    Returns
-    -------
-    cache : `activator.caching.DatasetCache`
-        An empty cache with configured caching strategy and limits.
-    """
-    return DatasetCache(base_keep_limit)
 
 
 def _get_sasquatch_dispatcher():
@@ -281,12 +222,8 @@ class MiddlewareInterface:
         Information about which pipelines to run on ``visit``'s raws.
     skymap : `str`
         Name of the skymap in the central repo for querying templates.
-    local_repo : `str`
-        A URI to the local Butler repo, which is assumed to already exist and
-        contain standard collections and the registration of ``instrument``.
-    local_cache : `activator.caching.DatasetCache`
-        A cache holding datasets and usage history for preloaded dataset types
-        in ``local_repo``.
+    local_repo : `activator.local_repo.LocalRepo`
+        An object representing this worker's unique local repo.
     prefix : `str`, optional
         URI scheme followed by ``://``; prepended to ``image_bucket`` when
         constructing URIs to retrieve incoming files. The default is
@@ -320,15 +257,12 @@ class MiddlewareInterface:
     #   guaranteed to contain concrete data, or even the dimensions
     #   corresponding to self.camera and self.skymap. Do not assume that
     #   self.butler is the only Butler pointing to the local repo.
-    # self.butler is usable if and only if self._closed is False
 
     def __init__(self, read_butler: Butler, butler_writer: ButlerWriter, image_bucket: str,
                  visit: FannedOutVisit,
                  pre_pipelines: PipelinesConfig, main_pipelines: PipelinesConfig,
-                 # TODO: encapsulate relationship between local_repo and local_cache
-                 skymap: str, local_repo: str, local_cache: DatasetCache,
+                 skymap: str, local_repo: LocalRepo,
                  prefix: str = "s3://"):
-        self._closed = False
         self.visit = visit
 
         self._apdb_config = os.environ["CONFIG_APDB"]
@@ -351,9 +285,9 @@ class MiddlewareInterface:
         now = astropy.time.Time.now()
         self._day_obs = runs.get_day_obs(now)
 
-        self._init_local_butler(local_repo, [self.instrument.makeUmbrellaCollectionName()])
+        self.repo = local_repo
+        self.butler = self.repo.butler  # TODO: remove this after finish migrating to LocalRepo
         self._init_governor_datasets(now, skymap)
-        self.cache = local_cache  # DO NOT copy -- we want to persist this state!
         self._prep_collections()
         self._define_dimensions()
         self._init_ingester()
@@ -363,46 +297,8 @@ class MiddlewareInterface:
         # How much to pad the spatial region we will copy over.
         self.padding = padding*lsst.geom.arcseconds
 
-    def __del__(self):
-        """Safety-net finalizer for MiddlewareInterface.
-        """
-        if not self._closed:
-            _log.warning("%r has not been properly closed, attempting to close it.", self)
-        self.close()
-
-    # TODO: remove on DM-47743
-    def close(self):
-        """Clean up this object.
-
-        This method is idempotent.
-        """
-        if self.butler:
-            self.butler.close()
-        self._closed = True
-
-    def _init_local_butler(self, repo_uri: str, output_collections: list[str]):
-        """Prepare the local butler to ingest into and process from.
-
-        ``self.butler`` is correctly initialized after this method returns.
-
-        Parameters
-        ----------
-        repo_uri : `str`
-            A URI to the location of the local repository.
-        output_collections : `list` [`str`]
-            The collection(s) in which to search for inputs and outputs.
-        """
-        # Internal Butler keeps a reference to the newly prepared collection.
-        # This reference makes visible any inputs for query purposes.
-        self.butler = Butler(repo_uri,
-                             collections=output_collections,
-                             writeable=True,
-                             )
-
     def _init_ingester(self):
         """Prepare the raw file ingester to receive images into this butler.
-
-        ``self._init_local_butler`` must have already been run.
         """
         config = lsst.obs.base.RawIngestConfig()
         self.instrument.applyConfigOverrides(lsst.obs.base.RawIngestTask._DefaultName, config)
@@ -413,8 +309,6 @@ class MiddlewareInterface:
 
     def _init_visit_definer(self):
         """Prepare the visit definer to define visits for this butler.
-
-        ``self._init_local_butler`` must have already been run.
         """
         define_visits_config = lsst.obs.base.DefineVisitsConfig()
         self.instrument.applyConfigOverrides(lsst.obs.base.DefineVisitsTask._DefaultName,
@@ -425,8 +319,6 @@ class MiddlewareInterface:
     @connect.retry(2, DATASTORE_EXCEPTIONS, wait=repo_retry)
     def _init_governor_datasets(self, timestamp, skymap):
         """Load and store the camera and skymap for later use.
-
-        ``self._init_local_butler`` must have already been run.
 
         Parameters
         ----------
@@ -451,8 +343,6 @@ class MiddlewareInterface:
 
     def _init_provenance_dataset_type(self):
         """Register the dataset types used to store provenance information.
-
-        ``self._init_local_butler`` must have already been run.
         """
         self._provenance_dataset_type = DatasetType(
             "prompt_provenance",
@@ -463,28 +353,11 @@ class MiddlewareInterface:
 
     def _define_dimensions(self):
         """Define any dimensions that must be computed from this object's visit.
-
-        ``self._init_local_butler`` must have already been run.
         """
         self.butler.registry.syncDimensionData("group",
                                                {"name": self.visit.groupId,
                                                 "instrument": self.instrument.getName(),
                                                 })
-
-    def _cache_datasets(self, refs: collections.abc.Iterable[lsst.daf.butler.DatasetRef]):
-        """Add or mark requested datasets in the cache.
-
-        Parameters
-        ----------
-        refs : iterable [`lsst.daf.butler.DatasetRef`]
-            The datasets to cache. Assumed to all fit inside the cache.
-        """
-        evicted = self.cache.update(refs)
-        self.butler.pruneDatasets(evicted, disassociate=True, unstore=True, purge=True)
-        try:
-            self.cache.access(refs)
-        except LookupError as e:
-            raise RuntimeError("Cache is too small for one run's worth of datasets.") from e
 
     def _pad_region(self,
                     initial_region: lsst.sphgeom.Region,
@@ -565,21 +438,39 @@ class MiddlewareInterface:
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerSearchTime"):
                     all_datasets, calib_datasets = self._find_pipeline_inputs(region)
-                    present = set(_find_datasets_in_repo(self.butler, all_datasets))
-                    missing = all_datasets - present
-                    missing_calibs = calib_datasets - present
-                    _log_trace.debug("Found %d matching datasets. %d present locally, %d to download.",
-                                     len(all_datasets), len(present), len(missing))
-                    # Do this last, to avoid wasting evictions if any of the above code fails
-                    # Datasets in output collections are uncacheable because the runs will be deleted
-                    output_runs = {runs.get_output_run(self.instrument, self._deployment, f, self._day_obs)
-                                   for f in self.get_combined_pipeline_files()}
-                    cacheable = {d for d in all_datasets
-                                 if not d.datasetType.dimensions.spatial and d.run not in output_runs}
-                    self._cache_datasets(cacheable)
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerTransferTime"):
-                    self._transfer_data(missing, missing_calibs)
+                    output_runs = {runs.get_output_run(self.instrument, self._deployment, f, self._day_obs)
+                                   for f in self.get_combined_pipeline_files()}
+                    transferred = self.repo.load_from(self.read_central_butler, all_datasets,
+                                                      no_cache_runs=output_runs)
+                    missing = _check_transfer_completion(all_datasets, transferred, "Downloaded")
+
+                    with lsst.utils.timer.time_this(_log,
+                                                    msg="prep_butler (transfer collections)",
+                                                    level=logging.DEBUG):
+                        self._export_collections(self._collection_template)
+                        self._export_collections(self.instrument.makeUmbrellaCollectionName())
+
+                    # Must be called after collections have been exported
+                    # TODO: find a way to encapsulate collection sync + association sync in LocalRepo
+                    # while still letting MWI specify the collection names.
+                    with lsst.utils.timer.time_this(_log,
+                                                    msg="prep_butler (transfer associations)",
+                                                    level=logging.DEBUG):
+                        self.repo.export_calib_associations(
+                            self.read_central_butler,
+                            self.instrument.makeCalibrationCollectionName(),
+                            calib_datasets - missing)
+
+                    # Temporary workarounds until we have a prompt-processing default top-level collection
+                    # in shared repos, and raw collection in dev repo, and then we can organize collections
+                    # without worrying about DRP use cases.
+                    self.butler.collections.prepend_chain(
+                        self.instrument.makeUmbrellaCollectionName(),
+                        [self._collection_template,
+                         self.instrument.makeDefaultRawIngestRunName(),
+                         ])
 
                 with time_this_to_bundle(bundle, action_id, "prep_butlerPreprocessTime"):
                     try:
@@ -972,45 +863,6 @@ class MiddlewareInterface:
             _log.debug("Found %d init-output datasets from %s.", n_datasets, run)
         return datasets
 
-    @connect.retry(2, DATASTORE_EXCEPTIONS, wait=repo_retry)
-    def _transfer_data(self, datasets, calibs):
-        """Transfer datasets and all associated collections from the central
-        repo to the local repo.
-
-        Parameters
-        ----------
-        datasets : set [`~lsst.daf.butler.DatasetRef`]
-            The datasets to transfer into the local repo.
-        calibs : set [`~lsst.daf.butler.DatasetRef`]
-            The calibs to re-certify into the local repo.
-        """
-        with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer datasets)", level=logging.DEBUG):
-            transferred = self.butler.transfer_from(self.read_central_butler,
-                                                    datasets,
-                                                    transfer="copy",
-                                                    skip_missing=True,
-                                                    register_dataset_types=True,
-                                                    transfer_dimensions=True,
-                                                    )
-            missing = _check_transfer_completion(datasets, transferred, "Downloaded")
-
-        with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer collections)", level=logging.DEBUG):
-            self._export_collections(self._collection_template)
-            self._export_collections(self.instrument.makeUmbrellaCollectionName())
-
-        with lsst.utils.timer.time_this(_log, msg="prep_butler (transfer associations)", level=logging.DEBUG):
-            self._export_calib_associations(self.instrument.makeCalibrationCollectionName(),
-                                            calibs - missing)
-
-        # Temporary workarounds until we have a prompt-processing default top-level collection
-        # in shared repos, and raw collection in dev repo, and then we can organize collections
-        # without worrying about DRP use cases.
-        self.butler.collections.prepend_chain(
-            self.instrument.makeUmbrellaCollectionName(),
-            [self._collection_template,
-             self.instrument.makeDefaultRawIngestRunName(),
-             ])
-
     def _export_collections(self, collection):
         """Export the collection and all its children.
 
@@ -1036,41 +888,6 @@ class MiddlewareInterface:
                                     src.getCollectionDocumentation(child))
         for chain, children in chains.items():
             dest.setCollectionChain(chain, children)
-
-    def _export_calib_associations(self, calib_collection, datasets):
-        """Export the associations between a set of datasets and a
-        calibration collection.
-
-        Parameters
-        ----------
-        calib_collection : `str`
-            The calibration collection, or a chain thereof, containing the
-            associations. The collection and any children must exist in both
-            the central and local repos.
-        datasets : iterable [`lsst.daf.butler.DatasetRef']
-            The calib datasets whose associations must be exported. Must be
-            certified in ``calib_collection`` in the central repo, and must
-            exist in the local repo.
-        """
-        collections = self.read_central_butler.collections
-        with self.read_central_butler.query() as query, \
-                self.read_central_butler.registry.caching_context():  # Nested loops produce lots of queries
-            for dataset in datasets:
-                dtype = dataset.datasetType
-                result = query.where(dataset.dataId) \
-                    .join_dataset_search(dtype, calib_collection) \
-                    .general(dtype.dimensions,
-                             dataset_fields={dtype.name: {"dataset_id", "run", "collection", "timespan"}},
-                             find_first=False,  # Required for timespan queries.
-                             )
-                # Associations include run membership, and possibly multiple calibration collections.
-                for association in lsst.daf.butler.DatasetAssociation.from_query_result(result, dtype):
-                    if collections.get_info(association.collection).type == CollectionType.CALIBRATION \
-                            and association.ref == dataset:
-                        # certify is designed to work on groups of datasets; in practice,
-                        # the total number of calibs (~1 of each type) is small enough that
-                        # grouping by timespan isn't worth it.
-                        self.butler.registry.certify(association.collection, [dataset], association.timespan)
 
     @staticmethod
     def _count_by_key(refs, keyfunc):
@@ -1872,12 +1689,12 @@ class MiddlewareInterface:
                 _remove_run_completely(self.butler, output_run)
 
             # Clean out calibs, templates, and other preloaded datasets
-            _log_trace.debug("Cache contents: %s", self.cache)
+            _log_trace.debug("Cache contents: %s", self.repo._cache)  # TODO: move into LocalRepo
             excess_datasets = set()
             for dataset_type in self.butler.registry.queryDatasetTypes(...):
                 excess_datasets |= set(self.butler.query_datasets(
                     dataset_type, collections="*", find_first=False, explain=False))
-            excess_datasets -= frozenset(self.cache)
+            excess_datasets -= frozenset(self.repo._cache)  # TODO: move into LocalRepo
             if excess_datasets:
                 _log_trace.debug("Clearing out %s.", excess_datasets)
                 self.butler.pruneDatasets(excess_datasets, disassociate=True, unstore=True, purge=True)
@@ -1885,27 +1702,6 @@ class MiddlewareInterface:
 
 _DatasetResults: typing.TypeAlias = collections.abc.Iterable[lsst.daf.butler.DatasetRef]
 """Type alias for dataset query results, to simplify annotations."""
-
-
-def _find_datasets_in_repo(repo: Butler,
-                           datasets: collections.abc.Collection[lsst.daf.butler.DatasetRef],
-                           ) -> _DatasetResults:
-    """Identify which of a collection of datasets is present in a repo.
-
-    Parameters
-    ----------
-    repo : `lsst.daf.butler.Butler`
-        The repository to search.
-    datasets : collection [`~lsst.daf.butler.DatasetRef`]
-        The datasets to search for. Any past dataset transfers must preserve
-        dataset ID.
-
-    Returns
-    -------
-    datasets : iterable [`lsst.daf.butler.DatasetRef`]
-        The subset of ``datasets`` that exists in ``repo``.
-    """
-    return repo.get_many_datasets(ref.id for ref in datasets)
 
 
 def _remove_run_completely(butler, run):

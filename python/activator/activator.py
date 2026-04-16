@@ -29,7 +29,6 @@ import logging
 import math
 import os
 import signal
-import tempfile
 import time
 import uuid
 import yaml
@@ -50,8 +49,9 @@ from shared.raw import (
 from shared.visit import FannedOutVisit
 from .exception import GracefulShutdownInterrupt, TimeoutInterrupt, IgnorableVisit, \
     NonRetriableError, RetriableError
+from .local_repo import LocalRepo
 from .middleware_interface import get_central_butler, \
-    make_local_repo, make_local_cache, MiddlewareInterface, ButlerWriter, DirectButlerWriter
+    MiddlewareInterface, ButlerWriter, DirectButlerWriter
 from .kafka_butler_writer import KafkaButlerWriter
 from .repo_tracker import LocalRepoTracker
 from .startstop import ServiceManager
@@ -194,26 +194,19 @@ def _get_butler_writer() -> ButlerWriter:
 
 @ServiceManager.check_on_init
 @functools.cache
-@ServiceManager.clean_on_exit(tempfile.TemporaryDirectory.cleanup)
+@ServiceManager.clean_on_exit(LocalRepo.close)
 def _get_local_repo():
     """Lazy initialization of a new local repo.
 
     Returns
     -------
-    repo : `tempfile.TemporaryDirectory`
-        The directory containing the repo, to be removed when the
-        process exits.
+    repo : `activator.local_repo.LocalRepo`
+        An object that represents and manages the repo.
     """
-    repo = make_local_repo(local_repo_space, _get_read_butler(), instrument_name)
+    repo = LocalRepo(local_repo_space, _get_read_butler(), instrument_name)
     tracker = LocalRepoTracker.get()
-    tracker.register(os.getpid(), repo.name)
+    tracker.register(os.getpid(), repo.repo_location)
     return repo
-
-
-@functools.cache
-def _get_local_cache():
-    """Lazy initialization of local repo dataset cache."""
-    return make_local_cache()
 
 
 def time_since(start_time):
@@ -609,10 +602,8 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
                                       pre_pipelines,
                                       main_pipelines,
                                       skymap,
-                                      _get_local_repo().name,
-                                      _get_local_cache())
-            # TODO: remove on DM-47743
-            cleanups.callback(mwi.close)
+                                      _get_local_repo(),
+                                      )
             if not mwi.get_main_pipeline_files():
                 raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
             # TODO: pipeline execution requires a clean run until DM-38041.
