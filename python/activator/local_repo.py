@@ -362,3 +362,30 @@ class LocalRepo:
                             # export_calib_associations with previously-loaded calibs.
                             _log_trace.debug("Skipped certifying %s over %s; association already exists.",
                                              dataset, association.timespan)
+
+    def sync_collections(self, src_butler, collection):
+        """Copy a collection and all its descendants to this repo.
+
+        This preserves the collection structure even if some child collections
+        do not have data. Syncing a collection does not export its datasets.
+
+        Parameters
+        ----------
+        src_butler : `lsst.daf.butler.Butler`
+            The Butler from which to copy collections.
+        collection : `str`
+            The collection to be synced. It is usually a CHAINED collection
+            and can have many children.
+        """
+        src = src_butler.collections
+        dest = self.butler.collections
+
+        # Store collection chains after all children guaranteed to exist
+        chains = {}
+        for child in src.query(collection, flatten_chains=True, include_chains=True):
+            info = src.get_info(child)
+            if info.type == daf_butler.CollectionType.CHAINED:
+                chains[child] = info.children
+            dest.register(child, info.type, info.doc)
+        for chain, children in chains.items():
+            dest.redefine_chain(chain, children)

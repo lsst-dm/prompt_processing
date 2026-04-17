@@ -449,8 +449,9 @@ class MiddlewareInterface:
                     with lsst.utils.timer.time_this(_log,
                                                     msg="prep_butler (transfer collections)",
                                                     level=logging.DEBUG):
-                        self._export_collections(self._collection_template)
-                        self._export_collections(self.instrument.makeUmbrellaCollectionName())
+                        self.repo.sync_collections(self.read_central_butler, self._collection_template)
+                        self.repo.sync_collections(self.read_central_butler,
+                                                   self.instrument.makeUmbrellaCollectionName())
 
                     # Must be called after collections have been exported
                     # TODO: find a way to encapsulate collection sync + association sync in LocalRepo
@@ -862,32 +863,6 @@ class MiddlewareInterface:
         for run, n_datasets in self._count_by_key(datasets, lambda ref: ref.run):
             _log.debug("Found %d init-output datasets from %s.", n_datasets, run)
         return datasets
-
-    def _export_collections(self, collection):
-        """Export the collection and all its children.
-
-        This preserves the collection structure even if some child collections
-        do not have data. Exporting a collection does not export its datasets.
-
-        Parameters
-        ----------
-        collection : `str`
-            The collection to be exported. It is usually a CHAINED collection
-            and can have many children.
-        """
-        src = self.read_central_butler.registry
-        dest = self.butler.registry
-
-        # Store collection chains after all children guaranteed to exist
-        chains = {}
-        for child in src.queryCollections(collection, flattenChains=True, includeChains=True):
-            if src.getCollectionType(child) == CollectionType.CHAINED:
-                chains[child] = src.getCollectionChain(child)
-            dest.registerCollection(child,
-                                    src.getCollectionType(child),
-                                    src.getCollectionDocumentation(child))
-        for chain, children in chains.items():
-            dest.setCollectionChain(chain, children)
 
     @staticmethod
     def _count_by_key(refs, keyfunc):

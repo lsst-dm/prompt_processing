@@ -247,6 +247,66 @@ class LocalRepoTest(unittest.TestCase):
         with self.assertRaises(daf_butler.MissingCollectionError):
             self.testbed.export_calib_associations(self.central_butler, calib_chain, calibs)
 
+    def _check_collection(self, collection, src, dest):
+        """Test whether a collection exists and has the expected properties.
+
+        Parameters
+        ----------
+        collection : `str`
+            The collection to test.
+        src : `lsst.daf.butler.ButlerCollections`
+            The source of the collection, which serves as the test oracle.
+        dest : `lsst.daf.butler.ButlerCollections`
+            The destination in which the collection should be reproduced from `src`.
+        """
+        src_info = src.get_info(collection, include_parents=False, include_summary=False)
+        try:
+            dest_info = dest.get_info(collection, include_parents=False, include_summary=False)
+        except daf_butler.MissingCollectionError:
+            self.fail(f"{collection} does not exist in destination repo.")
+        # Tests name, type, doc, and children
+        self.assertEqual(dest_info, src_info)
+
+    def test_sync_collections_single(self):
+        # Not one of the standard collections recognized by obs.base.Instrument
+        target = "skymaps"
+        self.testbed.sync_collections(self.central_butler, target)
+
+        test_butler = daf_butler.Butler(self.testbed._repo.name)
+        self._check_collection(target, self.central_butler.collections, test_butler.collections)
+
+    def test_sync_collections_1level(self):
+        target = "pretrained_models"
+        self.testbed.sync_collections(self.central_butler, target)
+
+        test_butler = daf_butler.Butler(self.testbed._repo.name)
+        self._check_collection(target, self.central_butler.collections, test_butler.collections)
+        for child in self.central_butler.collections.query(target, include_chains=True):
+            self._check_collection(child, self.central_butler.collections, test_butler.collections)
+
+    def test_sync_collections_2level(self):
+        target = "LSSTCam/defaults"
+        self.testbed.sync_collections(self.central_butler, target)
+
+        test_butler = daf_butler.Butler(self.testbed._repo.name)
+        self._check_collection(target, self.central_butler.collections, test_butler.collections)
+        for child in self.central_butler.collections.get_info(target).children:
+            self._check_collection(child, self.central_butler.collections, test_butler.collections)
+            if self.central_butler.collections.get_info(child).type == daf_butler.CollectionType.CHAINED:
+                for grandchild in self.central_butler.collections.get_info(child).children:
+                    self._check_collection(grandchild,
+                                           self.central_butler.collections,
+                                           test_butler.collections)
+
+    def test_sync_collections_missing(self):
+        target = "DoesNotExist"
+        with self.assertRaises(daf_butler.MissingCollectionError):
+            self.testbed.sync_collections(self.central_butler, target)
+
+        test_butler = daf_butler.Butler(self.testbed._repo.name)
+        with self.assertRaises(daf_butler.MissingCollectionError):
+            test_butler.collections.get_info(target)
+
     def test_butler(self):
         # Butler is a tagged class, so the only way to test writeability is to
         # actually write something
