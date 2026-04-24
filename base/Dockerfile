@@ -10,4 +10,5 @@ RUN <<EOT
   pip install --no-input cloudevents
   pip install --no-input prometheus-client
   pip install --no-input redis
+  pip install --no-input sentry-sdk
 EOT
