@@ -206,11 +206,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
     def test_init(self):
         """Basic tests of the initialized interface object.
         """
-        # Check that the butler instance is properly configured.
-        instruments = self.interface.butler.query_dimension_records("instrument")
-        self.assertEqual(TestRepo.instname, instruments[0].name)
-        self.assertEqual(set(self.interface.butler.collections.defaults), {self.umbrella})
-
         # Check that the ingester is properly configured.
         self.assertEqual(self.interface.rawIngestTask.config.failFast, True)
         self.assertEqual(self.interface.rawIngestTask.config.transfer, "copy")
@@ -317,7 +312,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.prep_butler()
 
         expected_shards = {180002, 180177}
-        self._check_imports(self.interface.butler, group="1", detector=90,
+        self._check_imports(self.local_repo.butler, group="1", detector=90,
                             expected_shards=expected_shards)
 
         # Hard to test actual pipeline output, so just check we're calling it
@@ -353,7 +348,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.prep_butler()
 
         expected_shards = {180002, 180177}
-        self._check_imports(self.interface.butler, group="1", detector=90,
+        self._check_imports(self.local_repo.butler, group="1", detector=90,
                             expected_shards=expected_shards, have_filter=False)
 
         # Hard to test actual pipeline output, so just check we're calling it
@@ -373,7 +368,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             self.interface.prep_butler()
 
         expected_shards = set()
-        self._check_imports(self.interface.butler, group="1", detector=90,
+        self._check_imports(self.local_repo.butler, group="1", detector=90,
                             expected_shards=expected_shards, have_spatial=False)
 
         # Hard to test actual pipeline output, so just check we're calling it
@@ -440,7 +435,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         ) as mock_pre:
             second_interface.prep_butler()
         expected_shards = {180002, 180177}
-        self._check_imports(second_interface.butler, group="2", detector=90,
+        self._check_imports(self.local_repo.butler, group="2", detector=90,
                             expected_shards=expected_shards)
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
@@ -464,7 +459,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         ) as mock_pre:
             third_interface.prep_butler()
         expected_shards.update({180002, 180177})
-        self._check_imports(third_interface.butler, group="3", detector=91,
+        self._check_imports(self.local_repo.butler, group="3", detector=91,
                             expected_shards=expected_shards)
         # Hard to test actual pipeline output, so just check we're calling it
         mock_pre.assert_called_once()
@@ -474,7 +469,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         data_id, file_data = TestRepo.fake_file_data(filepath,
-                                                     self.interface.butler.dimensions,
+                                                     self.local_repo.butler.dimensions,
                                                      self.interface.instrument,
                                                      self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
@@ -482,8 +477,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             exp_id = self.interface.ingest_image(filename)
             self.assertEqual(exp_id, int(self.next_visit.groupId))
 
-            datasets = self.interface.butler.query_datasets('raw',
-                                                            collections=[f'{TestRepo.instname}/raw/all'])
+            datasets = self.local_repo.butler.query_datasets('raw',
+                                                             collections=[f'{TestRepo.instname}/raw/all'])
             self.assertEqual(datasets[0].dataId, data_id)
             # TODO: After raw ingest, we can define exposure dimension records
             # and check that the visits are defined
@@ -503,7 +498,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "nonexistentImage.fits"
         filepath = os.path.join(self.input_data, filename)
         _, file_data = TestRepo.fake_file_data(filepath,
-                                               self.interface.butler.dimensions,
+                                               self.local_repo.butler.dimensions,
                                                self.interface.instrument,
                                                self.next_visit)
         with (
@@ -513,8 +508,8 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             mock.return_value = file_data
             self.interface.ingest_image(filename)
         # There should not be any raw files in the registry.
-        datasets = self.interface.butler.query_datasets('raw', collections=[f'{TestRepo.instname}/raw/all'],
-                                                        explain=False)
+        datasets = self.local_repo.butler.query_datasets('raw', collections=[f'{TestRepo.instname}/raw/all'],
+                                                         explain=False)
         self.assertEqual(datasets, [])
 
     def test_get_observed_skyangle(self):
@@ -538,7 +533,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         _, file_data = TestRepo.fake_file_data(filepath,
-                                               self.interface.butler.dimensions,
+                                               self.local_repo.butler.dimensions,
                                                self.interface.instrument,
                                                self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
@@ -554,7 +549,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                         dome=FannedOutVisit.Dome.CLOSED,
                                         )
         _, eng_data = TestRepo.fake_file_data(filepath,
-                                              self.interface.butler.dimensions,
+                                              self.local_repo.butler.dimensions,
                                               self.interface.instrument,
                                               eng_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
@@ -604,7 +599,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
             "test_provenance",
             # Mocked QGs do not have realistic dimensions, and provenance
             # dataset types need to have the same dimensions.
-            self.interface.butler.dimensions.conform(["detector"]),
+            self.local_repo.butler.dimensions.conform(["detector"]),
             "ProvenanceQuantumGraph"
         )
         with (
@@ -729,7 +724,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         _, file_data = TestRepo.fake_file_data(filepath,
-                                               self.interface.butler.dimensions,
+                                               self.local_repo.butler.dimensions,
                                                self.interface.instrument,
                                                self.next_visit)
         with unittest.mock.patch.object(self.interface.rawIngestTask, "extractMetadata") as mock:
@@ -1036,12 +1031,12 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         with unittest.mock.patch("activator.local_repo.LocalRepo._make_local_cache",
                                  return_value=DatasetCache(2)):
-            local_repo = LocalRepo(tempfile.gettempdir(), read_butler, TestRepo.instname)
-        self.addCleanup(local_repo.close)
+            self.local_repo = LocalRepo(tempfile.gettempdir(), read_butler, TestRepo.instname)
+        self.addCleanup(self.local_repo.close)
         with unittest.mock.patch("activator.local_repo.LocalRepo._make_local_cache",
                                  return_value=DatasetCache(2)):
-            second_local_repo = LocalRepo(tempfile.gettempdir(), read_butler, TestRepo.instname)
-        self.addCleanup(second_local_repo.close)
+            self.second_local_repo = LocalRepo(tempfile.gettempdir(), read_butler, TestRepo.instname)
+        self.addCleanup(self.second_local_repo.close)
 
         apdb_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
         self.addCleanup(apdb_dir.cleanup)
@@ -1094,14 +1089,14 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_writer = DirectButlerWriter(self.write_butler)
         self.interface = MiddlewareInterface(read_butler, butler_writer, self.input_data, self.next_visit,
                                              pre_pipelines_full, pipelines, TestRepo.skymap_name,
-                                             local_repo,
+                                             self.local_repo,
                                              prefix="file://")
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.interface.prep_butler()
         filename = "fakeRawImage.fits"
         filepath = os.path.join(self.input_data, filename)
         self.raw_data_id, file_data = TestRepo.fake_file_data(filepath,
-                                                              self.interface.butler.dimensions,
+                                                              self.local_repo.butler.dimensions,
                                                               self.interface.instrument,
                                                               self.next_visit)
         self.group_data_id = {(k if k != "exposure" else "group"): (v if k != "exposure" else str(v))
@@ -1109,14 +1104,14 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
 
         self.second_visit = dataclasses.replace(self.next_visit, groupId="2")
         self.second_data_id, second_file_data = TestRepo.fake_file_data(filepath,
-                                                                        self.interface.butler.dimensions,
+                                                                        self.local_repo.butler.dimensions,
                                                                         self.interface.instrument,
                                                                         self.second_visit)
         self.second_group_data_id = {(k if k != "exposure" else "group"): (v if k != "exposure" else str(v))
                                      for k, v in self.second_data_id.required.items()}
         self.second_interface = MiddlewareInterface(
             read_butler, butler_writer, self.input_data, self.second_visit, pre_pipelines_full, pipelines,
-            TestRepo.skymap_name, second_local_repo, prefix="file://")
+            TestRepo.skymap_name, self.second_local_repo, prefix="file://")
         with unittest.mock.patch("activator.middleware_interface.MiddlewareInterface._run_preprocessing"):
             self.second_interface.prep_butler()
         date = (astropy.time.Time.now() - 12 * u.hour).to_value("ymdhms")
@@ -1158,26 +1153,26 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
         butler_tests.addDatasetType(self.write_butler, "history_diaSource",
                                     {"instrument", "group", "detector"},
                                     "ArrowAstropy")
-        butler_tests.addDatasetType(self.interface.butler, "history_diaSource",
+        butler_tests.addDatasetType(self.local_repo.butler, "history_diaSource",
                                     {"instrument", "group", "detector"},
                                     "ArrowAstropy")
-        butler_tests.addDatasetType(self.second_interface.butler, "history_diaSource",
+        butler_tests.addDatasetType(self.second_local_repo.butler, "history_diaSource",
                                     {"instrument", "group", "detector"},
                                     "ArrowAstropy")
         butler_tests.addDatasetType(self.write_butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
-        butler_tests.addDatasetType(self.interface.butler, "calexp",
+        butler_tests.addDatasetType(self.local_repo.butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
-        butler_tests.addDatasetType(self.second_interface.butler, "calexp",
+        butler_tests.addDatasetType(self.second_local_repo.butler, "calexp",
                                     {"instrument", "visit", "detector"},
                                     "ExposureF")
-        self.interface.butler.put(cat, "history_diaSource", self.group_data_id, run=self.preprocessing_run)
-        self.second_interface.butler.put(cat, "history_diaSource", self.second_group_data_id,
-                                         run=self.preprocessing_run)
-        self.interface.butler.put(exp, "calexp", self.processed_data_id, run=self.output_run)
-        self.second_interface.butler.put(exp, "calexp", self.second_processed_data_id, run=self.output_run)
+        self.local_repo.butler.put(cat, "history_diaSource", self.group_data_id, run=self.preprocessing_run)
+        self.second_local_repo.butler.put(cat, "history_diaSource", self.second_group_data_id,
+                                          run=self.preprocessing_run)
+        self.local_repo.butler.put(exp, "calexp", self.processed_data_id, run=self.output_run)
+        self.second_local_repo.butler.put(exp, "calexp", self.second_processed_data_id, run=self.output_run)
 
     def _count_datasets(self, butler, types, collections):
         count = 0
@@ -1234,12 +1229,12 @@ class MiddlewareInterfaceWriteableTest(unittest.TestCase):
                     interface.prep_butler()
 
                 self.assertEqual(
-                    self._count_datasets(interface.butler, ["the_monster_20250219"],
+                    self._count_datasets(local_repo.butler, ["the_monster_20250219"],
                                          f"{TestRepo.instname}/defaults"),
                     2)
                 self.assertIn(
                     "emptyrun",
-                    interface.butler.collections.query("refcats", flatten_chains=True))
+                    local_repo.butler.collections.query("refcats", flatten_chains=True))
             finally:
                 local_repo.close()
 

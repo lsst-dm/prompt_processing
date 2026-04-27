@@ -252,11 +252,6 @@ class MiddlewareInterface:
     # self._download_store is None if and only if self.image_host is a local URI.
     # self.visit, self.instrument, self.camera, self.skymap, self._deployment
     #   self._day_obs do not change after __init__.
-    # self.butler defaults to the "defaults" chained collection, which contains
-    #   all pipeline inputs. However, self.butler is not
-    #   guaranteed to contain concrete data, or even the dimensions
-    #   corresponding to self.camera and self.skymap. Do not assume that
-    #   self.butler is the only Butler pointing to the local repo.
 
     def __init__(self, read_butler: Butler, butler_writer: ButlerWriter, image_bucket: str,
                  visit: FannedOutVisit,
@@ -286,7 +281,6 @@ class MiddlewareInterface:
         self._day_obs = runs.get_day_obs(now)
 
         self.repo = local_repo
-        self.butler = self.repo.butler  # TODO: remove this after finish migrating to LocalRepo
         self._init_governor_datasets(now, skymap)
         self._prep_collections()
         self._define_dimensions()
@@ -305,7 +299,7 @@ class MiddlewareInterface:
         config.transfer = "copy"  # Copy files into the local butler.
         config.failFast = True  # We want failed ingests to fail immediately.
         self.rawIngestTask = lsst.obs.base.RawIngestTask(config=config,
-                                                         butler=self.butler)
+                                                         butler=self.repo.butler)
 
     def _init_visit_definer(self):
         """Prepare the visit definer to define visits for this butler.
@@ -314,7 +308,8 @@ class MiddlewareInterface:
         self.instrument.applyConfigOverrides(lsst.obs.base.DefineVisitsTask._DefaultName,
                                              define_visits_config)
         define_visits_config.groupExposures = "one-to-one"
-        self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config, butler=self.butler)
+        self.define_visits = lsst.obs.base.DefineVisitsTask(config=define_visits_config,
+                                                            butler=self.repo.butler)
 
     @connect.retry(2, DATASTORE_EXCEPTIONS, wait=repo_retry)
     def _init_governor_datasets(self, timestamp, skymap):
@@ -346,18 +341,18 @@ class MiddlewareInterface:
         """
         self._provenance_dataset_type = DatasetType(
             "prompt_provenance",
-            self.butler.dimensions.conform(["group", "detector"]),
+            self.repo.butler.dimensions.conform(["group", "detector"]),
             "ProvenanceQuantumGraph",
         )
-        self.butler.registry.registerDatasetType(self._provenance_dataset_type)
+        self.repo.butler.registry.registerDatasetType(self._provenance_dataset_type)
 
     def _define_dimensions(self):
         """Define any dimensions that must be computed from this object's visit.
         """
-        self.butler.registry.syncDimensionData("group",
-                                               {"name": self.visit.groupId,
-                                                "instrument": self.instrument.getName(),
-                                                })
+        self.repo.butler.registry.syncDimensionData("group",
+                                                    {"name": self.visit.groupId,
+                                                     "instrument": self.instrument.getName(),
+                                                     })
 
     def _pad_region(self,
                     initial_region: lsst.sphgeom.Region,
@@ -467,7 +462,7 @@ class MiddlewareInterface:
                     # Temporary workarounds until we have a prompt-processing default top-level collection
                     # in shared repos, and raw collection in dev repo, and then we can organize collections
                     # without worrying about DRP use cases.
-                    self.butler.collections.prepend_chain(
+                    self.repo.butler.collections.prepend_chain(
                         self.instrument.makeUmbrellaCollectionName(),
                         [self._collection_template,
                          self.instrument.makeDefaultRawIngestRunName(),
@@ -487,18 +482,18 @@ class MiddlewareInterface:
                                             "prep_butlerTransferTime",
                                             "prep_butlerPreprocessTime",
                                             ]})
-        self.butler.registry.registerDatasetType(DatasetType(
+        self.repo.butler.registry.registerDatasetType(DatasetType(
             "promptPreload_metrics",
             dimensions={"instrument", "group", "detector"},
             storageClass="MetricMeasurementBundle",
-            universe=self.butler.dimensions,
+            universe=self.repo.butler.dimensions,
         ))
-        self.butler.put(bundle,
-                        "promptPreload_metrics",
-                        run=runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
-                        instrument=self.instrument.getName(),
-                        detector=self.visit.detector,
-                        group=self.visit.groupId)
+        self.repo.butler.put(bundle,
+                             "promptPreload_metrics",
+                             run=runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
+                             instrument=self.instrument.getName(),
+                             detector=self.visit.detector,
+                             group=self.visit.groupId)
 
     @connect.retry(2, SQL_EXCEPTIONS, wait=repo_retry)
     def _find_pipeline_inputs(self, region):
@@ -901,29 +896,29 @@ class MiddlewareInterface:
         end = start + 3.0 * self.visit.duration * astropy.units.second
         timespan = Timespan(start, end)
 
-        self.butler.registry.registerDatasetType(DatasetType(
+        self.repo.butler.registry.registerDatasetType(DatasetType(
             "regionTimeInfo",
             dimensions={"instrument", "group", "detector"},
             storageClass="RegionTimeInfo",
-            universe=self.butler.dimensions,
+            universe=self.repo.butler.dimensions,
         ))
-        self.butler.put(lsst.pipe.base.utils.RegionTimeInfo(region=region, timespan=timespan),
-                        "regionTimeInfo",
-                        run=runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
-                        instrument=self.instrument.getName(),
-                        detector=self.visit.detector,
-                        group=self.visit.groupId)
+        self.repo.butler.put(lsst.pipe.base.utils.RegionTimeInfo(region=region, timespan=timespan),
+                             "regionTimeInfo",
+                             run=runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
+                             instrument=self.instrument.getName(),
+                             detector=self.visit.detector,
+                             group=self.visit.groupId)
 
     def _prep_collections(self):
         """Pre-register output collections in advance of running the pipeline.
 
         ``self._init_governor_datasets`` must have already been run.
         """
-        self.butler.collections.register(
+        self.repo.butler.collections.register(
             runs.get_preload_run(self.instrument, self._deployment, self._day_obs),
             CollectionType.RUN)
         for pipeline_file in self.get_combined_pipeline_files():
-            self.butler.collections.register(
+            self.repo.butler.collections.register(
                 runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs),
                 CollectionType.RUN)
 
@@ -1068,10 +1063,10 @@ class MiddlewareInterface:
         angle : `astropy.coordinates.Angle` or `None`
             The observed rotation angle.
         """
-        records = self.butler.query_dimension_records("exposure",
-                                                      instrument=self.instrument.getName(),
-                                                      exposure=exposure,
-                                                      )
+        records = self.repo.butler.query_dimension_records("exposure",
+                                                           instrument=self.instrument.getName(),
+                                                           exposure=exposure,
+                                                           )
         if not records:
             raise ValueError(f"Unknown exposure {exposure}.")
         elif len(records) > 1:
@@ -1125,7 +1120,7 @@ class MiddlewareInterface:
         in_collections : sequence [`str`]
             Collections, usually containing previous outputs, to search (in
             order) when reading pipeline inputs. This list is prepended to the
-            collections in ``self.butler``.
+            collections in ``self.repo.butler``.
         data_ids : `str`
             A query string, in the format of the ``where`` parameter to
             `lsst.daf.butler.query_data_ids`, specifying the data IDs
@@ -1158,9 +1153,8 @@ class MiddlewareInterface:
                 raise InvalidPipelineError(f"Could not load {pipeline_file}.") from e
             output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file, self._day_obs)
             factory = lsst.pipe.base.TaskFactory()
-            with Butler(butler=self.butler,
-                        collections=[output_run] + in_collections + list(self.butler.collections.defaults),
-                        run=output_run) as exec_butler:
+            all_collections = [output_run] + in_collections + list(self.repo.butler.collections.defaults)
+            with Butler(butler=self.repo.butler, collections=all_collections, run=output_run) as exec_butler:
                 executor = SeparablePipelineExecutor(
                     exec_butler,
                     clobber_output=False,
@@ -1209,7 +1203,7 @@ class MiddlewareInterface:
                     raise PipelineExecutionError(f"Execution failed for {pipeline_file}.") from e
                 finally:
                     # Refresh so that registry queries know the processed products.
-                    self.butler.registry.refresh()
+                    self.repo.butler.registry.refresh()
             break
         else:
             raise NoGoodPipelinesError(f"No {label} pipeline graph could be built.")
@@ -1230,7 +1224,7 @@ class MiddlewareInterface:
         ref : `lsst.daf.butler.DatasetRef`
             A reference to a to-be-written provenance dataset in ``output_run``.
         """
-        query_results = self.butler.query_data_ids(
+        query_results = self.repo.butler.query_data_ids(
             self._provenance_dataset_type.dimensions, where=where, explain=False
         )
         try:
@@ -1292,7 +1286,7 @@ class MiddlewareInterface:
             `True` if changes have been made, `False` if retries are safe.
         """
         # Need dimension records to determine region.
-        data_ids = self.butler.query_data_ids(
+        data_ids = self.repo.butler.query_data_ids(
             ["instrument", "visit", "detector"], where=where, with_dimension_records=True, explain=False
         )
         if len(data_ids) == 1:
@@ -1424,7 +1418,7 @@ class MiddlewareInterface:
             export_patterns = [".*"]
         export_types = set(
             data_type
-            for data_type in self._get_safe_dataset_types(self.butler)
+            for data_type in self._get_safe_dataset_types(self.repo.butler)
             for pattern in export_patterns
             if re.fullmatch(pattern, data_type)
         )
@@ -1456,11 +1450,11 @@ class MiddlewareInterface:
                 with lsst.utils.timer.time_this(_log, msg="upload metrics", level=logging.DEBUG):
                     # Making bundles a collection makes debug log simpler, and it should be short.
                     bundles = list(self._query_datasets_by_storage_class(
-                        self.butler, exposure_ids, output_runs, "MetricMeasurementBundle"))
+                        self.repo.butler, exposure_ids, output_runs, "MetricMeasurementBundle"))
                     for bundle in bundles:
                         try:
                             _log_trace.debug("Uploading %s...", bundle)
-                            dispatcher.dispatchRef(self.butler.get(bundle), bundle)
+                            dispatcher.dispatchRef(self.repo.butler.get(bundle), bundle)
                         except (SasquatchDispatchFailure, SasquatchDispatchPartialFailure):
                             # Retries can get messy with multiple bundles, so just abort.
                             _log.exception("Failed to upload %s to Sasquatch: ", bundle)
@@ -1510,7 +1504,7 @@ class MiddlewareInterface:
             try:
                 datasets = set()
                 for dataset_type in dataset_types:
-                    datasets |= set(self.butler.query_datasets(
+                    datasets |= set(self.repo.butler.query_datasets(
                         dataset_type,
                         collections=in_collections,
                         # in_collections may include other runs, so need to filter.
@@ -1534,7 +1528,7 @@ class MiddlewareInterface:
             # central registry. We need to transfer our exposure/visit dimensions,
             # so handle those manually.
             dimension_records = self._get_dimension_records_to_export(
-                self.butler,
+                self.repo.butler,
                 where="exposure in (exposure_ids)",
                 bind={"exposure_ids": exposure_ids},
                 instrument=self.instrument.getName(),
@@ -1542,7 +1536,9 @@ class MiddlewareInterface:
             )
 
         with lsst.utils.timer.time_this(_log, msg="export_outputs (transfer)", level=logging.DEBUG):
-            transferred = self._butler_writer.transfer_outputs(self.butler, dimension_records, list(datasets))
+            transferred = self._butler_writer.transfer_outputs(self.repo.butler,
+                                                               dimension_records,
+                                                               list(datasets))
             _check_transfer_completion(datasets, transferred, "Uploaded")
 
         return transferred
