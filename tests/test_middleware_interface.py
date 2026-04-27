@@ -53,7 +53,6 @@ from activator.local_repo import LocalRepo
 from activator.middleware_interface import get_central_butler, \
     _get_sasquatch_dispatcher, MiddlewareInterface, DirectButlerWriter
 from shared.config import PipelinesConfig
-from shared.run_utils import get_output_run
 from shared.visit import FannedOutVisit
 
 from mock_central_repo import TestRepo
@@ -927,68 +926,6 @@ class MiddlewareInterfaceTest(unittest.TestCase):
         for dataset in butler.query_datasets(dataset_type, collections=collection, data_id=data_id,
                                              find_first=False, explain=False):
             self.fail(f"{dataset} matches {dataset_type}@{data_id} in {collection}.")
-
-    def test_clean_local_repo(self):
-        """Test that clean_local_repo removes old datasets from the datastore.
-        """
-        # Safe to define custom dataset types and IDs, because the repository
-        # is regenerated for each test.
-        butler = self.interface.butler
-        raw_data_id, _ = TestRepo.fake_file_data("foo.bar",
-                                                 butler.dimensions,
-                                                 self.interface.instrument,
-                                                 self.next_visit)
-        calib_data_id_1 = {k: v for k, v in raw_data_id.required.items() if k in {"instrument", "detector"}}
-        calib_data_id_2 = {"instrument": self.interface.instrument.getName(), "detector": 1}
-        calib_data_id_3 = {"instrument": self.interface.instrument.getName(), "detector": 2}
-        calib_data_id_4 = {"instrument": self.interface.instrument.getName(), "detector": 3}
-        processed_data_id = {(k if k != "exposure" else "visit"): v for k, v in raw_data_id.required.items()}
-        butler_tests.addDataIdValue(butler, "exposure", raw_data_id["exposure"])
-        butler_tests.addDataIdValue(butler, "visit", processed_data_id["visit"])
-        butler_tests.addDatasetType(butler, "raw", raw_data_id.required.keys(), "Exposure")
-        butler_tests.addDatasetType(butler, "src", processed_data_id.keys(), "SourceCatalog")
-        butler_tests.addDatasetType(butler, "calexp", processed_data_id.keys(), "ExposureF")
-        butler_tests.addDatasetType(butler, "bias", calib_data_id_1.keys(), "ExposureF")
-
-        exp = lsst.afw.image.ExposureF(20, 20)
-        cat = lsst.afw.table.SourceCatalog()
-        # Since we're not calling prep_butler, need to set up the collections by hand
-        raw_collection = self.interface.instrument.makeDefaultRawIngestRunName()
-        butler.collections.register(raw_collection, CollectionType.RUN)
-        out_collection = get_output_run(self.interface.instrument, self.deploy_id,
-                                        "ApPipe.yaml", self.interface._day_obs)
-        butler.collections.register(out_collection, CollectionType.RUN)
-        # Avoid conflict with the original calib chain
-        calib_collection = self.interface.instrument.makeCalibrationCollectionName("dummy")
-        butler.collections.register(calib_collection, CollectionType.RUN)
-        chain = self.interface.instrument.makeUmbrellaCollectionName()
-        butler.collections.register(chain, CollectionType.CHAINED)
-        butler.collections.redefine_chain(chain, [out_collection, raw_collection, calib_collection])
-
-        butler.put(exp, "raw", raw_data_id, run=raw_collection)
-        butler.put(cat, "src", processed_data_id, run=out_collection)
-        butler.put(exp, "calexp", processed_data_id, run=out_collection)
-        bias_1 = butler.put(exp, "bias", calib_data_id_1, run=calib_collection)
-        bias_2 = butler.put(exp, "bias", calib_data_id_2, run=calib_collection)
-        bias_3 = butler.put(exp, "bias", calib_data_id_3, run=calib_collection)
-        bias_4 = butler.put(exp, "bias", calib_data_id_4, run=calib_collection)
-        with self.assertWarns(RuntimeWarning):  # Deliberately overflowing cache
-            self.local_repo._cache.update([bias_1, bias_2, bias_3, bias_4, ])
-        self._assert_in_collection(butler, "*", "raw", raw_data_id)
-        self._assert_in_collection(butler, "*", "src", processed_data_id)
-        self._assert_in_collection(butler, "*", "calexp", processed_data_id)
-        self._assert_in_collection(butler, "*", "bias", calib_data_id_1)
-        self._assert_in_collection(butler, "*", "bias", calib_data_id_2)
-        self._assert_in_collection(butler, "*", "bias", calib_data_id_3)
-
-        self.interface.clean_local_repo()
-        self._assert_not_in_collection(butler, "*", "raw", raw_data_id)
-        self._assert_not_in_collection(butler, "*", "src", processed_data_id)
-        self._assert_not_in_collection(butler, "*", "calexp", processed_data_id)
-        # Default cache has size 2, so one of the biases should have been removed
-        self._check_cache_vs_collection(butler, self.local_repo._cache, bias_1)
-        self._check_cache_vs_collection(butler, self.local_repo._cache, bias_2)
-        self._check_cache_vs_collection(butler, self.local_repo._cache, bias_3)
 
     def _check_cache_vs_collection(self, butler, cache, ref):
         if ref in cache:

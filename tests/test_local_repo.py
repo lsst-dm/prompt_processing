@@ -27,8 +27,12 @@ import tempfile
 import unittest
 import unittest.mock
 
+import lsst.afw.image as afw_image
 import lsst.daf.butler as daf_butler
+import lsst.daf.butler.tests as butler_tests
+import lsst.obs.base
 
+import shared.run_utils
 import activator.caching
 from activator.local_repo import LocalRepo
 import activator.repo_tracker
@@ -69,6 +73,8 @@ class LocalRepoTest(unittest.TestCase):
 
         self.testbed = LocalRepo(self.local_space.name, self.central_butler, TestRepo.instname)
         self.addCleanup(self.testbed.close)
+
+        self.instrument = lsst.obs.base.Instrument.fromName("LSSTCam", registry=self.central_butler.registry)
 
     def test_init_errors(self):
         with self.assertRaises(OSError):
@@ -202,7 +208,7 @@ class LocalRepoTest(unittest.TestCase):
 
     def test_export_calib_associations_ok(self):
         datasets = self._known_refs(self.central_butler)
-        calib_chain = "LSSTCam/calib"
+        calib_chain = self.instrument.makeCalibrationCollectionName()
         # Preconditions: datasets and calib collections have been transferred
         self.testbed.load_from(self.central_butler, datasets)
         for calib_collection in self.central_butler.collections.query(
@@ -221,7 +227,7 @@ class LocalRepoTest(unittest.TestCase):
 
     def test_export_calib_associations_nodataset(self):
         datasets = self._known_refs(self.central_butler)
-        calib_chain = "LSSTCam/calib"
+        calib_chain = self.instrument.makeCalibrationCollectionName()
         # Precondition: calib collections have been transferred
         for calib_collection in self.central_butler.collections.query(
                 "*", daf_butler.CollectionType.CALIBRATION):
@@ -238,7 +244,7 @@ class LocalRepoTest(unittest.TestCase):
 
     def test_export_calib_associations_nocollection(self):
         datasets = self._known_refs(self.central_butler)
-        calib_chain = "LSSTCam/calib"
+        calib_chain = self.instrument.makeCalibrationCollectionName()
         # Preconditions: datasets
         self.testbed.load_from(self.central_butler, datasets)
         # Failed precondition: calib collections have not been transferred
@@ -285,7 +291,7 @@ class LocalRepoTest(unittest.TestCase):
             self._check_collection(child, self.central_butler.collections, test_butler.collections)
 
     def test_sync_collections_2level(self):
-        target = "LSSTCam/defaults"
+        target = self.instrument.makeUmbrellaCollectionName()
         self.testbed.sync_collections(self.central_butler, target)
 
         test_butler = daf_butler.Butler(self.testbed._repo.name)
@@ -306,6 +312,108 @@ class LocalRepoTest(unittest.TestCase):
         test_butler = daf_butler.Butler(self.testbed._repo.name)
         with self.assertRaises(daf_butler.MissingCollectionError):
             test_butler.collections.get_info(target)
+
+    def test_clean_empty(self):
+        # Should be a no-op
+        self.testbed.clean()
+
+    def test_clean_outputs(self):
+        target = shared.run_utils.get_output_run(
+            self.instrument, "test-deployment", "Pipeline.yaml", 20260427)
+
+        test_butler = daf_butler.Butler(self.testbed._repo.name, writeable=True)
+        test_butler.registry.registerDatasetType(daf_butler.DatasetType(
+            "initial_pvi", {"instrument", "visit", "detector"}, "ExposureF", universe=test_butler.dimensions
+        ))
+        butler_tests.addDataIdValue(test_butler, "visit", 101)
+        test_butler.collections.register(target)
+        pvi = afw_image.ExposureF(10, 10)
+        test_butler.put(pvi,
+                        "initial_pvi",
+                        {"instrument": "LSSTCam", "visit": 101, "detector": 42},
+                        run=target,
+                        )
+        self.assertEqual(len(test_butler.query_datasets("initial_pvi", collections=target,
+                                                        find_first=False, explain=False)),
+                         1)
+
+        self.testbed.clean()
+        self.assertEqual(len(test_butler.query_datasets("initial_pvi", collections=target,
+                                                        find_first=False, explain=False)),
+                         0)
+
+    def test_clean_raws(self):
+        target = self.instrument.makeDefaultRawIngestRunName()
+
+        # Not a proper ingest, but should be good enough
+        test_butler = daf_butler.Butler(self.testbed._repo.name, writeable=True)
+        test_butler.registry.registerDatasetType(daf_butler.DatasetType(
+            "raw", {"instrument", "exposure", "detector"}, "ExposureF", universe=test_butler.dimensions
+        ))
+        butler_tests.addDataIdValue(test_butler, "exposure", 42)
+        test_butler.collections.register(target)
+        raw = afw_image.ExposureF(10, 10)
+        test_butler.put(raw,
+                        "raw",
+                        {"instrument": "LSSTCam", "exposure": 42, "detector": 0},
+                        run=target,
+                        )
+        self.assertEqual(
+            len(test_butler.query_datasets("raw", collections=target, find_first=False, explain=False)),
+            1)
+
+        self.testbed.clean()
+        self.assertEqual(
+            len(test_butler.query_datasets("raw", collections=target, find_first=False, explain=False)),
+            0)
+
+    def test_clean_cached_evict(self):
+        datasets = self._known_refs(self.central_butler)
+        # Don't use load_from, because it should guarantee there are no excess cacheable datasets
+        self.testbed.butler.transfer_from(self.central_butler, datasets,
+                                          register_dataset_types=True, transfer_dimensions=True)
+        self.assertEqual(len(self.testbed._cache), 0)
+
+        test_butler = daf_butler.Butler(self.testbed._repo.name)
+        self.assertGreater(
+            len(test_butler.query_datasets("bias", collections="*", find_first=False, explain=False)),
+            0)
+
+        # Nothing is cached, so everything should be removed
+        self.testbed.clean()
+        self.assertEqual(
+            len(test_butler.query_datasets("bias", collections="*", find_first=False, explain=False)),
+            0)
+
+    def test_clean_cached_keep(self):
+        datasets = self._known_refs(self.central_butler)
+        self.testbed.load_from(self.central_butler, datasets)
+
+        test_butler = daf_butler.Butler(self.testbed._repo.name)
+        cached_biases = test_butler.query_datasets("bias", collections="*", find_first=False, explain=False)
+        self.assertGreater(len(cached_biases), 0)
+
+        # repo should already be in sync with the cache
+        self.testbed.clean()
+        self.assertEqual(
+            set(test_butler.query_datasets("bias", collections="*", find_first=False, explain=False)),
+            set(cached_biases))
+
+    def test_clean_uncached(self):
+        datasets = self._known_refs(self.central_butler)
+        self.testbed.load_from(self.central_butler, datasets)
+
+        test_butler = daf_butler.Butler(self.testbed._repo.name)
+        self.assertGreater(
+            len(test_butler.query_datasets("template_coadd", collections="*",
+                                           find_first=False, explain=False)),
+            0)
+
+        self.testbed.clean()
+        self.assertEqual(
+            len(test_butler.query_datasets("template_coadd", collections="*",
+                                           find_first=False, explain=False)),
+            0)
 
     def test_butler(self):
         # Butler is a tagged class, so the only way to test writeability is to

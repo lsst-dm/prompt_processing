@@ -591,6 +591,9 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
             f"Expected {instrument_name}, received {expected_visit.instrument}."
 
         try:
+            # TODO: pipeline execution requires a clean run until DM-38041.
+            cleanups.callback(_get_local_repo().clean)
+
             expid_set = set()
 
             # Create a fresh MiddlewareInterface object to avoid accidental
@@ -606,8 +609,6 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
                                       )
             if not mwi.get_main_pipeline_files():
                 raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
-            # TODO: pipeline execution requires a clean run until DM-38041.
-            cleanups.callback(mwi.clean_local_repo)
             # Copy calibrations for this detector/visit
             mwi.prep_butler()
 

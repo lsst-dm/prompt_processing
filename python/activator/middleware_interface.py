@@ -1631,67 +1631,9 @@ class MiddlewareInterface:
                                   ) for t in matching_types
         )
 
-    def clean_local_repo(self) -> None:
-        """Remove local repo content that is only needed for a single visit.
-
-        This includes raws and pipeline outputs.
-        """
-        with lsst.utils.timer.time_this(_log, msg="clean_local_repo", level=logging.DEBUG):
-            self.butler.registry.refresh()
-
-            # Clean out raws
-            raws = self.butler.query_datasets(
-                "raw",
-                collections=self.instrument.makeDefaultRawIngestRunName(),
-                find_first=False,
-                explain=False,  # Raws might not have been ingested.
-            )
-            n_raws = len(raws)
-            if n_raws == 0:
-                _log_trace.debug("No raws to remove.")
-            else:
-                _log_trace.debug("Removing %d raw(s).", n_raws)
-                self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
-                _log_trace.debug("Successfully removed %d raw(s).", n_raws)
-
-            # Outputs are all in their own runs, so just drop them.
-            preload_run = runs.get_preload_run(self.instrument, self._deployment, self._day_obs)
-            _remove_run_completely(self.butler, preload_run)
-            for pipeline_file in self.get_combined_pipeline_files():
-                output_run = runs.get_output_run(self.instrument, self._deployment, pipeline_file,
-                                                 self._day_obs)
-                _log_trace.debug("Removing run %s.", output_run)
-                _remove_run_completely(self.butler, output_run)
-
-            # Clean out calibs, templates, and other preloaded datasets
-            _log_trace.debug("Cache contents: %s", self.repo._cache)  # TODO: move into LocalRepo
-            excess_datasets = set()
-            for dataset_type in self.butler.registry.queryDatasetTypes(...):
-                excess_datasets |= set(self.butler.query_datasets(
-                    dataset_type, collections="*", find_first=False, explain=False))
-            excess_datasets -= frozenset(self.repo._cache)  # TODO: move into LocalRepo
-            if excess_datasets:
-                _log_trace.debug("Clearing out %s.", excess_datasets)
-                self.butler.pruneDatasets(excess_datasets, disassociate=True, unstore=True, purge=True)
-
 
 _DatasetResults: typing.TypeAlias = collections.abc.Iterable[lsst.daf.butler.DatasetRef]
 """Type alias for dataset query results, to simplify annotations."""
-
-
-def _remove_run_completely(butler, run):
-    """Remove a run and all references to it from a Butler.
-
-    Parameters
-    ---------
-    butler : `lsst.daf.butler.Butler`
-        The butler in which to search for refcat dataset types.
-    run : `str`
-        The run to remove.
-    """
-    for chain in butler.collections.get_info(run, include_parents=True).parents:
-        butler.collections.remove_from_chain(chain, [run])
-    butler.removeRuns([run])
 
 
 def _check_transfer_completion(expected, transferred, transfer_type):

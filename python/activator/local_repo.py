@@ -389,3 +389,67 @@ class LocalRepo:
             dest.register(child, info.type, info.doc)
         for chain, children in chains.items():
             dest.redefine_chain(chain, children)
+
+    def clean(self) -> None:
+        """Remove local repo content that is only needed for a single visit.
+
+        This includes raws and pipeline outputs.
+        """
+        with lsst.utils.timer.time_this(_log, msg="clean", level=logging.DEBUG):
+            # Make sure we get everything
+            self.butler.registry.refresh()
+
+            # Clean out raws
+            try:
+                raws = self.butler.query_datasets(
+                    "raw",
+                    collections=self._instrument.makeDefaultRawIngestRunName(),
+                    find_first=False,
+                    explain=False,  # Raws might not have been ingested.
+                )
+            except daf_butler.MissingDatasetTypeError:
+                raws = []
+            n_raws = len(raws)
+            if n_raws == 0:
+                _log_trace.debug("No raws to remove.")
+            else:
+                _log_trace.debug("Removing %d raw(s).", n_raws)
+                self.butler.pruneDatasets(raws, disassociate=True, unstore=True, purge=True)
+                _log_trace.debug("Successfully removed %d raw(s).", n_raws)
+
+            # Outputs are all in their own runs, so just drop them.
+            # TODO: dependency on our naming convention located outside shared/run_utils.py
+            try:
+                output_runs = self.butler.collections.query(self._instrument.makeCollectionName("runs"),
+                                                            collection_types=daf_butler.CollectionType.RUN)
+            except daf_butler.MissingCollectionError:
+                output_runs = []
+            for output_run in output_runs:
+                _log_trace.debug("Removing run %s.", output_run)
+                _remove_run_completely(self.butler, output_run)
+
+            # Clean out calibs, templates, and other preloaded datasets
+            _log_trace.debug("Cache contents: %s", self._cache)
+            excess_datasets = set()
+            for dataset_type in self.butler.registry.queryDatasetTypes(...):
+                excess_datasets |= set(self.butler.query_datasets(
+                    dataset_type, collections="*", find_first=False, explain=False))
+            excess_datasets -= frozenset(self._cache)
+            if excess_datasets:
+                _log_trace.debug("Clearing out %s.", excess_datasets)
+                self.butler.pruneDatasets(excess_datasets, disassociate=True, unstore=True, purge=True)
+
+
+def _remove_run_completely(butler, run):
+    """Remove a run and all references to it from a Butler.
+
+    Parameters
+    ---------
+    butler : `lsst.daf.butler.Butler`
+        The butler in which to search for refcat dataset types.
+    run : `str`
+        The run to remove.
+    """
+    for chain in butler.collections.get_info(run, include_parents=True).parents:
+        butler.collections.remove_from_chain(chain, [run])
+    butler.removeRuns([run])
