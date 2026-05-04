@@ -36,6 +36,7 @@ import redis
 
 from shared.astropy import import_iers_cache
 from shared.logger import setup_usdf_logger, logging_context
+from shared.sentry import init_sentry
 from shared.run_utils import get_day_obs
 from shared.visit import FannedOutVisit
 from .activator import time_since, is_processable, process_visit
@@ -264,6 +265,7 @@ def keda_start():
         setup_usdf_logger(
             labels={"instrument": instrument_name},
         )
+        init_sentry()
 
         # Prometheus gauge setup
         instrument_name_gauge = instrument_name.lower().replace(" ", "_").replace("-", "_")
