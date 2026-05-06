@@ -105,8 +105,8 @@ def get_output_run(instrument: lsst.obs.base.Instrument,
     """
     pipeline_name, _ = os.path.splitext(os.path.basename(pipeline_file))
     # Order optimized for S3 bucket -- filter out as many files as soon as possible.
-    output_run = instrument.makeCollectionName("runs", "prompt", f"{date:08d}")
-    return "/".join([output_run, pipeline_name, deployment_id])
+    # Note: get_output_chain is NOT a prefix of the run name
+    return instrument.makeCollectionName("runs", "prompt", f"{date:08d}", pipeline_name, deployment_id)
 
 
 def get_day_obs(time: astropy.time.Time) -> int:

@@ -29,6 +29,7 @@ file for importing to the test central prompt processing repository.
 
 
 import argparse
+import collections.abc
 import logging
 import sys
 import tempfile
@@ -36,8 +37,6 @@ import yaml
 
 import lsst.daf.butler as daf_butler
 from lsst.utils.timer import time_this
-
-from activator.middleware_interface import _filter_datasets, _generic_query
 
 
 def _make_parser():
@@ -131,10 +130,14 @@ def _export_for_copy(butler, target_butler, wants):
                     dataset_types = butler.collections._filter_dataset_types(
                         all_types, collections_info
                     )
-                records = _filter_datasets(
-                    butler, target_butler, _generic_query(dataset_types, **selection)
-                )
-                contents.saveDatasets(records)
+                all_records = set(_query_no_undefined(butler, dataset_types, **selection))
+                if not all_records:
+                    raise RuntimeError("Query found no matches in source repo.")
+                target_records = set(_query_no_undefined(target_butler, dataset_types, **selection))
+                missing = all_records - target_records
+                logging.debug("Found %d matching datasets. %d present in target, %d to export.",
+                              len(all_records), len(all_records & target_records), len(missing))
+                contents.saveDatasets(missing)
 
         # Save selected collections and chains
         if "collections" in wants:
@@ -147,6 +150,42 @@ def _export_for_copy(butler, target_butler, wants):
                     except daf_butler.registry.MissingCollectionError:
                         # MissingCollectionError is raised if the collection does not exist in target_butler.
                         contents.saveCollection(collection)
+
+
+def _query_no_undefined(butler: daf_butler.Butler,
+                        dataset_types: collections.abc.Iterable[str | daf_butler.DatasetType],
+                        *args,
+                        **kwargs) -> collections.abc.Iterable[daf_butler.DatasetRef]:
+    """Query a Butler, treating missing data IDs, dataset types, etc. as
+    empty results.
+
+    Parameters
+    ----------
+    butler : `lsst.daf.butler.Butler`
+        The Butler to query.
+    dataset_types : iterable [`str` | `lsst.daf.butler.DatasetType`]
+        Iterable of dataset type object or name to search for.
+    *args, **kwargs
+        Parameters for describing the dataset query. They have the same
+        meanings as the parameters of `lsst.daf.butler.query_datasets`.
+
+    Returns
+    -------
+    datasets : iterable [`lsst.daf.butler.DatasetRef`]
+        The datasets found by the query. All dataset refs are fully expanded.
+    """
+    datasets = set()
+    for dataset_type in dataset_types:
+        try:
+            datasets |= set(butler.query_datasets(
+                # explain=False because empty query result is ok here.
+                dataset_type, explain=False, with_dimension_records=True, *args, **kwargs
+            ))
+        except (daf_butler.DataIdValueError,
+                daf_butler.MissingDatasetTypeError,
+                daf_butler.MissingCollectionError) as e:
+            logging.debug("query failed with %s.", e)
+    return datasets
 
 
 if __name__ == "__main__":
