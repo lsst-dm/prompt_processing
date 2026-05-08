@@ -19,3 +19,5 @@ For a comprehensive look at the architecture and design, see [our ADASS preprint
 
 Table of Contents
 -----------------
+
+* [Core concepts](concepts.md)
