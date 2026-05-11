@@ -43,8 +43,7 @@ Related repositories
 
 The `prompt_processing` repository is part of a larger ecosystem.
 These are the repositories with which it has dependencies.
-
-<!-- TODO: add link to syncing topic once it exists -->
+See [Coordinating development](coordinate.md) for guidelines on work items that touch multiple repositories.
 
 ### Phalanx
 
@@ -64,10 +63,8 @@ These visit-detector combinations form the basic unit of work that is then proce
 Like Prompt Processing itself, NVFO is an "always online" service, and its configuration and deployment are managed through Phalanx.
 
 The main API between NVFO and Prompt Processing proper is a nextVisit structure and its serialized forms; these are implemented as the `shared.visit.FannedOutVisit` class on the Prompt Processing side and `shared.visit.NextVisitModelKeda` on the NVFO side.
-These class definitions must be synchronized to ensure the deployed Prompt Processing can understand the deployed Next Visit Fan Out.
+These class definitions [must be synchronized](coordinate.md#next-visit-fan-out--butler-writer-service) to ensure the deployed Prompt Processing can understand the deployed Next Visit Fan Out.
 In practice, we usually don't bother with compatibility code and simply consider changes to the data model to be a breaking change for both applications.
-
-<!-- TODO: add link to syncing topic once it exists -->
 
 ### Raw Microservice
 

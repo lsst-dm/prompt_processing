@@ -21,3 +21,4 @@ Table of Contents
 -----------------
 
 * [Core concepts](concepts.md)
+* [Syncing changes with other repositories](coordinate.md)
