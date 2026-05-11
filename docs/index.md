@@ -21,4 +21,5 @@ Table of Contents
 -----------------
 
 * [Core concepts](concepts.md)
+* [Prompt Processing workflows](workflow.md)
 * [Syncing changes with other repositories](coordinate.md)
