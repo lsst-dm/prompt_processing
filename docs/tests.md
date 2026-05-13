@@ -34,8 +34,7 @@ The non-standard packages are used exclusively by `activator/driver_keda.py` and
 All other modules are testable.
 
 To maximize our test coverage, avoid putting anything in `driver_*` that doesn't require one of these external packages.
-This also helps keep these modules focused on a specific purpose.
-<!-- TODO: add link to module organization, once it exists -->
+This also helps keep these modules focused on a specific purpose; see [Package Organization](organization.md#directory-and-module-organization) for the desired separation of concerns.
 
 Testing third-party interfaces
 ------------------------------
