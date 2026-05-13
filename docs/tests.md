@@ -6,7 +6,7 @@ These tests conform to [DM conventions](https://developer.lsst.io/python/testing
 They are also run automatically on GitHub PRs, before a branch container is made.
 
 This guide summarizes Prompt-Processing specific considerations for our unit tests.
-<!-- TODO: add link for central repo, once it exists -->
+In particular, tests of the `middleware_interface` module need to simulate our division of data into [central and local repos](middleware.md#local-and-central-repositories).
 
 Central data repo
 -----------------

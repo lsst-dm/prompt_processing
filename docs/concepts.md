@@ -20,8 +20,7 @@ Because Kubernetes (or similar frameworks) doesn't provide natural hooks for com
 Docker containers are built automatically by GitHub pull requests and updates to `main`, and manually as part of the release process.
 See the [Playbook](https://github.com/lsst-dm/prompt_processing/blob/main/docs/playbook.rst) for details.
 
-Because the initializer and the main service must use the same code base, it's important to always deploy matching versions and configurations.
-<!-- TODO: add link to Middleware topic once it exists -->
+Because the initializer and the main service must use the same code base, it's important to always deploy matching versions and configurations (see [Integration with Middleware](middleware.md#the-deployment-id) for details).
 To make this easier, all Docker build actions build and label both containers together, and our deployment system (Phalanx, Helm, and Argo CD) is designed to always apply the same settings (including container label) to both applications.
 
 Workers and pods

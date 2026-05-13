@@ -23,5 +23,6 @@ Table of Contents
 * [Core concepts](concepts.md)
 * [Prompt Processing workflows](workflow.md)
 * [Package organization](organization.md)
+* [Integration with Middleware](middleware.md)
 * [Syncing changes with other repositories](coordinate.md)
 * [Testing Prompt Processing](tests.md)

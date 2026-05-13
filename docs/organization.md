@@ -34,8 +34,7 @@ Directory and module organization
 
 Prompt Processing's Python code is divided into four namespaces (none of which are actually packages):
 * `activator` holds the Prompt Processing service itself.
-* `initializer` holds a small Kubernetes job that prepares Butler collections and datasets that would be shared by all Prompt Processing pods.
-<!-- TODO: add cross-reference to init rationale once it exists -->
+* `initializer` holds a small Kubernetes job that prepares Butler collections and datasets that would be shared by all Prompt Processing pods (see [Integration with Middleware](middleware.md#the-initializer-job) for details).
 * `tester` contains command-line scripts for simulating observations during integration testing.
 * `shared` contains utilities and definitions that are used by two or more of the above, especially code needed to coordinate different applications.
 
