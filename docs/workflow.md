@@ -21,8 +21,7 @@ A list of all open Prompt Processing issues is available through the [open issue
     - `Prompt-processing-support` refers to work providing live monitoring and fixes during observatory commissioning.
     It's not quite obsolete, but we're unlikely to use it again in the future.
     - `Prompt-processing-refactor` refers to work to reduce our significant technical debt.
-    This includes both our major MiddlewareInterface refactoring project as well as smaller improvements.
-    <!-- TODO: add link to refactoring page when it's available -->
+    This includes both our major [MiddlewareInterface refactoring project](mwi-refactor.md) as well as smaller improvements.
 
 GitHub pull requests
 --------------------

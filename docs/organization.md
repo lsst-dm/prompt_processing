@@ -6,7 +6,7 @@ It assumes familiarity with the [Core Concepts](concepts.md).
 
 For developing in parallel with other repositories, see [Coordinating development](coordinate.md).
 For how the module organization complicates testing, see [Testing Prompt Processing](tests.md).
-<!-- TODO: add cross-reference to Middleware refactor once it exists -->
+For the largest upcoming changes to the code, see the [MiddlewareInterface refactoring project](mwi-refactor.md).
 
 Overview
 --------
@@ -38,8 +38,7 @@ Prompt Processing's Python code is divided into four namespaces (none of which a
 * `tester` contains command-line scripts for simulating observations during integration testing.
 * `shared` contains utilities and definitions that are used by two or more of the above, especially code needed to coordinate different applications.
 
-Prompt Processing's `activator` modules have evolved organically from what used to be a simple prototype, and are the focus of ongoing refactoring work to separate responsibilities and dependencies (see the `Prompt-Processing-refactor` label in Jira).
-<!--- TODO: add cross-reference to MWI refactoring once it exists -->
+Prompt Processing's `activator` modules have evolved organically from what used to be a simple prototype, and are the focus of ongoing refactoring work to separate responsibilities and dependencies (see the `Prompt-Processing-refactor` label in Jira and the [MiddlewareInterface refactoring project](mwi-refactor.md)).
 However, they can be roughly divided into primary modules that form the backbone of the service and utility modules that provide a specific class or related set of components.
 
 ### Core modules
@@ -58,9 +57,8 @@ They are the only modules that need to know anything about how Prompt Processing
         Flask handled many details that `driver_keda` requires explicit code for, making it valuable as an alernative implementation and clarifying what must be in the drivers instead of in `activator.py`.
     Although it's dead code, we try to keep `driver_gunicorn.py` up-to-date to enforce this boundary (in particular, to discourage code from migrating from `activator.py` to `driver_keda.py`).
 * `middleware_interface.py` was originally a catch-all class that grouped everything that depended on Butler Middleware (in particular, keeping Middleware dependencies out of `activator.py`).
-We are in the process of breaking up this module into smaller, more manageable pieces.
+We are in the process of [breaking up this module](mwi-refactor.md) into smaller, more manageable pieces.
 As of May 2026, it's still responsible for finding and loading pipeline inputs, ingesting raw images, pipeline selection and execution both before and after raws arrive, and sending (possibly partial) outputs to the central repository.
-<!--- TODO: add cross-reference to MWI refactoring once it exists -->
 * `local_repo.py` defines a class that represents and manages the worker's individual repo in local storage, including initialization, content management, and teardown.
 `activator.py` is responsible for the object's lifetime, but most use is by `middleware_interface.py`.
 

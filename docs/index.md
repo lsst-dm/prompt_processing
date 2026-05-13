@@ -26,3 +26,8 @@ Table of Contents
 * [Integration with Middleware](middleware.md)
 * [Syncing changes with other repositories](coordinate.md)
 * [Testing Prompt Processing](tests.md)
+
+<!-- Separate these lists! -->
+
+<!-- TODO: remove once it's done -->
+* [Middleware refactoring project](mwi-refactor.md)
