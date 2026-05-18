@@ -15,7 +15,7 @@ Unlike Science Pipelines packages, Prompt Processing is not designed for command
 Instead, both the main service and the initializer are built as [Docker containers](https://www.docker.com/resources/what-container/), based on the standard Science Pipelines releases.
 These containers are deployed through a scalable orchestration framework (currently [Kubernetes](https://kubernetes.io/)), which ensures the service is always ready to process data.
 The files `Dockerfile` and `init-output-run/Dockerfile` contain the actual execution commands for the main service and the initializer, respectively.
-Because Kubernetes (or similar frameworks) doesn't provide natural hooks for command-line arguments, most Prompt Processing configuration is done through environment variables from [Phalanx](#Phalanx).
+Because Kubernetes (or similar frameworks) doesn't provide natural hooks for command-line arguments, most Prompt Processing configuration is done through environment variables from [Phalanx](#phalanx).
 
 Docker containers are built automatically by GitHub pull requests and updates to `main`, and manually as part of the release process.
 See the [Playbook](https://github.com/lsst-dm/prompt_processing/blob/main/docs/playbook.rst) for details.
@@ -48,7 +48,7 @@ See [Coordinating development](coordinate.md) for guidelines on work items that 
 
 [Phalanx](https://github.com/lsst-sqre/phalanx) is the Rubin Observatory's in-house configuration and deployment system.
 It defines the Prompt Processing development and production environments, and the instrument-specific services in each.
-Our Kubernetes configurations are stored here as [Helm](https://helm.sh/docs/) charts based on the Go template language.
+Our Kubernetes configurations are stored here as [Helm](https://helm.sh/docs/) charts based on the [Go template language](https://pkg.go.dev/text/template).
 All configuration parameters for Prompt Processing are declared in Helm values files and then substituted into the chart, usually as environment variables.
 The Helm chart is also where we link passwords or other secure credentials from the SLAC Vault.
 
@@ -84,4 +84,4 @@ Unlike Prompt Processing or NVFO, ownership of the Writer Service is shared with
 
 Like NVFO, Prompt Processing and the Writer communicate through a shared API.
 It's implemented as the `activator.kafka_butler_writer.KafkaButlerWriter` class in Prompt Processing and the `queued_butler_writer.messages.PromptProcessingOutputEvent` class in the Butler Writer.
-As with NVFO and nextVisit, changes to the message format must be done with care and may involve a major version increment on one or both sides.
+As with NVFO and nextVisit, [changes to the message format](coordinate.md#next-visit-fan-out--butler-writer-service) must be done with care and may involve a major version increment on one or both sides.

@@ -14,10 +14,10 @@ On Jira, we mark Prompt Processing related work items in several ways:
 This can include `prompt_processing`, `phalanx`, `next_visit_fan_out`, `prompt_processing_butler_writer`, or sometimes Science Pipelines packages like `ap_pipe`.
 * All work items relevant to Prompt Processing have the `Prompt-processing` label.
 This includes third-party work such as Middleware or summit ScriptQueue improvements.
-A list of all open Prompt Processing issues is available through the [open issues](https://rubinobs.atlassian.net/issues/?filter=11051) Jira filter, sharable within Jira and bookmarked from the `#dm-prompt-processing-dev` channel.
+A list of all open Prompt Processing issues is available through the [open issues](https://rubinobs.atlassian.net/issues/?filter=11051) Jira filter, sharable within Jira and bookmarked from the `#dm-prompt-processing-dev` Slack channel.
 * A few other labels:
     - `Prompt-processing-Knative` refers to issues related to trying to fix our old Knative implementation.
-    It is obsolete (see `driver_gunicorn.py` in [Package Organization](organization.md#directory-and-module-organization)).
+    It is obsolete (see `driver_gunicorn.py` in [Package Organization](organization.md#core-modules)).
     - `Prompt-processing-support` refers to work providing live monitoring and fixes during observatory commissioning.
     It's not quite obsolete, but we're unlikely to use it again in the future.
     - `Prompt-processing-refactor` refers to work to reduce our significant technical debt.

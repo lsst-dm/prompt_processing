@@ -14,7 +14,7 @@ These configurations must be compatible with the Docker image that's being deplo
 Fortunately, it's usually easy to provide a configuration that works.
 
 Some general guidelines:
-* Since we can change the deployed Phalanx and/or ArcoCD configuration at will, and these settings are not user-facing, configuration options are not considered part of the API for Prompt Processing or Fan Out, and do not trigger a major version release.
+* Since we can change the deployed Phalanx and/or Argo CD configuration at will, and these settings are not user-facing, configuration options are not considered part of the API for Prompt Processing or Fan Out, and do not trigger a major version release.
 The writer service is versioned under Middleware-specific rules, and configuration changes have incremented the major version on occasion.
 * We generally don't try to "hold back" Phalanx PRs once the Jira work item has been closed, even for changes to the production service.
 Instead, Phalanx `main` should match Prompt Processing `main`, and if necessary we delay deploying the latest changes in Argo CD per the guidelines below.

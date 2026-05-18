@@ -5,7 +5,7 @@ Prompt Processing uses the [Butler Middleware](https://pipelines.lsst.io/v/daily
 This guide describes how Prompt Processing uses Middleware and the code invariants that follow from that design.
 
 This guide assumes familiarity with the [high-level Prompt Processing architecture](concepts.md#workers-and-pods) and the Middleware [pipelines framework](https://pipelines.lsst.io/v/daily/modules/lsst.pipe.base/).
-For details on how our Middleware-dependent code is structured, see [Package Organization](organization.md).
+For details on how our Middleware-dependent code is structured, see [Package Organization](organization.md#core-modules).
 
 Local and central repositories
 ------------------------------
