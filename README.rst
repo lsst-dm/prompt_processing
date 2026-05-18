@@ -27,4 +27,6 @@ The design for the framework is described in `DMTN-219`_ and `DMTN-260`_.
 
 At present, the package does not conform exactly to the layout or conventions of LSST stack packages.
 In particular, the Python code does not use the ``lsst`` namespace, and the docs do not support Sphinx builds (even local ones).
-See our [developer notes](https://lsst-dm.github.io/prompt_processing) for more details.
+See our `developer notes`_ for more details.
+
+.. _developer notes: https://lsst-dm.github.io/prompt_processing/
