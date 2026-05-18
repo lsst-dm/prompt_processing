@@ -52,7 +52,7 @@ They are the only modules that need to know anything about how Prompt Processing
     When KEDA starts a new pod, the pod's container (as defined in the main `Dockerfile`) executes `driver_keda.__main__`.
     The driver code itself is a message-reading loop that polls our Redis Streams queue for nextVisit messages, logs Prometheus metrics, and handles any retry/abort logic.
     - `driver_gunicorn.py` was our previous approach, functioning as a Gunicorn/Flask web server that handled nextVisit messages as HTTP requests.
-    The entry point was `driver_gunicorn.create_app`, which was called by a local Gunicorn server.
+    The entry point was `driver_gunicorn.create_app`, which was called by a Gunicorn server running in the container.
 
         Flask handled many details that `driver_keda` requires explicit code for, making it valuable as an alernative implementation and clarifying what must be in the drivers instead of in `activator.py`.
     Although it's dead code, we try to keep `driver_gunicorn.py` up-to-date to enforce this boundary (in particular, to discourage code from migrating from `activator.py` to `driver_keda.py`).
