@@ -15,7 +15,7 @@ Unlike Science Pipelines packages, Prompt Processing is not designed for command
 Instead, both the main service and the initializer are built as [Docker containers](https://www.docker.com/resources/what-container/), based on the standard Science Pipelines releases.
 These containers are deployed through a scalable orchestration framework (currently [Kubernetes](https://kubernetes.io/)), which ensures the service is always ready to process data.
 The files `Dockerfile` and `init-output-run/Dockerfile` contain the actual execution commands for the main service and the initializer, respectively.
-Because Kubernetes (or similar frameworks) doesn't provide natural hooks for command-line arguments, most Prompt Processing configuration is done through environment variables from [Phalanx](#Phalanx).
+Because Kubernetes (or similar frameworks) doesn't provide natural hooks for command-line arguments, most Prompt Processing configuration is done through environment variables from [Phalanx](#phalanx).
 
 Docker containers are built automatically by GitHub pull requests and updates to `main`, and manually as part of the release process.
 See the [Playbook](https://github.com/lsst-dm/prompt_processing/blob/main/docs/playbook.rst) for details.
