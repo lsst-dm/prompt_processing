@@ -632,18 +632,29 @@ and execute ``chmod 0600 ~/.pgpass``.
 Cassandra
 ^^^^^^^^^
 
-We have a Cassandra cluster at the USDF on dedicated hardware, that is currently deployed in parallel across 12 nodes.
-Of those, 6 are reserved for Andy Salnikov's development and testing, and 6 are available for Prompt Processing.
-The nodes available for Prompt Processing are ``sdfk8sk001`` through ``sdfk8sk006``.
+Cassandra APDB runs at USDF on dedicated hardware.
+There are currently three deployed Cassandra clusters:
+
+- ``prod`` cluster for production APDB instances using six nodes ``sdfk8sk{001-006}``;
+- ``dev`` cluster for Prompt Production development needs using three nodes ``sdfk8sk{010-012}``;
+- ``int`` cluster for APDB integration testing using five nodes ``sdfcasdev{001-003,101,102}``.
 
 To access the Cassandra cluster, you must add credentials to your ``~/.lsst/db-auth.yaml``.
-The appropriate credentials are stored in the `SLAC Vault <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-apdb-dev/cassandra>`_.
-Add the following to your ``db-auth.yaml``, replacing ``PORT`` and ``PASSWORD`` from the Vault:
+The appropriate credentials are stored in the SLAC Vault:
+
+- `rubin/usdf-apdb-dev/cassandra <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-apdb-dev/cassandra>`_ for ``dev`` cluster account,
+- `rubin/usdf-apdb-prod/cassandra <https://vault.slac.stanford.edu/ui/vault/secrets/secret/show/rubin/usdf-apdb-prod/cassandra>`_ for ``prod`` cluster account.
+
+Add the following to your ``db-auth.yaml``, replacing ``PASSWORD`` from the Vault:
 
 .. code-block:: sh
 
-   # Cassandra dev APDBs
-   - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/pp_apdb_*_dev
+   # Cassandra credentials for dev APDBs
+   # Release w_2026_22 or newer can use this entry which is recommended for long term:
+   - url: cassandra://apdb@pp_apdb_dev_cluster/
+     password: PASSWORD
+   # Older releases need this entry:
+   - url: cassandra://sdfk8sk012.sdf.slac.stanford.edu:9042/pp_apdb_*_dev
      username: apdb
      password: PASSWORD
    # Dev central repo, can also go in .pgpass (see above)
@@ -651,8 +662,8 @@ Add the following to your ``db-auth.yaml``, replacing ``PORT`` and ``PASSWORD`` 
      username: pp
      password: PASSWORD
    # Workaround for list-cassandra not having keyspace-agnostic credentials, MUST go after all other entries
-   - url: cassandra://sdfk8sk001.sdf.slac.stanford.edu:PORT/*
-     username: ANY_CASSANDRA_ACCOUNT
+   - url: cassandra://sdfk8sk012.sdf.slac.stanford.edu:9042/*
+     username: apdb
      password: PASSWORD
 
 and execute ``chmod 0600 ~/.lsst/db-auth.yaml``.
@@ -674,17 +685,31 @@ From ``rubin-devl``, new APDB schemas can be created in the usual way:
 Cassandra
 ^^^^^^^^^
 
-To set up a new keyspace and connection, use:
+To set up a new keyspace and connection on ``dev`` cluster, use:
+
+.. code-block:: sh
+
+   apdb-cli create-cassandra sdfk8sk012.sdf.slac.stanford.edu \
+       pp_apdb_latiss_dev pp_apdb_latiss-dev.yaml --user apdb --replication-factor=3
+   apdb-cli metadata set pp_apdb_latiss-dev.yaml instrument LATISS
+
+Here ``sdfk8sk012.sdf.slac.stanford.edu`` is the node within the Prompt Processing ``dev`` cluster, which is the ``contact_points`` used for the initial connection.
+All of the available nodes will be used.
+In the above example, ``pp_apdb_latiss`` is the Cassandra keyspace (similar to schema for Postgres), and ``pp_apdb_latiss-dev.yaml`` is the usual APDB config.
+
+If creating production APDB instance in `prod` cluster it is recommended to provide at least two contact points.
+If production instance will be replicated to PPDB an additional ``--enable-replica`` option is needed.
+For a long-lived production instances (e.g. LSSTCam) it is recommended to use ``--time-partition-tables/--time-partition-start/--time-partition-end`` options.
+
+An example of creating a production APDB instance in Cassandra:
 
 .. code-block:: sh
 
    apdb-cli create-cassandra sdfk8sk001.sdf.slac.stanford.edu sdfk8sk004.sdf.slac.stanford.edu \
-       pp_apdb_latiss_dev pp_apdb_latiss-dev.yaml --user apdb --replication-factor=3 --enable-replica
+       pp_apdb_latiss pp_apdb_latiss.yaml --user apdb-prod --replication-factor=3 --enable-replica \
+       --time-partition-tables --time-partition-start=2026-01-01T00:00:00 --time-partition-end=2028-01-01T00:00:00 \
    apdb-cli metadata set pp_apdb_latiss-dev.yaml instrument LATISS
 
-Here ``sdfk8sk001.sdf.slac.stanford.edu`` and ``sdfk8sk004.sdf.slac.stanford.edu`` are two nodes within the Prompt Processing allocation, which are the ``contact_points`` used for the initial connection.
-All of the available nodes will be used.
-In the above example, ``pp_apdb_latiss`` is the Cassandra keyspace (similar to schema for Postgres), and ``pp_apdb_latiss-dev.yaml`` is the usual APDB config.
 
 The APDB Index
 --------------
@@ -739,13 +764,10 @@ To perform an APDB schema upgrade, download the ``apdb_migrate`` extension to ``
    setup -r .
    scons -j 6
 
-This activates ``apdb-migrate-sql``.
+This activates ``apdb-migrate-sql`` and ``apdb-migrate-cassandra`` commands.
 Next, follow the instructions in the `lsst.dax.apdb_migrate documentation <https://github.com/lsst-dm/dax_apdb_migrate/blob/main/doc/lsst.dax.apdb_migrate/typical-tasks.rst>`_.
 In our case, we want to upgrade when we update ``latest`` to a version that has changes to the APDB schema.
 
-.. note::
-
-   Currently this script only works for Postgres APDB databases and cannot be used for Cassandra APDB databases.
 
 REDIS STREAMS
 =============
