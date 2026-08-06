@@ -160,9 +160,8 @@ def _get_storage_client():
 @functools.cache
 @ServiceManager.clean_on_exit(lambda b: b.close())  # ensure correct close implementation called
 def _get_write_butler():
-    """Lazy initialization of central Butler for writes.
-    """
-    return get_central_butler(write_repo, instrument_name, writeable=True)
+    """Lazy initialization of central Butler for writes."""
+    return get_central_butler(write_repo, writeable=True)
 
 
 @ServiceManager.check_on_init
@@ -172,7 +171,7 @@ def _get_read_butler():
     """Lazy initialization of central Butler for reads.
     """
     if read_repo != write_repo:
-        return get_central_butler(read_repo, instrument_name, writeable=False)
+        return get_central_butler(read_repo, writeable=False)
     else:
         # Don't initialize an extra Butler from scratch
         return _get_write_butler()
