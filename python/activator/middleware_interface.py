@@ -201,8 +201,7 @@ class MiddlewareInterface:
     ----------
     read_butler : `lsst.daf.butler.Butler`
         Butler repo containing the calibration and other data needed for
-        processing images as they are received. This butler must be created
-        with the default instrument and skymap assigned.
+        processing images as they are received.
     butler_writer : `activator.middleware_interface.ButlerWriter`
         Object that will be used to write the pipeline outputs back to the
         central Butler repository.
@@ -229,10 +228,6 @@ class MiddlewareInterface:
     """The dataset ID used for Sasquatch uploads.
     """
 
-    _collection_skymap = "skymaps"
-    """The collection used for skymaps.
-    """
-
     @property
     def _collection_template(self):
         """The collection used for templates.
@@ -245,7 +240,7 @@ class MiddlewareInterface:
     # Class invariants:
     # self.image_host is a valid URI with non-empty path and no query or fragment.
     # self._download_store is None if and only if self.image_host is a local URI.
-    # self.visit, self.instrument, self.camera, self.skymap, self._deployment
+    # self.visit, self.instrument, self.camera, self._deployment
     #   self._day_obs do not change after __init__.
 
     def __init__(self, read_butler: Butler, butler_writer: ButlerWriter, image_bucket: str,
@@ -308,14 +303,14 @@ class MiddlewareInterface:
 
     @connect.retry(2, DATASTORE_EXCEPTIONS, wait=repo_retry)
     def _init_governor_datasets(self, timestamp, skymap):
-        """Load and store the camera and skymap for later use.
+        """Load and store the camera for later use, and record the skymap name.
 
         Parameters
         ----------
         timestamp : `astropy.time.Time`
             The time at which the camera must be valid.
         skymap : `str`
-            The name of the skymap to load.
+            The name of the skymap.
         """
         # Camera is time-dependent, in principle, and may be available only
         # through a calibration collection.
@@ -328,8 +323,6 @@ class MiddlewareInterface:
         self.camera = self.read_central_butler.get(camera_ref)
 
         self.skymap_name = skymap
-        self.skymap = self.read_central_butler.get("skyMap", skymap=self.skymap_name,
-                                                   collections=self._collection_skymap)
 
     def _init_provenance_dataset_type(self):
         """Register the dataset types used to store provenance information.
