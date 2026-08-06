@@ -177,9 +177,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                                              prefix="file://")
 
     def test_get_butler(self):
-        for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstCam", writeable=True),
-                       get_central_butler(self.central_repo, TestRepo.instname, writeable=True),
-                       ]:
+        for butler in [get_central_butler(self.central_repo, writeable=True)]:
             try:
                 # TODO: better way to test repo location?
                 self.assertTrue(
@@ -190,9 +188,7 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                 self.assertTrue(butler.isWriteable())
             finally:
                 butler.close()
-        for butler in [get_central_butler(self.central_repo, "lsst.obs.lsst.LsstCam", writeable=False),
-                       get_central_butler(self.central_repo, TestRepo.instname, writeable=False),
-                       ]:
+        for butler in [get_central_butler(self.central_repo, writeable=False)]:
             try:
                 self.assertTrue(
                     butler.getURI("skyMap",

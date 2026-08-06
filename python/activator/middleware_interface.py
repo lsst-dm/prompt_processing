@@ -79,9 +79,8 @@ padding = float(os.environ.get("PRELOAD_PADDING", 30))
 
 
 @connect.retry(2, SQL_EXCEPTIONS, wait=repo_retry)
-def get_central_butler(central_repo: str, instrument_class: str, writeable: bool):
-    """Provide a Butler that can access the given repository and read and write
-    data for the given instrument.
+def get_central_butler(central_repo: str, writeable: bool):
+    """Provide a Butler that can access the given repository.
 
     This function is guaranteed to return a new object on every call, and the
     caller is responsible for managing and cleaning it up.
@@ -90,17 +89,13 @@ def get_central_butler(central_repo: str, instrument_class: str, writeable: bool
     ----------
     central_repo : `str`
         The path or URI to the central repository.
-    instrument_class : `str`
-        The name of the instrument whose data will be retrieved or written. May
-        be either the fully qualified class name or the short name.
     writeable : `bool`
         Whether or not it's safe to attempt writes to this Butler.
 
     Returns
     -------
     butler : `lsst.daf.butler.Butler`
-        A new Butler for ``central_repo`` pre-configured to load and store
-        ``instrument_name`` data.
+        A new Butler for ``central_repo``.
     """
     return Butler(central_repo,
                   writeable=writeable,
