@@ -1,0 +1,9 @@
+description: >-
+  Alert Production pipeline specialized for LSSTCam and for
+  using DECam templates.
+  This version is specialized for the dev environment.
+
+imports:
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/ApPipe-decamTemplates.yaml
+parameters:
+  release_id: 0  # This pipeline runs in dev

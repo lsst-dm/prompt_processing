@@ -16,6 +16,11 @@ tasks:
     class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
     config:
       run_sattle: True
+  # Consider moving it to ap_pipe as AP default.
+  buildTemplate:
+    class: lsst.ip.diffim.getTemplate.GetTemplateTask
+    config:
+      requireCoaddAtGraphBuild: true
   detectAndMeasureDiaSource:
     class: lsst.ip.diffim.detectAndMeasure.DetectAndMeasureTask
     config:

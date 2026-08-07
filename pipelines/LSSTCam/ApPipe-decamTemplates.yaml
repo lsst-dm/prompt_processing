@@ -1,0 +1,14 @@
+description: LSSTCam AP Pipeline with DECam templates.
+
+imports:
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/ApPipe.yaml
+
+tasks:
+  buildTemplate:
+    class: lsst.ip.diffim.getTemplate.GetTemplateTask
+    config:
+      connections.coaddName: parameters.coaddName
+      connections.bbox: preliminary_visit_image.bbox
+      connections.wcs: preliminary_visit_image.wcs
+      connections.coaddExposures: template_coadd_test3
+      connections.template: template_detector
