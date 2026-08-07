@@ -16,6 +16,11 @@ tasks:
     class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
     config:
       run_sattle: True
+  # Only wanted in PP environment
+  buildTemplate:
+    class: lsst.ip.diffim.getTemplate.GetTemplateTask
+    config:
+      requireCoaddAtGraphBuild: true
   detectAndMeasureDiaSource:
     class: lsst.ip.diffim.detectAndMeasure.DetectAndMeasureTask
     config:
