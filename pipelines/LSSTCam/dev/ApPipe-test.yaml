@@ -2,7 +2,44 @@ description: >-
   Alert Production pipeline modified to test processing with alternate templates
 
 imports:
-  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/dev/ApPipe.yaml
+  - location: $AP_PIPE_DIR/pipelines/LSSTCam/ApPipe.yaml
+    include:
+      - isr
+      - calibrateImage
+      - subtractImages
+      - detectAndMeasureDiaSource
+      - filterDiaSource
+      - computeReliability
+      - filterDiaSourcePostReliability
+      - standardizeDiaSource
+      - associateApdb
+      - analyzeAssociatedDiaSourceTable
+      - analyzeTrailedDiaSourceTable
+      - analyzeImageDifferenceMetrics
+      - analyzeDiaSourceDetectionMetrics
+      - analyzeDiaSourceAssociationMetrics
+      - analyzeAssociateDiaSourceTiming
+      - analyzePreliminarySummaryStats
+subsets:
+  promptDecam:
+    subset:
+      - isr
+      - calibrateImage
+      - buildDecamTemplate
+      - subtractImages
+      - detectAndMeasureDiaSource
+      - filterDiaSource
+      - computeReliability
+      - filterDiaSourcePostReliability
+      - standardizeDiaSource
+      - associateApdb
+      - analyzeAssociatedDiaSourceTable
+      - analyzeTrailedDiaSourceTable
+      - analyzeImageDifferenceMetrics
+      - analyzeDiaSourceDetectionMetrics
+      - analyzeDiaSourceAssociationMetrics
+      - analyzeAssociateDiaSourceTiming
+      - analyzePreliminarySummaryStats
 tasks:
   calibrateImage:
     class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
@@ -24,3 +61,5 @@ tasks:
       connections.wcs: preliminary_visit_image.wcs
       connections.coaddExposures: template_coadd_test2
       connections.template: template_detector
+parameters:
+  release_id: 0  # This pipeline runs in dev
