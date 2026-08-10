@@ -1,10 +1,8 @@
 description: >-
-  Single-frame pipeline for the case in which
-  no templates exist, specialized for LSSTCam
-  Unlike ap_pipe/SingleFrame.yaml, this pipeline is not standalone.
+  Alert Production pipeline specialized for LSSTCam.
   This version is specialized for the dev environment.
 
 imports:
-  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/SingleFrame.yaml
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/ApPipe.yaml
 parameters:
   release_id: 0  # This pipeline runs in dev
