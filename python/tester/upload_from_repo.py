@@ -186,9 +186,12 @@ def get_visit_list(butler, n_sample, instrument, ordered=False, **kwargs):
     # If kwargs were only collections, we could use Query.join_dataset_search to be more efficient
     results = butler.query_datasets("raw", find_first=True, instrument=instrument, **kwargs)
     exposures = {raw.dataId["exposure"] for raw in results}
-    visit_ids = butler.query_data_ids("visit", instrument=instrument,
-                                      where="exposure IN (:exposures)", bind={"exposures": exposures},
-                                      )
+    visit_ids = butler.query_data_ids(
+        "visit",
+        instrument=instrument,
+        where="exposure in (exposures)",
+        bind={"exposures": exposures},
+    )
     visits = [id["visit"] for id in visit_ids]
     if n_sample > len(visits):
         raise ValueError(f"Requested {n_sample} groups, but only {len(visits)} are available.")
