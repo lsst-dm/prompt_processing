@@ -1,0 +1,19 @@
+description: >-
+  Alert Production pipeline for LSSTCam using GetTemplateConstrainedTask
+  for testing. Template coadd existence constrains the initial QGraph query,
+  producing an empty graph when no templates exist rather than quanta that
+  fail at adjustQuantum. Does not require ip_diffim changes.
+imports:
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/ApPipe.yaml
+tasks:
+  buildTemplate:
+    class: lsst.prompt.processing.getTemplate.GetTemplateConstrainedTask
+    config:
+      # Changing the task class drops the config accumulated for this label
+      # by imported pipelines, so the connection overrides from
+      # _ingredients/ApPipe.yaml must be repeated here.
+      connections.coaddName: parameters.coaddName
+      connections.bbox: preliminary_visit_image.bbox
+      connections.wcs: preliminary_visit_image.wcs
+      connections.coaddExposures: template_coadd
+      connections.template: template_detector
