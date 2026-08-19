@@ -2,7 +2,7 @@ description: >-
   Alert Production pipeline modified to test processing with alternate templates
 
 imports:
-  - location: $AP_PIPE_DIR/pipelines/LSSTCam/ApPipe.yaml
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/ApPipeConstrainedTemplateTest.yaml
     include:
       - isr
       - calibrateImage
@@ -59,7 +59,7 @@ tasks:
       connections.coaddName: parameters.coaddName
       connections.bbox: preliminary_visit_image.bbox
       connections.wcs: preliminary_visit_image.wcs
-      connections.coaddExposures: template_coadd_test2
+      connections.coaddExposures: template_coadd_test3
       connections.template: template_detector
 parameters:
   release_id: 0  # This pipeline runs in dev

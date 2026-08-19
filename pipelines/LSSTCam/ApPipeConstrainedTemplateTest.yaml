@@ -7,7 +7,7 @@ imports:
   - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/ApPipe.yaml
 tasks:
   buildTemplate:
-    class: lsst.prompt.processing.getTemplate.GetTemplateConstrainedTask
+    class: shared.getTemplate.GetTemplateConstrainedTask
     config:
       # Changing the task class drops the config accumulated for this label
       # by imported pipelines, so the connection overrides from
