@@ -112,7 +112,7 @@ def main():
 
     date = time.strftime("%Y%m%d")
 
-    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit-job"
+    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/lsst.prompt.next-visit"
 
     _set_s3_bucket()
 

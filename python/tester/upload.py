@@ -121,7 +121,7 @@ def main():
     date = time.strftime("%Y%m%d")
 
     _log.info("Running upload for Keda platform")
-    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/test.next-visit-job"
+    kafka_url = "https://usdf-rsp-dev.slac.stanford.edu/sasquatch-rest-proxy/topics/lsst.prompt.next-visit"
 
     endpoint_url = "https://s3dfrgw.slac.stanford.edu"
     s3 = boto3.resource("s3", endpoint_url=endpoint_url)
