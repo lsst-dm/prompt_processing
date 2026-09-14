@@ -1291,20 +1291,10 @@ class MiddlewareInterface:
         )
         if len(data_ids) == 1:
             data_id = data_ids[0]
-            # Check if processing happened already, this needs visit timestamp.
-            # Use begin or end of timespan, whichever is defined.
-            visit_time: astropy.time.Time | None = None
-            if data_id.timespan is not None:
-                visit_time = data_id.timespan.begin or data_id.timespan.end
-            if visit_time is None:
-                # Without timespan cannot call containsVisitDetector.
-                _log.warning("No timespan defined for visit: %s. Assuming APDB modified.", data_id)
-                return True
+            # Check if processing for the visit/detector happened already.
             apdb = lsst.dax.apdb.Apdb.from_uri(self._apdb_config)
             with lsst.utils.timer.time_this(_log, msg="Apdb.containsVisitDetector", level=logging.DEBUG):
-                return apdb.containsVisitDetector(
-                    data_id["visit"], self.visit.detector, region=data_id.region, visit_time=visit_time
-                )
+                return apdb.containsVisitDetector(data_id["visit"], self.visit.detector)
         elif not data_ids:
             # Engineering exposures don't produce visits, but they also can't write to the APDB.
             return False
