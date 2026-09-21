@@ -8,6 +8,7 @@ RUN <<EOT
   # Needed only for Knative support
   conda install -y flask
   pip install --no-input cloudevents
+  pip install --no-input memray
   pip install --no-input prometheus-client
   pip install --no-input redis
 EOT
