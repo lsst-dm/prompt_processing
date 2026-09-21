@@ -1,4 +1,4 @@
-ARG BASE_TAG=latest
+ARG BASE_TAG=DM-56144-d_2026_09_21
 FROM ghcr.io/lsst-dm/prompt-base:${BASE_TAG}
 ENV PYTHONUNBUFFERED=True
 ENV APP_HOME=/app
