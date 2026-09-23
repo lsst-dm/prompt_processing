@@ -141,6 +141,13 @@ class PipelinesConfigTest(unittest.TestCase):
              }
         )
 
+    def test_get_all_surveys(self):
+        config = PipelinesConfig([{"survey": "TestSurvey1", "pipelines": ["SingleFrame.yaml"]},
+                                  {"survey": "TestSurvey2", "pipelines": ["Isr.yaml"]},
+                                  {"survey": "", "pipelines": [""]},
+                                  ])
+        self.assertEqual(set(config.get_all_surveys()), {"TestSurvey1", "TestSurvey2"})
+
     def test_none(self):
         config = PipelinesConfig([{"survey": "TestSurvey",
                                    "pipelines": ["None shall pass/pipelines/SingleFrame.yaml"]},

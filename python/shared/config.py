@@ -501,6 +501,17 @@ class PipelinesConfig:
             pipelines.update(os.path.expandvars(path) for path in node.pipeline_files)
         return pipelines
 
+    def get_all_surveys(self) -> collections.abc.Collection[str]:
+        """Return all surveys named in this configuration.
+
+        Returns
+        -------
+        surveys : collection [`str`]
+            The distinct survey names, not in any particular order.
+            Nodes with no survey or empty survey name are skipped.
+        """
+        return {node._survey for node in self._specs if node._survey}
+
 
 class _LinearRange:
     """A [min, max] range on the number line.
