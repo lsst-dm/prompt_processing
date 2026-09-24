@@ -31,6 +31,7 @@ import os
 import typing
 
 import astropy.coordinates
+import yaml
 
 import lsst.afw.cameraGeom
 
@@ -413,6 +414,22 @@ class PipelinesConfig:
             raise ValueError("Must configure at least one pipeline.")
 
         self._specs = self._expand_config(config)
+
+    @classmethod
+    def from_yaml(cls, yaml_string: str) -> "PipelinesConfig":
+        """Construct a config from a YAML-formatted string.
+
+        Parameters
+        ----------
+        yaml_string : `str`
+            A YAML representation of the structured config.
+
+        Returns
+        -------
+        config : `PipelinesConfig`
+            The corresponding config object.
+        """
+        return cls(yaml.safe_load(yaml_string))
 
     @staticmethod
     def _expand_config(config: collections.abc.Sequence) -> collections.abc.Sequence[_Spec]:

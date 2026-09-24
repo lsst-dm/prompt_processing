@@ -31,7 +31,6 @@ import os
 import signal
 import time
 import uuid
-import yaml
 
 import astropy.time
 import boto3
@@ -102,27 +101,10 @@ _log = logging.getLogger("lsst." + __name__)
 _log.setLevel(logging.DEBUG)
 
 
-def _config_from_yaml(yaml_string):
-    """Initialize a PipelinesConfig from a YAML-formatted string.
-
-    Parameters
-    ----------
-    yaml_string : `str`
-        A YAML representation of the structured config. See
-        `~activator.config.PipelineConfig` for details.
-
-    Returns
-    -------
-    config : `shared.config.PipelineConfig`
-        The corresponding config object.
-    """
-    return PipelinesConfig(yaml.safe_load(yaml_string))
-
-
 # The preprocessing pipelines to execute and the conditions in which to choose them.
-pre_pipelines = _config_from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
+pre_pipelines = PipelinesConfig.from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
 # The main pipelines to execute and the conditions in which to choose them.
-main_pipelines = _config_from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
+main_pipelines = PipelinesConfig.from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
 
 
 @ServiceManager.check_on_init

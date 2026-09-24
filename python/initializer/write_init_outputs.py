@@ -27,7 +27,6 @@ import argparse
 import collections.abc
 import logging
 import os
-import yaml
 
 import astropy.time
 import botocore.exceptions
@@ -52,23 +51,6 @@ repo_retry = float(os.environ.get("REPO_RETRY_DELAY", 30))
 
 SQL_EXCEPTIONS = (sqlalchemy.exc.OperationalError, sqlalchemy.exc.InterfaceError)
 DATASTORE_EXCEPTIONS = SQL_EXCEPTIONS + (botocore.exceptions.ClientError, )
-
-
-def _config_from_yaml(yaml_string):
-    """Initialize a PipelinesConfig from a YAML-formatted string.
-
-    Parameters
-    ----------
-    yaml_string : `str`
-        A YAML representation of the structured config. See
-        `~activator.config.PipelineConfig` for details.
-
-    Returns
-    -------
-    config : `activator.config.PipelineConfig`
-        The corresponding config object.
-    """
-    return PipelinesConfig(yaml.safe_load(yaml_string))
 
 
 def make_parser():
@@ -113,9 +95,9 @@ def main(args=None):
 
         parsed = make_parser().parse_args(args)
         # The preprocessing pipelines to execute and the conditions in which to choose them.
-        pre_pipelines = _config_from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
+        pre_pipelines = PipelinesConfig.from_yaml(os.environ["PREPROCESSING_PIPELINES_CONFIG"])
         # The main pipelines to execute and the conditions in which to choose them.
-        main_pipelines = _config_from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
+        main_pipelines = PipelinesConfig.from_yaml(os.environ["MAIN_PIPELINES_CONFIG"])
         # URI to an APDB config file.
         apdb = os.environ["CONFIG_APDB"]
         deploy_id = parsed.deploy_id or run_utils.get_deployment(apdb)
