@@ -87,11 +87,45 @@ class KafkaButlerWriter(ButlerWriter):
 
         return datasets
 
+    def send_day_end(self, instrument: str, day_obs: int, surveys: list[str], version: str) -> None:
+        """Notify butler-writer-service that no more outputs will be
+        produced for a given instrument and day_obs.
+
+        Parameters
+        ----------
+        instrument : `str`
+            The short name of the instrument.
+        day_obs : `int`
+            The day_obs, in YYYYMMDD format, that has ended.
+        surveys : `list` [`str`]
+            The surveys with concrete pipeline configured.
+        version : `str`
+            The version of the ``lsst_distrib`` package, or an empty
+            string if ``lsst_distrib`` is not set up.
+        """
+        event = PromptProcessingDayEndEvent(
+            type="day-end",
+            instrument=instrument,
+            day_obs=day_obs,
+            surveys=surveys,
+            version=version,
+        )
+        self._producer.produce(self._output_topic, event.model_dump_json())
+        self._producer.flush()
+
 
 class PromptProcessingOutputEvent(pydantic.BaseModel):
     type: Literal["pp-output"]
     dimension_records: list[SerializedDimensionRecord]
     datasets: list[SerializedFileDataset]
+
+
+class PromptProcessingDayEndEvent(pydantic.BaseModel):
+    type: Literal["day-end"]
+    instrument: str
+    day_obs: int
+    surveys: list[str]
+    version: str
 
 
 def _serialize_dimension_records(grouped_records: GroupedDimensionRecords) -> list[SerializedDimensionRecord]:

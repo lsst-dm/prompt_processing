@@ -29,7 +29,11 @@ from confluent_kafka import Producer
 
 from lsst.daf.butler import Butler
 
-from activator.kafka_butler_writer import KafkaButlerWriter, PromptProcessingOutputEvent
+from activator.kafka_butler_writer import (
+    KafkaButlerWriter,
+    PromptProcessingDayEndEvent,
+    PromptProcessingOutputEvent,
+)
 
 
 class KafkaButlerWriterTest(unittest.TestCase):
@@ -80,3 +84,26 @@ class KafkaButlerWriterTest(unittest.TestCase):
             # Check that datasets were written to the output directory.
             output_files = list(Path(output_directory).rglob("*.fits"))
             self.assertEqual(len(output_files), num_datasets)
+
+    def test_send_day_end(self):
+        kafka_producer_mock = unittest.mock.Mock(Producer)
+        with tempfile.TemporaryDirectory() as output_directory:
+            topic = "topic-name"
+            Butler.makeRepo(output_directory)
+            writer = KafkaButlerWriter(
+                producer=kafka_producer_mock,
+                output_topic=topic,
+                output_repo=output_directory,
+            )
+            writer.send_day_end("LSSTCam", 20240924, ["SURVEY"], "g0123456789+0123456789")
+
+            self.assertEqual(kafka_producer_mock.produce.call_args.args[0], topic)
+
+            # Check that the serialized metadata sent to Kafka looks correct.
+            event_json = kafka_producer_mock.produce.call_args.args[1]
+            model = PromptProcessingDayEndEvent.model_validate_json(event_json)
+            self.assertEqual(model.type, "day-end")
+            self.assertEqual(model.instrument, "LSSTCam")
+            self.assertEqual(model.day_obs, 20240924)
+            self.assertEqual(model.surveys, ["SURVEY"])
+            self.assertEqual(model.version, "g0123456789+0123456789")

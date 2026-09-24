@@ -9,3 +9,4 @@
 !config/gunicorn.conf.py
 !maps
 !bin.src/write_init_outputs.py
+!bin.src/signal_day_end.py

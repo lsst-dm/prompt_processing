@@ -17,6 +17,7 @@ COPY config/astropy.cfg $XDG_CONFIG_HOME/astropy/
 COPY maps maps/
 # #! editor doesn't run in the build workflow, but we don't need it
 COPY ../bin.src/write_init_outputs.py bin/
+COPY ../bin.src/signal_day_end.py bin/
 
 USER root
 RUN groupadd -g 4085 -o rubin_users \
@@ -30,4 +31,6 @@ RUN source /opt/lsst/software/stack/loadLSST.bash \
 
 CMD source /opt/lsst/software/stack/loadLSST.bash \
     && setup lsst_distrib \
-    && exec python bin/write_init_outputs.py
+    && (python bin/write_init_outputs.py; rc1=$?; \
+        python bin/signal_day_end.py; rc2=$?; \
+        exit $(( rc1 != 0 || rc2 != 0 )))
