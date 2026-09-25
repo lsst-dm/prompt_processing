@@ -6,7 +6,7 @@ RUN <<EOT
   set -ex
   source /opt/lsst/software/stack/loadLSST.bash
   # Needed only for Knative support
-  conda install -y flask
+  conda install -y flask gdb
   pip install --no-input cloudevents
   pip install --no-input memray
   pip install --no-input prometheus-client
