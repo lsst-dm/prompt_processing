@@ -19,7 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-__all__ = ["get_output_chain", "get_preload_run", "get_output_run", "get_day_obs", "get_deployment"]
+__all__ = [
+    "get_output_chain",
+    "get_preload_run",
+    "get_output_run",
+    "get_day_obs",
+    "get_deployment",
+    "get_lsst_distrib_version",
+]
 
 
 import glob
@@ -30,6 +37,7 @@ import os
 import astropy.time
 
 import lsst.obs.base
+import lsst.utils.packages
 
 
 _log = logging.getLogger("lsst." + __name__)
@@ -192,3 +200,17 @@ def get_deployment(apdb_config: str):
     version = f"pipelines-{packagehash.hexdigest():.7}-config-{confighash.hexdigest():.7}"
     _log.debug("Deployment identified as %s.", version)
     return version
+
+
+def get_lsst_distrib_version() -> str:
+    """Get the lsst_distrib version.
+
+    Returns
+    -------
+    version : `str`
+        The EUPS version of the ``lsst_distrib`` product, as set up in the
+        current environment, or an empty string if not set up.
+    """
+    packages = lsst.utils.packages.getEnvironmentPackages(include_all=True)
+    entry = packages.get("lsst_distrib", "")
+    return entry.split(" ")[0]

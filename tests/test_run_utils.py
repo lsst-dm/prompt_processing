@@ -20,10 +20,11 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import unittest
+import unittest.mock
 
 from lsst.obs.base import Instrument
 
-from shared.run_utils import get_output_chain, get_preload_run, get_output_run
+from shared.run_utils import get_lsst_distrib_version, get_output_chain, get_preload_run, get_output_run
 
 # The short name of the instrument used in the test repo.
 instname = "LSSTCam"
@@ -46,3 +47,14 @@ class RunUtilsFunctionTest(unittest.TestCase):
         self.assertEqual(preload_run, f"{instname}/runs/prompt/20230122/NoPipeline/{deploy_id}")
         out_run = get_output_run(instrument, deploy_id, filename, date)
         self.assertEqual(out_run, f"{instname}/runs/prompt/20230122/ApPipe/{deploy_id}")
+
+    def test_get_lsst_distrib_version_found(self):
+        packages = {"lsst_distrib": "g00e868bf88+054f4cc332 (w_2026_39 w_latest)"}
+        with unittest.mock.patch(
+            "lsst.utils.packages.getEnvironmentPackages", return_value=packages
+        ):
+            self.assertEqual(get_lsst_distrib_version(), "g00e868bf88+054f4cc332")
+
+    def test_get_lsst_distrib_version_not_setup(self):
+        with unittest.mock.patch("lsst.utils.packages.getEnvironmentPackages", return_value={}):
+            self.assertEqual(get_lsst_distrib_version(), "")
