@@ -23,6 +23,7 @@ import glob
 import os.path
 import unittest
 
+from lsst.daf.butler import Butler
 from lsst.pipe.base import Pipeline
 from lsst.utils import getPackageDir
 
@@ -47,3 +48,17 @@ class PipelineDefintionsTestSuite(unittest.TestCase):
                 )
                 # If this fails, it will produce a useful error message.
                 pipeline.to_graph()
+
+    def test_graph_resolve_test_repo(self):
+        """Test that each test pipeline can be resolved against the dataset
+        types registered in the test central repo, as the initializer does.
+        """
+        test_dir = os.path.join(getPackageDir("prompt_processing"), "tests", "data")
+        with Butler(os.path.join(test_dir, "central_repo"), writeable=False) as butler:
+            for file in glob.glob(os.path.join(test_dir, "*.yaml")):
+                with self.subTest(file):
+                    pipeline = Pipeline.from_uri(file)
+                    pipeline.addConfigOverride(
+                        "parameters", "apdb_config", "some/file/path.yaml"
+                    )
+                    pipeline.to_graph(registry=butler.registry)
