@@ -1,0 +1,14 @@
+description: >-
+  Alert Production pipeline specialized for LSSTCam,
+  without associateApdb and downstream tasks.
+
+instrument: lsst.obs.lsst.LsstCam
+imports:
+  - location: $PROMPT_PROCESSING_DIR/pipelines/LSSTCam/ApPipe.yaml
+    exclude:
+      - associateApdb
+      - analyzeAssociatedDiaSourceTable
+      - analyzeDiaSourceAssociationMetrics
+      - analyzeAssociateDiaSourceTiming
+    # EDIT drops the excluded labels from the inherited subsets.
+    labeledSubsetModifyMode: EDIT
