@@ -564,6 +564,9 @@ class MiddlewareInterface:
             # Not preloaded
             inputs.discard("regionTimeInfo")
             inputs.discard("raw")
+            # Shutter motion profiles are not used in Prompt Processing.
+            inputs.discard("shutterMotionProfileOpen")
+            inputs.discard("shutterMotionProfileClose")
             input_types[pipeline_file] = inputs
         return input_types
 
