@@ -24,9 +24,12 @@ __all__ = ["LocalRepo"]
 
 
 import collections.abc
+import contextlib
 import logging
+import logging.handlers
 import os
 import tempfile
+import time
 import warnings
 
 import sqlalchemy.exc
@@ -52,6 +55,45 @@ _log_trace.setLevel(logging.CRITICAL)  # Turn off by default.
 base_keep_limit = int(os.environ.get("LOCAL_REPO_CACHE_SIZE", 3))
 # An optional file with local butler repo config overrides.
 local_repo_config = os.environ.get("LOCAL_REPO_CONFIG", None)
+# Log per-file transfer detail for transfers taking at least this many seconds. 0 disables.
+slow_transfer_threshold = float(os.environ.get("TRANSFER_SLOW_LOG_SECONDS", 0))
+
+
+@contextlib.contextmanager
+def _log_detail_if_slow(threshold):
+    """Buffer per-file transfer logs and emit them if the whole block takes
+    at least ``threshold`` seconds or errors.
+    """
+    _log.info("Slow log threshold set to: %.1f", threshold)
+    if threshold <= 0:
+        yield
+        return
+    # The buffer flushes early if it fills or receives an ERROR.
+    buffer = logging.handlers.MemoryHandler(capacity=10_000, target=logging.getLogger())
+    loggers = [logging.getLogger(name) for name in ("timer.lsst.resources", "botocore.retries")]
+    # Leave DEBUG level loggers (ie; temporary override) alone.
+    loggers = [logger for logger in loggers if not logger.isEnabledFor(logging.DEBUG)]
+    saved = [(logger, logger.level, logger.propagate) for logger in loggers]
+    for logger in loggers:
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+        logger.addHandler(buffer)
+    start = time.monotonic()
+    failed = True
+    try:
+        yield
+        failed = False
+    finally:
+        for logger, level, propagate in saved:
+            logger.removeHandler(buffer)
+            logger.setLevel(level)
+            logger.propagate = propagate
+        elapsed = time.monotonic() - start
+        if failed or elapsed >= threshold:
+            _log.warning("%s: Dataset transfer after %.1f s; replaying %d per-file log records.",
+                         "FAILED" if failed else "SLOW", elapsed, len(buffer.buffer))
+            buffer.flush()
+        buffer.buffer.clear()
 
 
 class LocalRepo:
@@ -303,7 +345,8 @@ class LocalRepo:
         transferred : collection [`lsst.daf.butler.DatasetRef`]
             The datasets that were successfully transferred.
         """
-        with lsst.utils.timer.time_this(_log, msg="load_from (transfer datasets)", level=logging.DEBUG):
+        with _log_detail_if_slow(slow_transfer_threshold), \
+                lsst.utils.timer.time_this(_log, msg="load_from (transfer datasets)", level=logging.DEBUG):
             transferred = self.butler.transfer_from(src_butler,
                                                     datasets,
                                                     transfer="copy",
