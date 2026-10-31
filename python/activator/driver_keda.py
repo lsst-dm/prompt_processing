@@ -52,6 +52,9 @@ visit_expire = float(os.environ.get("MESSAGE_EXPIRATION", 3600))
 max_worker_requests = int(os.environ.get("WORKER_RESTART_FREQ", 0))
 # The number of seconds to delay retrying connections to the Redis stream.
 redis_retry = float(os.environ.get("REDIS_RETRY_DELAY", 30))
+# Number of milliseconds to block while waiting for a work entry from Redis.
+# Must be lower than any other timeout. Between 100ms and 1s are good values.
+worker_blocking_wait = int(os.environ.get("WORKER_BLOCKING_WAIT", 500))
 # Time to wait for fanned out messages before spawning new pod.
 fanned_out_msg_listen_timeout = int(os.environ.get("FANNED_OUT_MSG_LISTEN_TIMEOUT", 300))
 # Redis Stream Cluster
@@ -198,6 +201,7 @@ class RedisStreamSession:
             streams={self.stream: ">"},  # Read new messages (">" for pending messages)
             consumername=self.consumername,
             groupname=self.groupname,
+            block=worker_blocking_wait,  # Block for a short time to avoid fast looping
             count=1  # Read one message at a time
         )
 
