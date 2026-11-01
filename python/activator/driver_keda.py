@@ -198,6 +198,7 @@ class RedisStreamSession:
             streams={self.stream: ">"},  # Read new messages (">" for pending messages)
             consumername=self.consumername,
             groupname=self.groupname,
+            block=500,  # Block for a short time to avoid fast looping
             count=1  # Read one message at a time
         )
 
