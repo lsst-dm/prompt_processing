@@ -1,0 +1,34 @@
+description: >-
+  Alert Production pipeline specialized for LSSTCam using templates
+  built from DECam coadds.
+
+# This file should strive to contain just an import from ap_pipe.
+# Exceptions are allowed temporarily when urgent bug fixes and
+# prompt_processing build can't wait for the lsst_distrib
+# release schedule.
+imports:
+  - location: $AP_PIPE_DIR/pipelines/LSSTCam/ApPipe-DECam-templates.yaml
+    include:
+      - prompt
+parameters:
+  release_id: 1  # This pipeline (and its descendants) run in production
+tasks:
+  # sattle only required in PP environment
+  calibrateImage:
+    class: lsst.pipe.tasks.calibrateImage.CalibrateImageTask
+    config:
+      run_sattle: True
+  # Only wanted in PP environment
+  buildTemplate:
+    class: lsst.ip.diffim.getTemplate.GetTemplateTask
+    config:
+      requireCoaddAtGraphBuild: true
+  detectAndMeasureDiaSource:
+    class: lsst.ip.diffim.detectAndMeasure.DetectAndMeasureTask
+    config:
+      run_sattle: True
+  associateApdb:
+    class: lsst.ap.association.DiaPipelineTask
+    config:
+      # Alert distribution only runnable in PP environment.
+      alertPackager.doProduceAlerts: True
