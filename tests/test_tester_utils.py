@@ -21,9 +21,7 @@
 
 import unittest
 
-import lsst.daf.butler.tests as butler_tests
 import lsst.meas.base
-from lsst.obs.subaru import HyperSuprimeCam
 import lsst.resources.s3utils
 
 from shared.raw import get_raw_path
