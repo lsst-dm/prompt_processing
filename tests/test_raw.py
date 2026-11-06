@@ -37,7 +37,6 @@ from shared.raw import (
     get_group_id_from_oid,
     LSST_REGEXP,
     IMSIM_REGEXP,
-    OTHER_REGEXP,
     get_raw_path,
 )
 from shared.visit import FannedOutVisit
@@ -311,71 +310,3 @@ class LsstCamImSimTest(LsstBase, unittest.TestCase):
         self.assertEqual(parsed['expid'], str(self.exposure))
         self.assertEqual(parsed['detector'], str(self.detector))
         self.assertEqual(get_exp_id_from_oid(path), self.exposure)
-
-
-@unittest.skipIf(not boto3, "Warning: boto3 AWS SDK not found!")
-class HscTest(RawBase, unittest.TestCase):
-    def setUp(self):
-        self.instrument = "HSC"
-        self.group = "2022032100001"
-        self.snaps = 1
-        self.filter = "k2022"
-        self.detector = 42
-        self.snap = 0
-        self.exposure = 404
-        super().setUp()
-
-    def test_writeread(self):
-        """Test that raw module can parse the paths it creates.
-        """
-        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
-        parsed = re.match(OTHER_REGEXP, path)
-        self.assertIsNotNone(parsed)
-        self.assertEqual(parsed['instrument'], str(self.instrument))
-        self.assertEqual(parsed['detector'], str(self.detector))
-        self.assertEqual(parsed['group'], str(self.group))
-        self.assertEqual(parsed['snap'], str(self.snap))
-        self.assertEqual(parsed['expid'], str(self.exposure))
-        self.assertEqual(parsed['filter'], str(self.filter))
-        self.assertEqual(get_exp_id_from_oid(path), self.exposure)
-
-    def test_get_raw_path(self):
-        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
-        self.assertEqual(
-            path,
-            "HSC/42/2022032100001/0/404/k2022/HSC-2022032100001-0-404-k2022-42.fz"
-        )
-
-    def test_get_prefix(self):
-        """Test that get_prefix_from_snap returns proper prefix."""
-        prefix = get_prefix_from_snap(self.instrument, self.group, self.detector, self.snap)
-        self.assertEqual(prefix, "HSC/42/2022032100001/0/")
-
-    def test_check_for_snap_present(self):
-        path = get_raw_path(self.instrument, self.detector, self.group, self.snap, self.exposure, self.filter)
-        fits_path = ResourcePath(f"s3://{self.bucket}").join(path)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "S3 does not support flushing objects", UserWarning)
-            with fits_path.open("wb"):
-                pass  # Empty file is just fine
-
-        oid = check_for_snap(boto3.client("s3"),
-                             self.bucket,
-                             instrument=self.instrument,
-                             microservice="",
-                             group=self.group,
-                             snap=self.snap,
-                             detector=self.detector,
-                             )
-        self.assertEqual(oid, "HSC/42/2022032100001/0/404/k2022/HSC-2022032100001-0-404-k2022-42.fz")
-
-    def test_check_for_snap_absent(self):
-        oid = check_for_snap(boto3.client("s3"),
-                             self.bucket,
-                             instrument=self.instrument,
-                             microservice="",
-                             group=self.group,
-                             snap=self.snap,
-                             detector=self.detector,
-                             )
-        self.assertEqual(oid, None)
