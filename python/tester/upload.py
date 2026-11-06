@@ -38,7 +38,6 @@ from lsst.resources import ResourcePath
 
 from shared.raw import (
     LSST_REGEXP,
-    OTHER_REGEXP,
     get_raw_path,
     _LSST_CAMERA_LIST,
     _DETECTOR_FROM_RS,
@@ -138,7 +137,7 @@ def main():
     if instrument in _LSST_CAMERA_LIST:
         raw_pool = get_samples_lsst(src_bucket, instrument)
     else:
-        raw_pool = get_samples_non_lsst(src_bucket, instrument)
+        _log.error("Instrument not in LSST_CAMERA_LIST")
 
     if raw_pool:
         _log.info(f"Observing real raw files from {instrument}.")
@@ -178,80 +177,6 @@ def _add_to_raw_pool(raw_pool, snap_num, visit, blob):
     else:
         _log.debug(f"New group {group} registered.")
         raw_pool[group] = {snap_num: {visit: blob}}
-
-
-def get_samples_non_lsst(bucket, instrument):
-    """Return any predefined raw exposures for a non-LSST instrument.
-
-    The raws follows the non-LSST filename format as defined in activator/raw.py:
-    instrument/detector/group/snap/expid/filter/*.fz
-
-    Parameters
-    ----------
-    bucket : `S3.Bucket`
-        The bucket in which to search for predefined raws.
-    instrument : `str`
-        The short name of the instrument to sample.
-
-    Returns
-    -------
-    raws : mapping [`str`, mapping [`int`, mapping [`shared.visit.FannedOutVisit`, `s3.ObjectSummary`]]]
-        A mapping from group IDs to a mapping of snap ID. The value of the
-        innermost mapping is the observation metadata for each detector,
-        and a Blob representing the image taken in that detector-snap.
-    """
-    # TODO: set up a lookup-friendly class to represent the return value
-
-    # TODO: replace this dict with something more scalable.
-    hsc_metadata = {
-        59126: {"ra": 149.28531249999997, "dec": 2.935002777777778, "rot": 270.0, "time": 1457332820.0},
-        59134: {"ra": 149.45749166666664, "dec": 2.926961111111111, "rot": 270.0, "time": 1457333685.0},
-        59138: {"ra": 149.45739166666664, "dec": 1.4269472222222224, "rot": 270.0, "time": 1457334125.0},
-        59142: {"ra": 149.4992083333333, "dec": 2.8853, "rot": 270.0, "time": 1457334559.0},
-        59150: {"ra": 149.96643749999996, "dec": 2.2202916666666668, "rot": 270.0, "time": 1457335427.0},
-        59152: {"ra": 149.9247333333333, "dec": 2.1577777777777776, "rot": 270.0, "time": 1457335765.0},
-        59154: {"ra": 150.22329166666663, "dec": 2.238341666666667, "rot": 270.0, "time": 1457336099.0},
-        59156: {"ra": 150.26497083333334, "dec": 2.1966694444444443, "rot": 270.0, "time": 1457336431.0},
-        59158: {"ra": 150.30668333333332, "dec": 2.2591888888888887, "rot": 270.0, "time": 1457336763.0},
-        59160: {"ra": 150.18157499999998, "dec": 2.2800083333333334, "rot": 270.0, "time": 1457337098.0},
-    }
-
-    # The pre-made raw files are stored with the "unobserved" prefix
-    blobs = bucket.objects.filter(Prefix=f"unobserved/{instrument}/")
-    duration = float(EXPOSURE_INTERVAL + SLEW_INTERVAL)
-    result = {}
-    for blob in blobs:
-        # Assume that the unobserved bucket uses the same filename scheme as
-        # the observed bucket.
-        snap = re.match(OTHER_REGEXP, blob.key)
-        group = snap["group"]
-        exp_id = int(snap["expid"])
-        snap_num = int(snap["snap"])
-        visit = FannedOutVisit(
-            instrument=instrument,
-            detector=snap["detector"],
-            groupId=group,
-            nimages=INSTRUMENTS[instrument].n_snaps,
-            filters=snap["filter"],
-            coordinateSystem=FannedOutVisit.CoordSys.ICRS,
-            position=[hsc_metadata[exp_id]["ra"], hsc_metadata[exp_id]["dec"]],
-            startTime=hsc_metadata[exp_id]["time"],
-            rotationSystem=FannedOutVisit.RotSys.SKY,
-            cameraAngle=hsc_metadata[exp_id]["rot"],
-            survey="SURVEY",
-            # Fan-out uses salIndex to know which instrument and detector config to use.
-            # The exp_id of this test dataset is coded into fan-out's pattern matching.
-            salIndex=exp_id,
-            scriptSalIndex=42,
-            dome=FannedOutVisit.Dome.OPEN,
-            duration=duration,
-            totalCheckpoints=1,
-            private_sndStamp=hsc_metadata[exp_id]["time"]-2*duration,
-        )
-        _log.debug(f"File {blob.key} parsed as snap {snap_num} of visit {visit}.")
-        _add_to_raw_pool(result, snap_num, visit, blob)
-
-    return result
 
 
 def get_samples_lsst(bucket, instrument):

@@ -1,9 +1,0 @@
-description: Preprocessing pipeline specialized for HSC-RC2
-
-imports:
-  - location: $AP_PIPE_DIR/pipelines/HSC/ApPipe.yaml
-    include:
-      - preload
-parameters:
-  # Use dataset's specific templates
-  coaddName: goodSeeing

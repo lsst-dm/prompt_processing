@@ -19,18 +19,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import tempfile
 import unittest
 
-import lsst.daf.butler.tests as butler_tests
 import lsst.meas.base
-from lsst.obs.subaru import HyperSuprimeCam
 import lsst.resources.s3utils
 
 from shared.raw import get_raw_path
 from tester.utils import (
     get_last_group,
-    make_exposure_id,
     make_group,
     decode_group,
     increment_group,
@@ -73,17 +69,6 @@ class TesterUtilsTest(unittest.TestCase):
             "LSSTCam", 123, "2022-11-02T00:00:00.020002", 2, 2022110220002, "TestFilter"
         )
         obj = s3.Object(self.bucket_name, path)
-        obj.put(Body=b'test2')
-        path = get_raw_path(
-            "HSC", 123, "11020002", 2, 30, "TestFilter"
-        )
-        obj = s3.Object(self.bucket_name, path)
-        obj.put(Body=b'test3')
-        path = get_raw_path(
-            # Smallest HSC detector is 123
-            "HSC", 124, "11020003", 2, 30, "TestFilter"
-        )
-        obj = s3.Object(self.bucket_name, path)
         obj.put(Body=b'test4')
 
     def tearDown(self):
@@ -112,52 +97,6 @@ class TesterUtilsTest(unittest.TestCase):
         last_group = get_last_group(bucket, "LSSTCam", "20110101")
         self.assertEqual(last_group, "2011-01-01T00:00:00.020000")
 
-    def test_get_last_group_hsc(self):
-        s3 = boto3.resource("s3")
-        bucket = s3.Bucket(self.bucket_name)
-
-        last_group = get_last_group(bucket, "HSC", "20241102")
-        self.assertEqual(last_group, "11020003")
-
-        # Test the case of no match
-        last_group = get_last_group(bucket, "HSC", "20250101")
-        self.assertEqual(last_group, "13010000")
-
-    def test_exposure_id_hsc(self):
-        group = "01110026"
-        # Need a Butler registry to test IdGenerator
-        with tempfile.TemporaryDirectory() as repo:
-            butler = butler_tests.makeTestRepo(repo)
-            HyperSuprimeCam().register(butler.registry)
-            instruments = list(butler.query_dimension_records(
-                "instrument", data_id={"instrument": "HSC"}))
-            self.assertEqual(len(instruments), 1)
-            exp_max = instruments[0].exposure_max
-
-            exp_id, headers = make_exposure_id("HSC", group, 0)
-            butler_tests.addDataIdValue(butler, "visit", exp_id)
-            data_id = butler.registry.expandDataId({"instrument": "HSC", "visit": exp_id, "detector": 111})
-
-        str_exp_id = headers["EXP-ID"]
-        self.assertEqual(str_exp_id, "HSCE%08d" % exp_id)
-        # Above assertion passes if exp_id has 9+ digits, but such IDs aren't valid.
-        self.assertEqual(len(str_exp_id[4:]), 8)
-        self.assertLessEqual(exp_id, exp_max)
-        # test that IdGenerator.unpacker_from_config does not raise
-        config = lsst.meas.base.DetectorVisitIdGeneratorConfig()
-        lsst.meas.base.IdGenerator.unpacker_from_config(config, data_id)
-
-    def test_group_id_hsc_limits(self):
-        # Confirm that the group ID generator works as long as advertised:
-        # until the end of September 2024.
-        s3 = boto3.resource("s3")
-        bucket = s3.Bucket(self.bucket_name)
-
-        group = get_last_group(bucket, "HSC", "20250930")
-        self.assertEqual(group, "21300000")
-        with self.assertRaises(RuntimeError):
-            get_last_group(bucket, "HSC", "20251001")
-
 
 class TesterGoupIdTest(unittest.TestCase):
     """Test the utilities on the made-up group ID"""
@@ -184,16 +123,4 @@ class TesterGoupIdTest(unittest.TestCase):
         for amount in offsets:
             self.assertEqual(
                 offsets[amount], increment_group("LATISS", group_base, amount)
-            )
-
-    def test_increment_group_hsc(self):
-        group_base = "24310100"
-        offsets = {
-            1: "24310101",
-            99: "24310199",
-            1345: "24311445",
-        }
-        for amount in offsets:
-            self.assertEqual(
-                offsets[amount], increment_group("HSC", group_base, amount)
             )
