@@ -22,7 +22,6 @@
 __all__ = ["get_central_butler", "MiddlewareInterface"]
 
 import collections.abc
-import functools
 import itertools
 import logging
 import os
@@ -276,6 +275,8 @@ class MiddlewareInterface:
             visit.instrument, self.read_central_butler.registry)
         self.pre_pipelines = pre_pipelines
         self.main_pipelines = main_pipelines
+        self._pipeline_cache = {}
+        self._pipeline_graph_cache = {}
 
         now = astropy.time.Time.now()
         self._day_obs = runs.get_day_obs(now)
@@ -960,7 +961,6 @@ class MiddlewareInterface:
         """
         return self.main_pipelines.get_pipeline_files(self.visit, self.camera)
 
-    @functools.cache
     def _prep_pipeline(self, pipeline_file) -> lsst.pipe.base.Pipeline:
         """Setup the pipeline to be run, based on the configured instrument and
         details of the incoming visit.
@@ -975,14 +975,15 @@ class MiddlewareInterface:
         pipeline : `lsst.pipe.base.Pipeline`
             The fully configured pipeline.
         """
-        pipeline = lsst.pipe.base.Pipeline.fromFile(pipeline_file)
+        if pipeline_file not in self._pipeline_cache:
+            pipeline = lsst.pipe.base.Pipeline.fromFile(pipeline_file)
 
-        # Config overrides are not validated until graph generation.
-        pipeline.addConfigOverride("parameters", "apdb_config", self._apdb_config)
+            # Config overrides are not validated until graph generation.
+            pipeline.addConfigOverride("parameters", "apdb_config", self._apdb_config)
+            self._pipeline_cache[pipeline_file] = pipeline
 
-        return pipeline
+        return self._pipeline_cache[pipeline_file]
 
-    @functools.cache
     def _prep_pipeline_graph(self, pipeline_file) -> lsst.pipe.base.PipelineGraph:
         """Setup the pipeline to be run, based on the configured instrument and
         details of the incoming visit.
@@ -997,7 +998,10 @@ class MiddlewareInterface:
         pipeline : `lsst.pipe.base.PipelineGraph`
             The fully configured pipeline, in graph form.
         """
-        return self._prep_pipeline(pipeline_file).to_graph()
+        if pipeline_file not in self._pipeline_graph_cache:
+            self._pipeline_graph_cache[pipeline_file] = self._prep_pipeline(pipeline_file).to_graph()
+
+        return self._pipeline_graph_cache[pipeline_file]
 
     @connect.retry(2, botocore.exceptions.ClientError, wait=5)
     def _download(self, remote):
