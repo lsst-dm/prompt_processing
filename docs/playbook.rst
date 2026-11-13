@@ -238,7 +238,7 @@ The bucket ``rubin-pp-dev`` holds incoming raw images.
 The bucket ``rubin-pp-dev-users`` holds:
 
 * ``rubin-pp-dev-users/central_repo_2/`` contains the central repository described in `DMTN-219`_.
-  This repository currently contains HSC, LATISS, and LSSTCam data, uploaded with ``make_export.py``.
+  This repository currently contains LATISS, and LSSTCam data, uploaded with ``make_export.py``.
 
 * ``rubin-pp-dev-users/unobserved/`` contains raw files that the upload scripts can draw from to create incoming raws.
 
@@ -356,7 +356,7 @@ To inspect table permissions:
    set search_path to <namespace>;
    \dp
 
-Most tables should grant the SELECT (r) and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, ``hsc_prompt``, and ``lsstcam_prompt``).
+Most tables should grant the SELECT (r) and UPDATE (w) `PostgreSQL privileges`_ to all service users (currently ``latiss_prompt``, and ``lsstcam_prompt``).
 Some tables also need INSERT (a) and DELETE (d).
 
 We need SELECT (r) and USAGE (U) permissions for the sequence ``collection_seq_collection_id``, but *not* for ``dataset_calibs_*_seq_id``, ``dataset_type_seq_id``, or ``dimension_graph_key_seq_id``.
@@ -366,7 +366,7 @@ If any tables are missing permissions, run:
 
 .. code-block:: psql
 
-   GRANT insert, select, update ON TABLE "<table1>", "<table2>" TO hsc_prompt, latiss_prompt, lsstcam_prompt;
+   GRANT insert, select, update ON TABLE "<table1>", "<table2>" TO latiss_prompt, lsstcam_prompt;
 
 See the `GRANT command`_ for other options.
 
@@ -468,11 +468,11 @@ To see timer results, set ``SERVICE_LOG_LEVELS`` to include ``timer.lsst.activat
 Deleting Keda Scaled Job
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-In an emergency Keda Scaled Jobs can be deleted to terminate currently running pods and prevent new pods from spawning.  Within ArgoCD select the Application.  On the ``scaledjob`` panel select the three dots in the top right then ``Delete``.  A ``SYNC`` can be perfomed later to restore the Scaled Job.  Scaled Jobs can also be deleted with ``kubectl``.  An example for HSC is below.
+In an emergency Keda Scaled Jobs can be deleted to terminate currently running pods and prevent new pods from spawning.  Within ArgoCD select the Application.  On the ``scaledjob`` panel select the three dots in the top right then ``Delete``.  A ``SYNC`` can be perfomed later to restore the Scaled Job.  Scaled Jobs can also be deleted with ``kubectl``.  An example for LSSTCam is below.
 
 .. code-block:: sh
 
-   kubectl delete scaledjob prompt-keda-hsc -n prompt-keda-hsc
+   kubectl delete scaledjob prompt-keda-lsstcam -n prompt-keda-lsstcam
 
 Deleting Old Services
 ^^^^^^^^^^^^^^^^^^^^^
@@ -544,7 +544,7 @@ Install the Prompt Processing code, and set it up before use:
 The tester scripts send ``next_visit`` events for each detector via Kafka on the ``next-visit-topic`` topic.
 They then upload a batch of files representing the snaps of the visit to the ``rubin-pp-dev`` S3 bucket, simulating incoming raw images.
 
-``python/tester/upload.py``: Command line arguments are the instrument name (currently HSC, LATISS, and LSSTCam), and the number of groups of images to send.
+``python/tester/upload.py``: Command line arguments are the instrument name (currently LATISS and LSSTCam), and the number of groups of images to send.
 
 Sample command line:
 
@@ -555,8 +555,6 @@ Sample command line:
 
 This script draws images stored in the ``rubin-pp-dev-users`` bucket.
 
-* For HSC, 4 groups, in total 10 raw files, are curated.
-  They are the COSMOS data as curated in `ap_verify_ci_cosmos_pdr2 <https://github.com/lsst/ap_verify_ci_cosmos_pdr2>`_.
 * For LATISS, 3 groups, in total 3 raw fits files and their corresponding json metadata files, are curated.
   One of the files, the unobserved group `2024-09-04T05:59:29.342`, has no templates and is known to fail `calibrateImage` in determining PSF.
   This visit can test pipeline fallback features.
@@ -568,7 +566,6 @@ Sample command line:
 
 .. code-block:: sh
 
-   python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/HSC.yaml 3
    python upload_from_repo.py $PROMPT_PROCESSING_DIR/etc/tester/LATISS.yaml 2 --ordered
 
 This scripts draws images from a butler repository as defined in the input configuration file.
@@ -772,7 +769,7 @@ In our case, we want to upgrade when we update ``latest`` to a version that has 
 REDIS STREAMS
 =============
 
-The Next Visit Fan Out Service sends fanned out events to Redis Streams.  Within Redis Streams a stream is configured for each instrument along with a corresponding consumer group and Prompt Processing is configured with a consumer group to read pending messages.   The naming for the streams is ``instrument:<instrument_name>`` so HSC for example is ``instrument:hsc``
+The Next Visit Fan Out Service sends fanned out events to Redis Streams.  Within Redis Streams a stream is configured for each instrument along with a corresponding consumer group and Prompt Processing is configured with a consumer group to read pending messages.   The naming for the streams is ``instrument:<instrument_name>`` so LSSTCam for example is ``instrument:lsstcam``
 
 
 Redis CLI
@@ -795,7 +792,6 @@ Redis Streams are created using the `Redis CLI`_.  The ``XGROUP CREATE`` command
 
 .. code-block:: sh
 
-   XGROUP CREATE instrument:hsc hsc_consumer_group $ mkstream
    XGROUP CREATE instrument:latiss latiss_consumer_group $ mkstream
    XGROUP CREATE instrument:lsstcam lsstcam_consumer_group $ mkstream
 
