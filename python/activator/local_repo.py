@@ -425,11 +425,11 @@ class LocalRepo:
 
         # Store collection chains after all children guaranteed to exist
         chains = {}
-        for child in src.query(collection, flatten_chains=True, include_chains=True):
-            info = src.get_info(child)
+        for info in src.query_info(collection, flatten_chains=True,
+                                   include_chains=True, include_doc=True):
             if info.type == daf_butler.CollectionType.CHAINED:
-                chains[child] = info.children
-            dest.register(child, info.type, info.doc)
+                chains[info.name] = info.children
+            dest.register(info.name, info.type, info.doc)
         for chain, children in chains.items():
             dest.redefine_chain(chain, children)
 
