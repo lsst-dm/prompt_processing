@@ -11,6 +11,7 @@ Table of Contents
 * `Release Management`_
 * `Buckets`_
 * `Central Repo`_
+* `Templates`_
 * `Development Service`_
 * `Testers`_
 * `next_visit Events`_
@@ -396,6 +397,65 @@ If the exposure ID in the example is out of date, you can find a new one with:
 
    The use of ``$AP_PIPE_DIR`` is not a typo.
    The Prompt Processing pipelines run subsets that only work in the context of Prompt Processing; running the baseline version of the pipeline ensures that *all* dataset types are registered.
+
+
+Templates
+=========
+
+LSSTCam Templates
+-----------------
+
+``curate_templates.py`` copies a selected set of LSSTCam ``template_coadd`` datasets into a new release in the ``main`` repo.
+The input collection should contain only vetted templates.
+The script:
+
+#. creates a TAGGED collection ``LSSTCam/templates/<ticket>``, and stops if it already exists;
+#. selects the ``template_coadd`` datasets in the input collection that match ``--where``;
+#. writes their file paths and data IDs to an ECSV table (``--records``, default ``records.ecsv`` in the current directory);
+#. copies the files into a new RUN collection ``LSSTCam/templates/<ticket>/run`` with ``butler ingest-files``;
+#. tags the copied datasets into ``LSSTCam/templates/<ticket>``.
+
+The arguments are the repo, the input collection, and the ticket number:
+
+.. code-block:: sh
+
+   python $PROMPT_PROCESSING_DIR/bin/curate_templates.py main <input collection> DM-XXXXX --where "skymap='lsst_cells_v2' AND band IN ('g', 'r')"
+
+The script does not add the new collection to ``LSSTCam/templates_prep``.
+If the script fails after creating the TAGGED collection, remove ``LSSTCam/templates/<ticket>`` and any partial ``LSSTCam/templates/<ticket>/run`` before running it again.
+
+DECam Templates
+---------------
+
+DECam templates are staged for deployment in the ``DECam/templates_prep`` chained collection in the ``main`` repo.
+Each release of DECam templates is a RUN collection named ``DECam/templates/<ticket>/<release>/run``, containing ``template_coadd_decam`` datasets.
+
+``curate_decam_templates.py`` tags the templates from one release into a TAGGED collection ``DECam/templates/<ticket>/<release>`` and prepends it to ``DECam/templates_prep``.
+A tract/band combination is skipped entirely if any patch of it already has a template, either an LSSTCam ``template_coadd`` in ``LSSTCam/templates_prep`` or a DECam template from an earlier release in ``DECam/templates_prep``.
+The templates are tagged, not copied.
+
+First check the selection with ``--dry-run``, which logs whether each tract/band is kept or skipped without writing to the repo:
+
+.. code-block:: sh
+
+   python $PROMPT_PROCESSING_DIR/bin/curate_decam_templates.py main DECam/templates/DM-57022/release_01/run --dry-run
+
+Then stage the release:
+
+.. code-block:: sh
+
+   python $PROMPT_PROCESSING_DIR/bin/curate_decam_templates.py main DECam/templates/DM-57022/release_01/run
+
+The script does not create ``DECam/templates_prep``.
+If the chain does not exist, the script still creates the TAGGED collection, then prints the command that creates the chain from it.
+For the first release, this is:
+
+.. code-block:: sh
+
+   butler collection-chain main DECam/templates_prep DECam/templates/DM-57022/release_01
+
+The script stops without writing if the TAGGED collection already exists, or if the existing templates use a different skymap from the new ones.
+Run ``curate_decam_templates.py --help`` for options to change the collection and dataset type names.
 
 
 Development Service
