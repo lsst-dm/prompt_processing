@@ -299,6 +299,24 @@ class MiddlewareInterfaceTest(unittest.TestCase):
                               collections=preload_collection)
             )
 
+    def test_collection_template_default(self):
+        """Test that the template collection defaults to the instrument-based
+        name when none is configured.
+        """
+        self.assertIsNone(self.interface._template_collection_override)
+        self.assertEqual(self.interface._collection_template, f"{TestRepo.instname}/templates")
+
+    def test_collection_template_override(self):
+        """Test that a configured template collection overrides the default."""
+        butler_writer = DirectButlerWriter(self.write_butler)
+        interface = MiddlewareInterface(self.read_butler, butler_writer,
+                                        self.input_data, self.next_visit,
+                                        pre_pipelines_empty, pipelines, TestRepo.skymap_name,
+                                        self.local_repo,
+                                        template_collection="some/other/templates",
+                                        prefix="file://")
+        self.assertEqual(interface._collection_template, "some/other/templates")
+
     def test_prep_butler(self):
         """Test that the butler has all necessary data for the next visit.
         """

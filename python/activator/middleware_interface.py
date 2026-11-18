@@ -218,6 +218,9 @@ class MiddlewareInterface:
         Name of the skymap in the central repo for querying templates.
     local_repo : `activator.local_repo.LocalRepo`
         An object representing this worker's unique local repo.
+    template_collection : `str`, optional
+        The collection in the central repo to load templates from.
+        If `None` or empty, defaults to ``"{instrument}/templates"``.
     prefix : `str`, optional
         URI scheme followed by ``://``; prepended to ``image_bucket`` when
         constructing URIs to retrieve incoming files. The default is
@@ -235,6 +238,8 @@ class MiddlewareInterface:
         This collection depends on initialization parameters, and must
         not be called from this object's constructor.
         """
+        if self._template_collection_override:
+            return self._template_collection_override
         return self.instrument.makeCollectionName("templates")
 
     # Class invariants:
@@ -247,8 +252,10 @@ class MiddlewareInterface:
                  visit: FannedOutVisit,
                  pre_pipelines: PipelinesConfig, main_pipelines: PipelinesConfig,
                  skymap: str, local_repo: LocalRepo,
+                 template_collection: str | None = None,
                  prefix: str = "s3://"):
         self.visit = visit
+        self._template_collection_override = template_collection
 
         self._apdb_config = os.environ["CONFIG_APDB"]
         # Deployment/version ID -- potentially expensive to generate.
