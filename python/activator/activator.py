@@ -60,6 +60,8 @@ from .startstop import ServiceManager
 instrument_name = os.environ["RUBIN_INSTRUMENT"]
 # The skymap to use in the central repo
 skymap = os.environ["SKYMAP"]
+# The collection in the central repo to load templates from.
+template_collection = os.environ.get("TEMPLATE_COLLECTION")
 # The maximum total time a worker can spend processing one visit.
 global_timeout = int(os.environ["WORKER_TIMEOUT"])
 # URI to the main repository to contain processing results
@@ -605,6 +607,7 @@ def _process_visit_or_cancel(expected_visit: FannedOutVisit):
                                       main_pipelines,
                                       skymap,
                                       _get_local_repo(),
+                                      template_collection=template_collection,
                                       )
             if not mwi.get_main_pipeline_files():
                 raise IgnorableVisit(f"No pipeline configured for {expected_visit}.")
