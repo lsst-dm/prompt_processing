@@ -54,7 +54,7 @@ def _make_parser():
     parser.add_argument("--export-file", default="export.yaml",
                         help="The export file containing the repository contents. Defaults to ./export.yaml.")
     parser.add_argument("--add-instrument-chain", default=None,
-                        help="The instrument short name (HSC, LATISS, etc) to make default collections.")
+                        help="The instrument short name (LATISS, etc) to make default collections.")
     return parser
 
 

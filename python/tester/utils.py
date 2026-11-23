@@ -58,14 +58,10 @@ INSTRUMENTS = {
     "LSSTComCamSim": Instrument(1, 9, 3),
     "LATISS": Instrument(1, 1, 2),
     "DECam": Instrument(1, 62),
-    "HSC": Instrument(1, 112, 999),
 }
 # The schema ID of the ``next_visit`` message in the Sasquatch REST Proxy.
 SCHEMA_ID = 170
 
-max_exposure = {
-    "HSC": 21474800,
-}
 """A mapping of instrument to exposure_max (`dict` [`str`, `int`]).
 
 The values are copied here so we can access them without a Butler. All
@@ -98,9 +94,7 @@ def get_last_group(bucket, instrument, date):
     Notes
     -----
     For LSST instruments, the group is an ISO 8601 timestamp to seconds
-    precision, followed by . and a six-digit counter. For HSC, it is a 4-digit
-    YMD string, followed by a four-digit counter, with the combination
-    guaranteed to be a valid HSC exposure ID.
+    precision, followed by . and a six-digit counter.
     """
     if instrument in _LSST_CAMERA_LIST:
         blobs = bucket.objects.filter(
@@ -151,10 +145,6 @@ def make_compressed_date(date):
     year = int(date[:4]) - 2024            # Always 1 digit, 0-1
     night_id = int(date[-4:])              # Always 4 digits up to 1231
     compressed = year*1200 + night_id      # Always 4 digits
-    limit = max_exposure["HSC"] // 10_000
-    if compressed > limit:
-        raise RuntimeError(f"{date} compressed to {compressed}, "
-                           f"max allowed is {limit}.")
     return "%04d" % compressed
 
 
@@ -186,43 +176,8 @@ def make_exposure_id(instrument, group_id, snap):
     if instrument in _LSST_CAMERA_LIST:
         abbrev = _CAMERA_ABBREV[instrument]
         return make_lsst_id(group_id, snap, abbrev)
-    elif instrument == "HSC":
-        return make_hsc_id(group_id, snap)
     else:
         raise NotImplementedError(f"Exposure ID generation not supported for {instrument}.")
-
-
-def make_hsc_id(group_id, snap):
-    """Generate an exposure ID that the Butler can parse as a valid HSC ID.
-
-    This function returns a value in the "HSCE########" format (introduced June
-    2016) for all exposures, even if the source image is older.
-
-    Parameters
-    ----------
-    group_id : `str`
-        A group ID.
-    snap : `int`
-        A snap ID.
-
-    Returns
-    -------
-    exposure_num : `int`
-        The exposure ID genereated by Middleware from ``headers``. It is
-        likely to be unique for each combination of ``group_num`` and ``snap``.
-    headers : `dict`
-        The key-value pairs to represent ``exposure_num` in HSC headers.
-
-    Notes
-    -----
-    The current implementation gives illegal exposure IDs after September 2024.
-    If this generator is still needed after that, it will need to be tweaked.
-    """
-    exposure_id = int(group_id)
-    if exposure_id > max_exposure["HSC"]:
-        raise RuntimeError(f"{group_id} translated to expId {exposure_id}, "
-                           f"max allowed is {max_exposure['HSC']}.")
-    return exposure_id, {"EXP-ID": f"HSCE{exposure_id:08d}"}
 
 
 def make_lsst_id(group_id, snap, abbrev):
